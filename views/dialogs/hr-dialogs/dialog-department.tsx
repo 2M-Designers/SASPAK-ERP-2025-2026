@@ -29,19 +29,13 @@ import * as z from "zod";
 // Validation Schema
 const formSchema = z.object({
   departmentId: z.number().optional(),
-  companyId: z.number().min(1, "Company is required"),
+  companyId: z.number().optional(), // Taken from localStorage, default 1
   departmentName: z.string().min(1, "Department Name is required"),
-  departmentCode: z.string().min(1, "Department Code is required"),
+  departmentCode: z.string().optional(), // Auto-generated at backend, send 0
   description: z.string().optional(),
   isActive: z.boolean().default(true),
   version: z.number().optional(),
 });
-
-interface Company {
-  companyId: number;
-  companyName: string;
-  companyCode: string;
-}
 
 interface DepartmentDialogProps {
   type: "add" | "edit";
@@ -59,14 +53,12 @@ export default function DepartmentDialog({
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [loadingCompanies, setLoadingCompanies] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       departmentId: defaultState.departmentId || undefined,
-      companyId: defaultState.companyId || 0,
+      companyId: defaultState.companyId || 1, // Default to 1
       departmentName: defaultState.departmentName || "",
       departmentCode: defaultState.departmentCode || "",
       description: defaultState.description || "",
@@ -76,57 +68,45 @@ export default function DepartmentDialog({
     },
   });
 
-  // Fetch companies when dialog opens
+  // Reset form when dialog opens/closes or when type changes
   useEffect(() => {
     if (open) {
-      fetchCompanies();
-    }
-  }, [open]);
+      // Get company ID from localStorage or default to 1
+      const user = localStorage.getItem("user");
+      let companyId = 1; // Default to 1 as per requirement
 
-  const fetchCompanies = async () => {
-    setLoadingCompanies(true);
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Company/GetList`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          select: "CompanyId,CompanyName,CompanyCode",
-          where: "",
-          sortOn: "companyName",
-          page: "1",
-          pageSize: "100",
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCompanies(data);
-      } else {
-        throw new Error("Failed to fetch companies");
+      if (user) {
+        try {
+          const u = JSON.parse(user);
+          companyId = u?.companyId || 1;
+        } catch (error) {
+          console.error("Error parsing user JSON:", error);
+        }
       }
-    } catch (error) {
-      console.error("Error fetching companies:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load companies list",
+
+      form.reset({
+        departmentId: defaultState.departmentId || undefined,
+        companyId: companyId, // Set from localStorage with default 1
+        departmentName: defaultState.departmentName || "",
+        departmentCode: defaultState.departmentCode || "",
+        description: defaultState.description || "",
+        isActive:
+          defaultState.isActive !== undefined ? defaultState.isActive : true,
+        version: defaultState.version || 0,
       });
-    } finally {
-      setLoadingCompanies(false);
     }
-  };
+  }, [open, type, defaultState, form]);
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     const user = localStorage.getItem("user");
     let userID = 0;
+    let companyId = 1; // Default to 1 as per requirement
 
     if (user) {
       try {
         const u = JSON.parse(user);
         userID = u?.userID || 0;
+        companyId = u?.companyId || 1;
       } catch (error) {
         console.error("Error parsing user JSON:", error);
       }
@@ -134,11 +114,32 @@ export default function DepartmentDialog({
 
     const isUpdate = type === "edit";
 
-    // Create payload
-    const payload = {
-      ...values,
-      //...(isUpdate ? { UpdatedBy: userID } : { CreatedBy: userID }),
+    // Prepare payload according to requirements
+    const payload: any = {
+      departmentName: values.departmentName,
+      description: values.description || "",
+      isActive: values.isActive,
+      version: values.version,
     };
+
+    // For add operation
+    if (!isUpdate) {
+      payload.companyId = companyId; // From localStorage with default 1
+      payload.departmentCode = "0"; // Send 0 for auto-generation at backend
+    } else {
+      // For edit operation - include the ID and use received version
+      payload.departmentId = values.departmentId;
+      payload.companyId = values.companyId;
+      payload.departmentCode = values.departmentCode;
+      // Use the version as received from backend (no increment)
+    }
+
+    // Add user tracking if needed
+    // if (isUpdate) {
+    //   payload.updatedBy = userID;
+    // } else {
+    //   payload.createdBy = userID;
+    // }
 
     console.log("Department Payload:", payload);
     setIsLoading(true);
@@ -169,10 +170,17 @@ export default function DepartmentDialog({
 
       setOpen(false);
 
-      handleAddEdit({
+      // Prepare the response data to include in handleAddEdit
+      const responseItem = {
         ...values,
         ...jsonData,
-      });
+        // For add operations, include the generated departmentCode from backend
+        ...(isUpdate
+          ? {}
+          : { departmentCode: jsonData?.departmentCode || "AUTO" }),
+      };
+
+      handleAddEdit(responseItem);
 
       toast({
         title: `Department ${
@@ -210,7 +218,7 @@ export default function DepartmentDialog({
           <DialogDescription>
             {type === "edit"
               ? "Update department information."
-              : "Add a new department to the system."}
+              : "Add a new department to the system. Department Code will be auto-generated."}
           </DialogDescription>
         </DialogHeader>
 
@@ -219,69 +227,45 @@ export default function DepartmentDialog({
             onSubmit={form.handleSubmit(onSubmit)}
             className='flex flex-col gap-4'
           >
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* Company Dropdown */}
-              <FormField
-                control={form.control}
-                name='companyId'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Company *</FormLabel>
-                    <FormControl>
-                      <select
-                        className='w-full p-2 border rounded-md'
-                        value={field.value || 0}
-                        onChange={(e) => {
-                          const value =
-                            e.target.value === "0"
-                              ? 0
-                              : parseInt(e.target.value);
-                          field.onChange(value);
-                        }}
-                        disabled={loadingCompanies}
-                      >
-                        <option value={0}>Select Company</option>
-                        {companies.map((company) => (
-                          <option
-                            key={company.companyId}
-                            value={company.companyId}
-                          >
-                            {company.companyName} ({company.companyCode})
-                          </option>
-                        ))}
-                      </select>
-                    </FormControl>
-                    {loadingCompanies && (
-                      <p className='text-sm text-gray-500'>
-                        Loading companies...
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Department Code */}
-              <FormField
-                control={form.control}
-                name='departmentCode'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Department Code *</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder='Enter department code'
-                        {...field}
-                        className='uppercase'
-                        onChange={(e) =>
-                          field.onChange(e.target.value.toUpperCase())
+            {/* Display Company Info (read-only) */}
+            <div className='p-3 bg-gray-50 rounded-md'>
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                <div>
+                  <FormLabel className='text-sm font-medium text-gray-600'>
+                    Company
+                  </FormLabel>
+                  <div className='mt-1 text-sm text-gray-900'>
+                    {(() => {
+                      const user = localStorage.getItem("user");
+                      if (user) {
+                        try {
+                          const u = JSON.parse(user);
+                          return u?.companyName || "Company 1";
+                        } catch (error) {
+                          return "Company 1";
                         }
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      }
+                      return "Company 1";
+                    })()}
+                  </div>
+                </div>
+
+                {/* Display Department Code for edit, show auto-generated message for add */}
+                <div>
+                  <FormLabel className='text-sm font-medium text-gray-600'>
+                    Department Code
+                  </FormLabel>
+                  <div className='mt-1 text-sm text-gray-900'>
+                    {type === "edit" ? (
+                      form.watch("departmentCode") || "Not available"
+                    ) : (
+                      <span className='text-blue-600'>
+                        Auto-generated by system
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Department Name */}
@@ -331,7 +315,7 @@ export default function DepartmentDialog({
                         type='checkbox'
                         checked={field.value}
                         onChange={field.onChange}
-                        className='w-4 h-4'
+                        className='w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
                       />
                       <span className='text-sm font-medium'>
                         {field.value ? "Active" : "Inactive"}
@@ -342,6 +326,45 @@ export default function DepartmentDialog({
                 </FormItem>
               )}
             />
+
+            {/* Hidden fields */}
+            <div className='hidden'>
+              <FormField
+                control={form.control}
+                name='version'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input type='hidden' {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='companyId'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input type='hidden' {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              {type === "edit" && (
+                <FormField
+                  control={form.control}
+                  name='departmentId'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input type='hidden' {...field} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
+            </div>
 
             <div className='flex justify-end gap-3 pt-4'>
               <Button

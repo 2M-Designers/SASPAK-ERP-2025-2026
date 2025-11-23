@@ -104,14 +104,24 @@ export default function CurrencyDialog({
 
     const isUpdate = type === "edit";
 
-    // Create payload with proper PascalCase field names matching your API
-    const payload = {
-      ...values,
-      //createdBy: userID,
+    // Create payload with proper structure for add vs edit
+    const payload: any = {
+      currencyCode: values.currencyCode,
+      currencyName: values.currencyName,
+      symbol: values.symbol,
+      isDefault: values.isDefault,
+      isActive: values.isActive,
       version: values.version || 0,
-      // For update, you might need updatedBy: userID
-      //...(isUpdate ? { updatedBy: userID } : {}),
     };
+
+    // For add operation - don't include currencyId and add CreatedBy
+    if (!isUpdate) {
+      payload.createdBy = userID;
+    } else {
+      // For edit operation - include currencyId and add UpdatedBy
+      payload.currencyId = values.currencyId;
+      payload.updatedBy = userID;
+    }
 
     console.log("Currency Payload:", payload);
     setIsLoading(true);
@@ -151,10 +161,11 @@ export default function CurrencyDialog({
         } successfully.`,
       });
     } catch (error: any) {
+      console.error("API Error:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to process currency operation",
       });
     } finally {
       setIsLoading(false);
@@ -194,10 +205,6 @@ export default function CurrencyDialog({
             onSubmit={form.handleSubmit(onSubmit)}
             className='flex flex-col gap-4'
           >
-            {/* Hidden fields */}
-            <input type='hidden' {...form.register("currencyId")} />
-            <input type='hidden' {...form.register("version")} />
-
             <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
               {/* Currency Code */}
               <FormField
@@ -238,22 +245,20 @@ export default function CurrencyDialog({
               />
             </div>
 
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* Symbol */}
-              <FormField
-                control={form.control}
-                name='symbol'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Symbol *</FormLabel>
-                    <FormControl>
-                      <Input placeholder='Enter currency symbol' {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            {/* Symbol */}
+            <FormField
+              control={form.control}
+              name='symbol'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Symbol *</FormLabel>
+                  <FormControl>
+                    <Input placeholder='Enter currency symbol' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
               {/* Is Default */}
@@ -267,7 +272,7 @@ export default function CurrencyDialog({
                         type='checkbox'
                         checked={field.value}
                         onChange={field.onChange}
-                        className='w-4 h-4 mt-1'
+                        className='w-4 h-4 mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
                       />
                     </FormControl>
                     <div className='space-y-1 leading-none'>
@@ -292,7 +297,7 @@ export default function CurrencyDialog({
                         type='checkbox'
                         checked={field.value}
                         onChange={field.onChange}
-                        className='w-4 h-4 mt-1'
+                        className='w-4 h-4 mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
                       />
                     </FormControl>
                     <div className='space-y-1 leading-none'>
@@ -302,6 +307,32 @@ export default function CurrencyDialog({
                       </p>
                     </div>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Hidden fields */}
+            <div className='hidden'>
+              <FormField
+                control={form.control}
+                name='currencyId'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input type='hidden' {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='version'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input type='hidden' {...field} />
+                    </FormControl>
                   </FormItem>
                 )}
               />

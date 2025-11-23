@@ -28,27 +28,28 @@ import * as z from "zod";
 
 // Validation Schema
 const formSchema = z.object({
-  designationId: z.number().optional(),
-  companyId: z.number().optional(), // Taken from localStorage, default 1
-  designationName: z.string().min(1, "Designation Name is required"),
-  jobDescription: z.string().optional(),
+  costCenterId: z.number().optional(),
+  companyId: z.number().optional(),
+  costCenterCode: z.string().optional(), // Auto-generated at backend
+  costCenterName: z.string().min(1, "Cost Center Name is required"),
+  description: z.string().optional(),
   isActive: z.boolean().default(true),
   version: z.number().optional(),
 });
 
-interface DesignationDialogProps {
+interface CostCenterDialogProps {
   type: "add" | "edit";
   defaultState: any;
   handleAddEdit: (item: any) => void;
   children?: React.ReactNode;
 }
 
-export default function DesignationDialog({
+export default function CostCenterDialog({
   type,
   defaultState,
   handleAddEdit,
   children,
-}: DesignationDialogProps) {
+}: CostCenterDialogProps) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -56,10 +57,11 @@ export default function DesignationDialog({
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      designationId: defaultState.designationId || undefined,
-      companyId: defaultState.companyId || 1, // Default to 1
-      designationName: defaultState.designationName || "",
-      jobDescription: defaultState.jobDescription || "",
+      costCenterId: defaultState.costCenterId || undefined,
+      companyId: defaultState.companyId || 0,
+      costCenterCode: defaultState.costCenterCode || "",
+      costCenterName: defaultState.costCenterName || "",
+      description: defaultState.description || "",
       isActive:
         defaultState.isActive !== undefined ? defaultState.isActive : true,
       version: defaultState.version || 0,
@@ -69,24 +71,25 @@ export default function DesignationDialog({
   // Reset form when dialog opens/closes or when type changes
   useEffect(() => {
     if (open) {
-      // Get company ID from localStorage or default to 1
+      // Get company ID from localStorage or default to 0
       const user = localStorage.getItem("user");
-      let companyId = 1; // Default to 1 as per requirement
+      let companyId = 0;
 
       if (user) {
         try {
           const u = JSON.parse(user);
-          companyId = u?.companyId || 1;
+          companyId = u?.companyId || 0;
         } catch (error) {
           console.error("Error parsing user JSON:", error);
         }
       }
 
       form.reset({
-        designationId: defaultState.designationId || undefined,
-        companyId: companyId, // Set from localStorage with default 1
-        designationName: defaultState.designationName || "",
-        jobDescription: defaultState.jobDescription || "",
+        costCenterId: defaultState.costCenterId || undefined,
+        companyId: companyId, // Set from localStorage
+        costCenterCode: defaultState.costCenterCode || "",
+        costCenterName: defaultState.costCenterName || "",
+        description: defaultState.description || "",
         isActive:
           defaultState.isActive !== undefined ? defaultState.isActive : true,
         version: defaultState.version || 0,
@@ -97,13 +100,13 @@ export default function DesignationDialog({
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     const user = localStorage.getItem("user");
     let userID = 0;
-    let companyId = 1; // Default to 1 as per requirement
+    let companyId = 0;
 
     if (user) {
       try {
         const u = JSON.parse(user);
         userID = u?.userID || 0;
-        companyId = u?.companyId || 1;
+        companyId = u?.companyId || 0;
       } catch (error) {
         console.error("Error parsing user JSON:", error);
       }
@@ -113,20 +116,22 @@ export default function DesignationDialog({
 
     // Prepare payload according to requirements
     const payload: any = {
-      designationName: values.designationName,
-      jobDescription: values.jobDescription || "",
+      costCenterName: values.costCenterName,
+      description: values.description || "",
       isActive: values.isActive,
       version: values.version,
     };
 
     // For add operation
     if (!isUpdate) {
-      payload.companyId = companyId; // From localStorage with default 1
+      payload.companyId = companyId; // From localStorage
+      payload.costCenterCode = "0"; // Send 0 for auto-generation at backend
     } else {
-      // For edit operation - include the ID and use received version
-      payload.designationId = values.designationId;
+      // For edit operation - include the ID and increment version
+      payload.costCenterId = values.costCenterId;
       payload.companyId = values.companyId;
-      // Use the version as received from backend (no increment)
+      payload.costCenterCode = values.costCenterCode;
+      payload.version = values.version || 0; // Increment version for edit
     }
 
     // Add user tracking if needed
@@ -136,12 +141,12 @@ export default function DesignationDialog({
     //   payload.createdBy = userID;
     // }
 
-    console.log("Designation Payload:", payload);
+    console.log("Cost Center Payload:", payload);
     setIsLoading(true);
 
     try {
       const response = await fetch(
-        process.env.NEXT_PUBLIC_BASE_URL + "Designation",
+        process.env.NEXT_PUBLIC_BASE_URL + "CostCenter",
         {
           method: isUpdate ? "PUT" : "POST",
           headers: {
@@ -169,12 +174,16 @@ export default function DesignationDialog({
       const responseItem = {
         ...values,
         ...jsonData,
+        // For add operations, include the generated costCenterCode from backend
+        ...(isUpdate
+          ? {}
+          : { costCenterCode: jsonData?.costCenterCode || "AUTO" }),
       };
 
       handleAddEdit(responseItem);
 
       toast({
-        title: `Designation ${
+        title: `Cost Center ${
           type === "edit" ? "updated" : "added"
         } successfully.`,
       });
@@ -197,19 +206,19 @@ export default function DesignationDialog({
         ) : (
           <Button className='flex items-center gap-2'>
             <Plus size={16} />
-            Add Designation
+            Add Cost Center
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className='max-w-2xl max-h-[90vh] overflow-y-auto'>
         <DialogHeader>
           <DialogTitle>
-            {type === "edit" ? "Edit Designation" : "Add New Designation"}
+            {type === "edit" ? "Edit Cost Center" : "Add New Cost Center"}
           </DialogTitle>
           <DialogDescription>
             {type === "edit"
-              ? "Update designation information."
-              : "Add a new designation to the system."}
+              ? "Update cost center information."
+              : "Add a new cost center to the system. Cost Center Code will be auto-generated."}
           </DialogDescription>
         </DialogHeader>
 
@@ -220,54 +229,72 @@ export default function DesignationDialog({
           >
             {/* Display Company Info (read-only) */}
             <div className='p-3 bg-gray-50 rounded-md'>
-              <div>
-                <FormLabel className='text-sm font-medium text-gray-600'>
-                  Company
-                </FormLabel>
-                <div className='mt-1 text-sm text-gray-900'>
-                  {(() => {
-                    const user = localStorage.getItem("user");
-                    if (user) {
-                      try {
-                        const u = JSON.parse(user);
-                        return u?.companyName || "Company 1";
-                      } catch (error) {
-                        return "Company 1";
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                <div>
+                  <FormLabel className='text-sm font-medium text-gray-600'>
+                    Company
+                  </FormLabel>
+                  <div className='mt-1 text-sm text-gray-900'>
+                    {(() => {
+                      const user = localStorage.getItem("user");
+                      if (user) {
+                        try {
+                          const u = JSON.parse(user);
+                          return u?.companyName || "Not specified";
+                        } catch (error) {
+                          return "Not specified";
+                        }
                       }
-                    }
-                    return "Company 1";
-                  })()}
+                      return "Not specified";
+                    })()}
+                  </div>
+                </div>
+
+                {/* Display Cost Center Code for edit, show auto-generated message for add */}
+                <div>
+                  <FormLabel className='text-sm font-medium text-gray-600'>
+                    Cost Center Code
+                  </FormLabel>
+                  <div className='mt-1 text-sm text-gray-900'>
+                    {type === "edit" ? (
+                      form.watch("costCenterCode") || "Not available"
+                    ) : (
+                      <span className='text-blue-600'>
+                        Auto-generated by system
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Designation Name */}
+            {/* Cost Center Name */}
             <FormField
               control={form.control}
-              name='designationName'
+              name='costCenterName'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Designation Name *</FormLabel>
+                  <FormLabel>Cost Center Name *</FormLabel>
                   <FormControl>
-                    <Input placeholder='Enter designation name' {...field} />
+                    <Input placeholder='Enter cost center name' {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {/* Job Description */}
+            {/* Description */}
             <FormField
               control={form.control}
-              name='jobDescription'
+              name='description'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Job Description</FormLabel>
+                  <FormLabel>Description</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder='Enter job description...'
+                      placeholder='Enter cost center description...'
                       {...field}
-                      rows={4}
+                      rows={3}
                     />
                   </FormControl>
                   <FormMessage />
@@ -300,7 +327,7 @@ export default function DesignationDialog({
               )}
             />
 
-            {/* Hidden fields */}
+            {/* Hidden fields for version tracking */}
             <div className='hidden'>
               <FormField
                 control={form.control}
@@ -327,7 +354,7 @@ export default function DesignationDialog({
               {type === "edit" && (
                 <FormField
                   control={form.control}
-                  name='designationId'
+                  name='costCenterId'
                   render={({ field }) => (
                     <FormItem>
                       <FormControl>
@@ -350,7 +377,7 @@ export default function DesignationDialog({
               </Button>
               <Button type='submit' disabled={isLoading}>
                 {isLoading && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
-                {type === "edit" ? "Update Designation" : "Add Designation"}
+                {type === "edit" ? "Update Cost Center" : "Add Cost Center"}
               </Button>
             </div>
           </form>

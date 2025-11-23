@@ -28,9 +28,9 @@ import * as z from "zod";
 // Validation Schema
 const formSchema = z.object({
   branchId: z.number().optional(),
-  companyId: z.number().min(1, "Company is required"),
+  companyId: z.number().optional(), // Taken from localStorage, default 1
   branchName: z.string().min(1, "Branch Name is required"),
-  branchCode: z.string().min(1, "Branch Code is required"),
+  branchCode: z.string().optional(), // Auto-generated at backend, send 0
   addressLine1: z.string().min(1, "Address Line 1 is required"),
   addressLine2: z.string().optional(),
   cityId: z.number().min(1, "City is required"),
@@ -41,27 +41,6 @@ const formSchema = z.object({
   isActive: z.boolean().default(true),
   version: z.number().optional(),
 });
-
-// Commented out hardcoded city data
-/*
-const cities = [
-  { unLocationId: 30, locationName: "Karachi" },
-  { unLocationId: 31, locationName: "Lahore" },
-  { unLocationId: 32, locationName: "Islamabad" },
-  { unLocationId: 33, locationName: "New York" },
-  { unLocationId: 34, locationName: "Los Angeles" },
-  { unLocationId: 35, locationName: "Dubai" },
-  { unLocationId: 36, locationName: "Abu Dhabi" },
-  { unLocationId: 37, locationName: "Shanghai" },
-  { unLocationId: 38, locationName: "Hong Kong" },
-];
-*/
-
-interface Company {
-  companyId: number;
-  companyName: string;
-  companyCode: string;
-}
 
 interface City {
   unlocationId: number;
@@ -84,16 +63,14 @@ export default function BranchDialog({
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [companies, setCompanies] = useState<Company[]>([]);
   const [cities, setCities] = useState<City[]>([]);
-  const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [loadingCities, setLoadingCities] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       branchId: defaultState.branchId || undefined,
-      companyId: defaultState.companyId || 0,
+      companyId: defaultState.companyId || 1, // Default to 1
       branchName: defaultState.branchName || "",
       branchCode: defaultState.branchCode || "",
       addressLine1: defaultState.addressLine1 || "",
@@ -112,49 +89,45 @@ export default function BranchDialog({
     },
   });
 
-  // Fetch companies and cities when dialog opens
+  // Reset form when dialog opens/closes or when type changes
   useEffect(() => {
     if (open) {
-      fetchCompanies();
       fetchCities();
-    }
-  }, [open]);
 
-  const fetchCompanies = async () => {
-    setLoadingCompanies(true);
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Company/GetList`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          select: "CompanyId,CompanyName,CompanyCode",
-          where: "",
-          sortOn: "companyName",
-          page: "1",
-          pageSize: "100",
-        }),
-      });
+      // Get company ID from localStorage or default to 1
+      const user = localStorage.getItem("user");
+      let companyId = 1; // Default to 1 as per requirement
 
-      if (response.ok) {
-        const data = await response.json();
-        setCompanies(data);
-      } else {
-        throw new Error("Failed to fetch companies");
+      if (user) {
+        try {
+          const u = JSON.parse(user);
+          companyId = u?.companyId || 1;
+        } catch (error) {
+          console.error("Error parsing user JSON:", error);
+        }
       }
-    } catch (error) {
-      console.error("Error fetching companies:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load companies list",
+
+      form.reset({
+        branchId: defaultState.branchId || undefined,
+        companyId: companyId, // Set from localStorage with default 1
+        branchName: defaultState.branchName || "",
+        branchCode: defaultState.branchCode || "",
+        addressLine1: defaultState.addressLine1 || "",
+        addressLine2: defaultState.addressLine2 || "",
+        cityId: defaultState.cityId || 0,
+        postalCode: defaultState.postalCode || "",
+        phone: defaultState.phone || "",
+        email: defaultState.email || "",
+        isHeadOffice:
+          defaultState.isHeadOffice !== undefined
+            ? defaultState.isHeadOffice
+            : false,
+        isActive:
+          defaultState.isActive !== undefined ? defaultState.isActive : true,
+        version: defaultState.version || 0,
       });
-    } finally {
-      setLoadingCompanies(false);
     }
-  };
+  }, [open, type, defaultState, form]);
 
   const fetchCities = async () => {
     setLoadingCities(true);
@@ -195,11 +168,13 @@ export default function BranchDialog({
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     const user = localStorage.getItem("user");
     let userID = 0;
+    let companyId = 1; // Default to 1 as per requirement
 
     if (user) {
       try {
         const u = JSON.parse(user);
         userID = u?.userID || 0;
+        companyId = u?.companyId || 1;
       } catch (error) {
         console.error("Error parsing user JSON:", error);
       }
@@ -207,11 +182,38 @@ export default function BranchDialog({
 
     const isUpdate = type === "edit";
 
-    // Create payload
-    const payload = {
-      ...values,
-      //...(isUpdate ? { UpdatedBy: userID } : { CreatedBy: userID }),
+    // Prepare payload according to requirements
+    const payload: any = {
+      branchName: values.branchName,
+      addressLine1: values.addressLine1,
+      addressLine2: values.addressLine2 || "",
+      cityId: values.cityId,
+      postalCode: values.postalCode || "",
+      phone: values.phone,
+      email: values.email || "",
+      isHeadOffice: values.isHeadOffice,
+      isActive: values.isActive,
+      version: values.version,
     };
+
+    // For add operation
+    if (!isUpdate) {
+      payload.companyId = companyId; // From localStorage with default 1
+      payload.branchCode = "0"; // Send 0 for auto-generation at backend
+    } else {
+      // For edit operation - include the ID and use received version
+      payload.branchId = values.branchId;
+      payload.companyId = values.companyId;
+      payload.branchCode = values.branchCode;
+      // Use the version as received from backend (no increment)
+    }
+
+    // Add user tracking if needed
+    // if (isUpdate) {
+    //   payload.updatedBy = userID;
+    // } else {
+    //   payload.createdBy = userID;
+    // }
 
     console.log("Branch Payload:", payload);
     setIsLoading(true);
@@ -242,10 +244,15 @@ export default function BranchDialog({
 
       setOpen(false);
 
-      handleAddEdit({
+      // Prepare the response data to include in handleAddEdit
+      const responseItem = {
         ...values,
         ...jsonData,
-      });
+        // For add operations, include the generated branchCode from backend
+        ...(isUpdate ? {} : { branchCode: jsonData?.branchCode || "AUTO" }),
+      };
+
+      handleAddEdit(responseItem);
 
       toast({
         title: `Branch ${type === "edit" ? "updated" : "added"} successfully.`,
@@ -281,7 +288,7 @@ export default function BranchDialog({
           <DialogDescription>
             {type === "edit"
               ? "Update branch information."
-              : "Add a new branch to the system."}
+              : "Add a new branch to the system. Branch Code will be auto-generated."}
           </DialogDescription>
         </DialogHeader>
 
@@ -290,49 +297,64 @@ export default function BranchDialog({
             onSubmit={form.handleSubmit(onSubmit)}
             className='flex flex-col gap-4'
           >
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* Company Dropdown */}
-              <FormField
-                control={form.control}
-                name='companyId'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Company *</FormLabel>
-                    <FormControl>
-                      <select
-                        className='w-full p-2 border rounded-md'
-                        value={field.value || 0}
-                        onChange={(e) => {
-                          const value =
-                            e.target.value === "0"
-                              ? 0
-                              : parseInt(e.target.value);
-                          field.onChange(value);
-                        }}
-                        disabled={loadingCompanies}
-                      >
-                        <option value={0}>Select Company</option>
-                        {companies.map((company) => (
-                          <option
-                            key={company.companyId}
-                            value={company.companyId}
-                          >
-                            {company.companyName} ({company.companyCode})
-                          </option>
-                        ))}
-                      </select>
-                    </FormControl>
-                    {loadingCompanies && (
-                      <p className='text-sm text-gray-500'>
-                        Loading companies...
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Display Company Info (read-only) */}
+            <div className='p-3 bg-gray-50 rounded-md'>
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                <div>
+                  <FormLabel className='text-sm font-medium text-gray-600'>
+                    Company
+                  </FormLabel>
+                  <div className='mt-1 text-sm text-gray-900'>
+                    {(() => {
+                      const user = localStorage.getItem("user");
+                      if (user) {
+                        try {
+                          const u = JSON.parse(user);
+                          return u?.companyName || "Company 1";
+                        } catch (error) {
+                          return "Company 1";
+                        }
+                      }
+                      return "Company 1";
+                    })()}
+                  </div>
+                </div>
 
-              {/* City Dropdown - Using API data */}
+                {/* Display Branch Code for edit, show auto-generated message for add */}
+                <div>
+                  <FormLabel className='text-sm font-medium text-gray-600'>
+                    Branch Code
+                  </FormLabel>
+                  <div className='mt-1 text-sm text-gray-900'>
+                    {type === "edit" ? (
+                      form.watch("branchCode") || "Not available"
+                    ) : (
+                      <span className='text-blue-600'>
+                        Auto-generated by system
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Branch Name */}
+            <FormField
+              control={form.control}
+              name='branchName'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Branch Name *</FormLabel>
+                  <FormControl>
+                    <Input placeholder='Enter branch name' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+              {/* City Dropdown */}
               <FormField
                 control={form.control}
                 name='cityId'
@@ -370,33 +392,16 @@ export default function BranchDialog({
                   </FormItem>
                 )}
               />
-            </div>
 
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* Branch Name */}
+              {/* Phone */}
               <FormField
                 control={form.control}
-                name='branchName'
+                name='phone'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Branch Name *</FormLabel>
+                    <FormLabel>Phone *</FormLabel>
                     <FormControl>
-                      <Input placeholder='Enter branch name' {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Branch Code */}
-              <FormField
-                control={form.control}
-                name='branchCode'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Branch Code *</FormLabel>
-                    <FormControl>
-                      <Input placeholder='Enter branch code' {...field} />
+                      <Input placeholder='Enter phone number' {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -450,40 +455,25 @@ export default function BranchDialog({
                 )}
               />
 
-              {/* Phone */}
+              {/* Email */}
               <FormField
                 control={form.control}
-                name='phone'
+                name='email'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Phone *</FormLabel>
+                    <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder='Enter phone number' {...field} />
+                      <Input
+                        type='email'
+                        placeholder='Enter email address'
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
-
-            {/* Email */}
-            <FormField
-              control={form.control}
-              name='email'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input
-                      type='email'
-                      placeholder='Enter email address'
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
               {/* Is Head Office */}
@@ -499,7 +489,7 @@ export default function BranchDialog({
                           type='checkbox'
                           checked={field.value}
                           onChange={field.onChange}
-                          className='w-4 h-4'
+                          className='w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
                         />
                         <span className='text-sm font-medium'>
                           This is head office
@@ -524,7 +514,7 @@ export default function BranchDialog({
                           type='checkbox'
                           checked={field.value}
                           onChange={field.onChange}
-                          className='w-4 h-4'
+                          className='w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
                         />
                         <span className='text-sm font-medium'>
                           {field.value ? "Active" : "Inactive"}
@@ -535,6 +525,45 @@ export default function BranchDialog({
                   </FormItem>
                 )}
               />
+            </div>
+
+            {/* Hidden fields */}
+            <div className='hidden'>
+              <FormField
+                control={form.control}
+                name='version'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input type='hidden' {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='companyId'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input type='hidden' {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              {type === "edit" && (
+                <FormField
+                  control={form.control}
+                  name='branchId'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input type='hidden' {...field} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
 
             <div className='flex justify-end gap-3 pt-4'>

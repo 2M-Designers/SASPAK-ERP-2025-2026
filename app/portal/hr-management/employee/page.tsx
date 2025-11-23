@@ -16,7 +16,7 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "EmployeeId,CompanyId,BranchId,UserId,EmployeeCode,FirstName,LastName,FatherName,DateOfBirth,Gender,NationalIdNumber,JoiningDate,ConfirmationDate,ResignationDate,OfficialEmail,PersonalEmail,MobileNumber,DepartmentId,DesignationId,ReportsToEmployeeId,EmploymentStatus,IsActive",
+      "EmployeeId,CompanyId,BranchId,UserId,EmployeeCode,FirstName,LastName,FatherName,DateOfBirth,Gender,NationalIdNumber,JoiningDate,ConfirmationDate,ResignationDate,OfficialEmail,PersonalEmail,MobileNumber,DepartmentId,DesignationId,ReportsToEmployeeId,EmploymentStatus,IsActive,Version",
     where: "",
     sortOn: "FirstName",
     page: "1",

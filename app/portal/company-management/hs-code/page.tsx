@@ -16,15 +16,15 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "DepartmentId,CompanyId,DepartmentName,DepartmentCode,Description,IsActive,Version",
+      "HsCodeId,ParentHsCodeId,Code,Description,Chapter,Heading,CustomsDutyRate,SalesTaxRate,RegulatoryDutyRate,AdditionalDutyRate,UoM,IsActive,Remarks,EffectiveFrom,ValidTill,Version",
     where: "",
-    sortOn: "DepartmentName",
+    sortOn: "Code",
     page: "1",
     pageSize: "50", // Start with a reasonable page size
   };
 
   try {
-    const response = await fetch(`${baseUrl}Department/GetList`, {
+    const response = await fetch(`${baseUrl}HsCode/GetList`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -44,7 +44,7 @@ export default async function HomePage() {
       //</Suspense>
     );
   } catch (error) {
-    console.error("Failed to fetch departments:", error);
+    console.error("Failed to fetch branches:", error);
 
     // Return empty data to prevent client component from crashing
     return (

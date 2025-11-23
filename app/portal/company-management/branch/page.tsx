@@ -16,7 +16,7 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "BranchId,BranchCode,BranchName,Company.CompanyId,Company.CompanyName,city.UnLocationId,city.LocationName,AddressLine1,Phone,IsHeadOffice,IsActive",
+      "BranchId,BranchCode,BranchName,Company.CompanyId,Company.CompanyName,city.UnLocationId,city.LocationName,AddressLine1,AddressLine2,PostalCode,Email,CityId,Phone,IsHeadOffice,IsActive,Version",
     where: "",
     sortOn: "branchName",
     page: "1",

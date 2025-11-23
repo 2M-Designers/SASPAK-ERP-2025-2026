@@ -15,7 +15,8 @@ export default async function HomePage() {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
   const requestBody: GetListRequest = {
-    select: "DesignationId,CompanyId,DesignationName,JobDescription,IsActive",
+    select:
+      "DesignationId,CompanyId,DesignationName,JobDescription,IsActive,Version",
     where: "",
     sortOn: "DesignationName",
     page: "1",

@@ -18,7 +18,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -29,10 +28,10 @@ import * as z from "zod";
 // Validation Schema
 const formSchema = z.object({
   employeeId: z.number().optional(),
-  companyId: z.number().min(1, "Company is required"),
+  companyId: z.number().optional(), // Taken from localStorage, default 1
   branchId: z.number().min(1, "Branch is required"),
-  userId: z.number().optional(),
-  employeeCode: z.string().min(1, "Employee Code is required"),
+  userId: z.number().optional(), // Taken from localStorage
+  employeeCode: z.string().optional(), // Auto-generated at backend, send 0
   firstName: z.string().min(1, "First Name is required"),
   lastName: z.string().min(1, "Last Name is required"),
   fatherName: z.string().min(1, "Father Name is required"),
@@ -60,12 +59,6 @@ const formSchema = z.object({
   isActive: z.boolean().default(true),
   version: z.number().optional(),
 });
-
-interface Company {
-  companyId: number;
-  companyName: string;
-  companyCode: string;
-}
 
 interface Branch {
   branchId: number;
@@ -107,12 +100,10 @@ export default function EmployeeDialog({
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [companies, setCompanies] = useState<Company[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [designations, setDesignations] = useState<Designation[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
   const [loadingDesignations, setLoadingDesignations] = useState(false);
@@ -122,7 +113,7 @@ export default function EmployeeDialog({
     resolver: zodResolver(formSchema),
     defaultValues: {
       employeeId: defaultState.employeeId || undefined,
-      companyId: defaultState.companyId || 0,
+      companyId: defaultState.companyId || 1,
       branchId: defaultState.branchId || 0,
       userId: defaultState.userId || undefined,
       employeeCode: defaultState.employeeCode || "",
@@ -155,52 +146,57 @@ export default function EmployeeDialog({
     return date.toISOString().split("T")[0];
   };
 
-  // Fetch all required data when dialog opens
+  // Reset form when dialog opens/closes or when type changes
   useEffect(() => {
     if (open) {
-      fetchCompanies();
+      // Get company ID and user ID from localStorage
+      const user = localStorage.getItem("user");
+      let companyId = 1; // Default to 1 as per requirement
+      let userId = 0;
+
+      if (user) {
+        try {
+          const u = JSON.parse(user);
+          companyId = u?.companyId || 1;
+          userId = u?.userID || 0;
+        } catch (error) {
+          console.error("Error parsing user JSON:", error);
+        }
+      }
+
+      form.reset({
+        employeeId: defaultState.employeeId || undefined,
+        companyId: companyId, // Set from localStorage with default 1
+        branchId: defaultState.branchId || 0,
+        userId: userId, // Set from localStorage
+        employeeCode: defaultState.employeeCode || "",
+        firstName: defaultState.firstName || "",
+        lastName: defaultState.lastName || "",
+        fatherName: defaultState.fatherName || "",
+        dateOfBirth: defaultState.dateOfBirth || "",
+        gender: defaultState.gender || "",
+        nationalIdNumber: defaultState.nationalIdNumber || "",
+        joiningDate: defaultState.joiningDate || "",
+        confirmationDate: defaultState.confirmationDate || "",
+        resignationDate: defaultState.resignationDate || "",
+        officialEmail: defaultState.officialEmail || "",
+        personalEmail: defaultState.personalEmail || "",
+        mobileNumber: defaultState.mobileNumber || "",
+        departmentId: defaultState.departmentId || 0,
+        designationId: defaultState.designationId || 0,
+        reportsToEmployeeId: defaultState.reportsToEmployeeId || 0,
+        employmentStatus: defaultState.employmentStatus || "Active",
+        isActive:
+          defaultState.isActive !== undefined ? defaultState.isActive : true,
+        version: defaultState.version || 0,
+      });
+
       fetchBranches();
       fetchDepartments();
       fetchDesignations();
       fetchEmployees();
     }
-  }, [open]);
-
-  const fetchCompanies = async () => {
-    setLoadingCompanies(true);
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Company/GetList`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          select: "CompanyId,CompanyName,CompanyCode",
-          where: "",
-          sortOn: "companyName",
-          page: "1",
-          pageSize: "100",
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCompanies(data);
-      } else {
-        throw new Error("Failed to fetch companies");
-      }
-    } catch (error) {
-      console.error("Error fetching companies:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load companies list",
-      });
-    } finally {
-      setLoadingCompanies(false);
-    }
-  };
+  }, [open, type, defaultState, form]);
 
   const fetchBranches = async () => {
     setLoadingBranches(true);
@@ -349,11 +345,13 @@ export default function EmployeeDialog({
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     const user = localStorage.getItem("user");
     let userID = 0;
+    let companyId = 1; // Default to 1 as per requirement
 
     if (user) {
       try {
         const u = JSON.parse(user);
         userID = u?.userID || 0;
+        companyId = u?.companyId || 1;
       } catch (error) {
         console.error("Error parsing user JSON:", error);
       }
@@ -361,15 +359,50 @@ export default function EmployeeDialog({
 
     const isUpdate = type === "edit";
 
-    // Create payload - handle optional fields
-    const payload = {
-      ...values,
-      reportsToEmployeeId:
-        values.reportsToEmployeeId === 0 ? null : values.reportsToEmployeeId,
+    // Prepare payload according to requirements
+    const payload: any = {
+      firstName: values.firstName,
+      lastName: values.lastName,
+      fatherName: values.fatherName,
+      dateOfBirth: values.dateOfBirth,
+      branchId: values.branchId,
+      gender: values.gender,
+      nationalIdNumber: values.nationalIdNumber,
+      joiningDate: values.joiningDate,
       confirmationDate: values.confirmationDate || null,
       resignationDate: values.resignationDate || null,
-      //...(isUpdate ? { UpdatedBy: userID } : { CreatedBy: userID }),
+      officialEmail: values.officialEmail || "",
+      personalEmail: values.personalEmail || "",
+      mobileNumber: values.mobileNumber,
+      departmentId: values.departmentId,
+      designationId: values.designationId,
+      reportsToEmployeeId:
+        values.reportsToEmployeeId === 0 ? null : values.reportsToEmployeeId,
+      employmentStatus: values.employmentStatus,
+      isActive: values.isActive,
+      version: values.version,
     };
+
+    // For add operation
+    if (!isUpdate) {
+      payload.companyId = companyId; // From localStorage with default 1
+      payload.userId = userID; // From localStorage
+      payload.employeeCode = "0"; // Send 0 for auto-generation at backend
+    } else {
+      // For edit operation - include the ID and use received version
+      payload.employeeId = values.employeeId;
+      payload.companyId = values.companyId;
+      payload.userId = values.userId;
+      payload.employeeCode = values.employeeCode;
+      // Use the version as received from backend (no increment)
+    }
+
+    // Add user tracking if needed
+    // if (isUpdate) {
+    //   payload.updatedBy = userID;
+    // } else {
+    //   payload.createdBy = userID;
+    // }
 
     console.log("Employee Payload:", payload);
     setIsLoading(true);
@@ -400,10 +433,15 @@ export default function EmployeeDialog({
 
       setOpen(false);
 
-      handleAddEdit({
+      // Prepare the response data to include in handleAddEdit
+      const responseItem = {
         ...values,
         ...jsonData,
-      });
+        // For add operations, include the generated employeeCode from backend
+        ...(isUpdate ? {} : { employeeCode: jsonData?.employeeCode || "AUTO" }),
+      };
+
+      handleAddEdit(responseItem);
 
       toast({
         title: `Employee ${
@@ -441,7 +479,7 @@ export default function EmployeeDialog({
           <DialogDescription>
             {type === "edit"
               ? "Update employee information."
-              : "Add a new employee to the system."}
+              : "Add a new employee to the system. Employee Code will be auto-generated."}
           </DialogDescription>
         </DialogHeader>
 
@@ -450,52 +488,52 @@ export default function EmployeeDialog({
             onSubmit={form.handleSubmit(onSubmit)}
             className='flex flex-col gap-4'
           >
+            {/* Display Company Info (read-only) */}
+            <div className='p-3 bg-gray-50 rounded-md'>
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                <div>
+                  <FormLabel className='text-sm font-medium text-gray-600'>
+                    Company
+                  </FormLabel>
+                  <div className='mt-1 text-sm text-gray-900'>
+                    {(() => {
+                      const user = localStorage.getItem("user");
+                      if (user) {
+                        try {
+                          const u = JSON.parse(user);
+                          return u?.companyName || "Company 1";
+                        } catch (error) {
+                          return "Company 1";
+                        }
+                      }
+                      return "Company 1";
+                    })()}
+                  </div>
+                </div>
+
+                {/* Display Employee Code for edit, show auto-generated message for add */}
+                <div>
+                  <FormLabel className='text-sm font-medium text-gray-600'>
+                    Employee Code
+                  </FormLabel>
+                  <div className='mt-1 text-sm text-gray-900'>
+                    {type === "edit" ? (
+                      form.watch("employeeCode") || "Not available"
+                    ) : (
+                      <span className='text-blue-600'>
+                        Auto-generated by system
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Basic Information Section */}
             <div className='space-y-4'>
               <h3 className='text-lg font-semibold'>Basic Information</h3>
 
               <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-                {/* Company Dropdown */}
-                <FormField
-                  control={form.control}
-                  name='companyId'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Company *</FormLabel>
-                      <FormControl>
-                        <select
-                          className='w-full p-2 border rounded-md'
-                          value={field.value || 0}
-                          onChange={(e) => {
-                            const value =
-                              e.target.value === "0"
-                                ? 0
-                                : parseInt(e.target.value);
-                            field.onChange(value);
-                          }}
-                          disabled={loadingCompanies}
-                        >
-                          <option value={0}>Select Company</option>
-                          {companies.map((company) => (
-                            <option
-                              key={company.companyId}
-                              value={company.companyId}
-                            >
-                              {company.companyName} ({company.companyCode})
-                            </option>
-                          ))}
-                        </select>
-                      </FormControl>
-                      {loadingCompanies && (
-                        <p className='text-sm text-gray-500'>
-                          Loading companies...
-                        </p>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
                 {/* Branch Dropdown */}
                 <FormField
                   control={form.control}
@@ -536,31 +574,33 @@ export default function EmployeeDialog({
                     </FormItem>
                   )}
                 />
-              </div>
 
-              <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-                {/* Employee Code */}
+                {/* Gender */}
                 <FormField
                   control={form.control}
-                  name='employeeCode'
+                  name='gender'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Employee Code *</FormLabel>
+                      <FormLabel>Gender *</FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder='Enter employee code'
-                          {...field}
-                          className='uppercase'
-                          onChange={(e) =>
-                            field.onChange(e.target.value.toUpperCase())
-                          }
-                        />
+                        <select
+                          className='w-full p-2 border rounded-md'
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                        >
+                          <option value=''>Select Gender</option>
+                          <option value='Male'>Male</option>
+                          <option value='Female'>Female</option>
+                          <option value='Other'>Other</option>
+                        </select>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+              </div>
 
+              <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
                 {/* First Name */}
                 <FormField
                   control={form.control}
@@ -590,9 +630,7 @@ export default function EmployeeDialog({
                     </FormItem>
                   )}
                 />
-              </div>
 
-              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                 {/* Father Name */}
                 <FormField
                   control={form.control}
@@ -602,30 +640,6 @@ export default function EmployeeDialog({
                       <FormLabel>Father Name *</FormLabel>
                       <FormControl>
                         <Input placeholder='Enter father name' {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Gender */}
-                <FormField
-                  control={form.control}
-                  name='gender'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Gender *</FormLabel>
-                      <FormControl>
-                        <select
-                          className='w-full p-2 border rounded-md'
-                          value={field.value || ""}
-                          onChange={field.onChange}
-                        >
-                          <option value=''>Select Gender</option>
-                          <option value='Male'>Male</option>
-                          <option value='Female'>Female</option>
-                          <option value='Other'>Other</option>
-                        </select>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -968,7 +982,7 @@ export default function EmployeeDialog({
                         type='checkbox'
                         checked={field.value}
                         onChange={field.onChange}
-                        className='w-4 h-4'
+                        className='w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
                       />
                       <span className='text-sm font-medium'>
                         {field.value ? "Active" : "Inactive"}
@@ -979,6 +993,56 @@ export default function EmployeeDialog({
                 </FormItem>
               )}
             />
+
+            {/* Hidden fields */}
+            <div className='hidden'>
+              <FormField
+                control={form.control}
+                name='version'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input type='hidden' {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='companyId'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input type='hidden' {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='userId'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input type='hidden' {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              {type === "edit" && (
+                <FormField
+                  control={form.control}
+                  name='employeeId'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input type='hidden' {...field} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
+            </div>
 
             <div className='flex justify-end gap-3 pt-4'>
               <Button

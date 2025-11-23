@@ -16,15 +16,15 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "UNLocationId,ParentUNLocationId,UNCode,LocationName,IsCountry,IsSeaPort,IsDryPort,IsTerminal,IsCity,IsActive,Remarks",
+      "CostCenterId,CompanyId,CostCenterCode,CostCenterName,Description,IsActive,Version",
     where: "",
-    sortOn: "LocationName",
+    sortOn: "CostCenterName",
     page: "1",
     pageSize: "50", // Start with a reasonable page size
   };
 
   try {
-    const response = await fetch(`${baseUrl}UnLocation/GetList`, {
+    const response = await fetch(`${baseUrl}CostCenter/GetList`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -44,7 +44,7 @@ export default async function HomePage() {
       //</Suspense>
     );
   } catch (error) {
-    console.error("Failed to fetch branches:", error);
+    console.error("Failed to fetch cost centers:", error);
 
     // Return empty data to prevent client component from crashing
     return (

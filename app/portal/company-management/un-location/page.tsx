@@ -16,15 +16,15 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "HsCodeId,ParentHsCodeId,Code,Description,Chapter,Heading,CustomsDutyRate,SalesTaxRate,RegulatoryDutyRate,AdditionalDutyRate,UoM,IsActive,Remarks,EffectiveFrom,ValidTill",
+      "UNLocationId,ParentUNLocationId,UNCode,LocationName,IsCountry,IsSeaPort,IsDryPort,IsTerminal,IsCity,IsActive,Remarks,Version",
     where: "",
-    sortOn: "Code",
+    sortOn: "LocationName",
     page: "1",
     pageSize: "50", // Start with a reasonable page size
   };
 
   try {
-    const response = await fetch(`${baseUrl}HsCode/GetList`, {
+    const response = await fetch(`${baseUrl}UnLocation/GetList`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

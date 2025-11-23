@@ -16,9 +16,9 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "CurrencyId,CurrencyCode, CurrencyName, Symbol, IsDefault, IsActive",
+      "CurrencyId,CurrencyCode, CurrencyName, Symbol, IsDefault, IsActive,Version",
     where: "",
-    sortOn: "currencyName",
+    sortOn: "CurrencyName",
     page: "1",
     pageSize: "50", // Start with a reasonable page size
   };
