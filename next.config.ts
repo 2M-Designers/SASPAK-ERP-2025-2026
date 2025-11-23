@@ -10,12 +10,12 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "http",
-        hostname: "88.198.143.93",
+        hostname: "188.245.83.20",
         port: "8082",
         pathname: "/uploads/**",
       },
     ],
-    domains: ["88.198.143.93"], // Alternative method
+    domains: ["188.245.83.20"], // Alternative method
   },
   // Increase timeout to 180 seconds (3 minutes)
   staticPageGenerationTimeout: 180,
