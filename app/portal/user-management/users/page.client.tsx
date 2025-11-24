@@ -8,7 +8,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import readXlsxFile from "read-excel-file";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import UserDialog from "@/views/dialogs/hr-dialogs/dialog-user";
+import UserDialog from "@/views/dialogs/user-dialogs/dialog-user";
 import AppLoader from "@/components/app-loader";
 import { FiTrash2, FiDownload, FiEdit, FiLock, FiUnlock } from "react-icons/fi";
 import { useRouter } from "next/navigation";

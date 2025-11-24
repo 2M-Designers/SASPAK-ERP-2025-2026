@@ -8,50 +8,44 @@ import { ColumnDef } from "@tanstack/react-table";
 import readXlsxFile from "read-excel-file";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import CurrencyDialog from "@/views/dialogs/company-dialogs/dialog-currency";
+import CostCenterDialog from "@/views/dialogs/general-dialogs/dialog-costcenter";
 import AppLoader from "@/components/app-loader";
 import { FiTrash2, FiDownload, FiEdit } from "react-icons/fi";
 import { useRouter } from "next/navigation";
 
-type CurrencyPageProps = {
+type CostCenterPageProps = {
   initialData: any[];
 };
 
-// Static field configuration
+// Static field configuration for CostCenter
 const fieldConfig = [
   {
-    fieldName: "currencyId",
-    displayName: "Currency ID",
+    fieldName: "costCenterId",
+    displayName: "Cost Center ID",
     isdisplayed: false,
     isselected: true,
   },
   {
-    fieldName: "currencyCode",
-    displayName: "Currency Code",
+    fieldName: "companyId",
+    displayName: "Company ID",
+    isdisplayed: false,
+    isselected: true,
+  },
+  {
+    fieldName: "costCenterCode",
+    displayName: "Cost Center Code",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "currencyName",
-    displayName: "Currency Name",
+    fieldName: "costCenterName",
+    displayName: "Cost Center Name",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "symbol",
-    displayName: "Symbol",
-    isdisplayed: true,
-    isselected: true,
-  },
-  /*{
-    fieldName: "exchangeRate",
-    displayName: "Exchange Rate",
-    isdisplayed: true,
-    isselected: true,
-  },*/
-  {
-    fieldName: "isDefault",
-    displayName: "Default Currency",
+    fieldName: "description",
+    displayName: "Description",
     isdisplayed: true,
     isselected: true,
   },
@@ -68,7 +62,7 @@ const displayedFields = fieldConfig.filter(
   (field) => field.isdisplayed && field.isselected
 );
 
-export default function CurrencyPage({ initialData }: CurrencyPageProps) {
+export default function CostCenterPage({ initialData }: CostCenterPageProps) {
   const [data, setData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -91,13 +85,13 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
       header: "Actions",
       cell: ({ row }) => (
         <div className='flex gap-2'>
-          <CurrencyDialog
+          <CostCenterDialog
             type='edit'
             defaultState={row.original}
             handleAddEdit={(updatedItem: any) => {
               setData((prev: any) =>
                 prev.map((item: any) =>
-                  item.currencyId === updatedItem.currencyId
+                  item.costCenterId === updatedItem.costCenterId
                     ? updatedItem
                     : item
                 )
@@ -108,7 +102,7 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
             <button className='text-blue-600 hover:text-blue-800'>
               <FiEdit size={16} />
             </button>
-          </CurrencyDialog>
+          </CostCenterDialog>
           <button
             className='text-red-600 hover:text-red-800'
             onClick={() => handleDelete(row.original)}
@@ -125,69 +119,37 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
       cell: ({ row }) => parseInt(row.id) + 1,
       enableColumnFilter: false,
     },
-    // Currency ID
+    // Cost Center Code
     {
-      accessorKey: "currencyId",
-      header: "Currency ID",
-      cell: ({ row }) => <span>{row.getValue("currencyId") || "-"}</span>,
-      enableColumnFilter: false,
-    },
-    // Currency Code
-    {
-      accessorKey: "currencyCode",
-      header: "Currency Code",
+      accessorKey: "costCenterCode",
+      header: "Cost Center Code",
       cell: ({ row }) => (
         <span className='font-medium'>
-          {row.getValue("currencyCode") || "-"}
+          {row.getValue("costCenterCode") || "-"}
         </span>
       ),
       enableColumnFilter: false,
     },
-    // Currency Name
+    // Cost Center Name
     {
-      accessorKey: "currencyName",
-      header: "Currency Name",
+      accessorKey: "costCenterName",
+      header: "Cost Center Name",
       cell: ({ row }) => (
         <span className='font-medium'>
-          {row.getValue("currencyName") || "-"}
+          {row.getValue("costCenterName") || "-"}
         </span>
       ),
       enableColumnFilter: false,
     },
-    // Symbol
+    // Description
     {
-      accessorKey: "symbol",
-      header: "Symbol",
-      cell: ({ row }) => <span>{row.getValue("symbol") || "-"}</span>,
-      enableColumnFilter: false,
-    },
-    // Exchange Rate
-    /*{
-      accessorKey: "exchangeRate",
-      header: "Exchange Rate",
+      accessorKey: "description",
+      header: "Description",
       cell: ({ row }) => (
-        <span className='font-mono'>
-          {parseFloat(row.getValue("exchangeRate") || 0).toFixed(4)}
+        <span className='max-w-md truncate'>
+          {row.getValue("description") || "-"}
         </span>
       ),
-      enableColumnFilter: false,
-    },*/
-    // Is Default
-    {
-      accessorKey: "isDefault",
-      header: "Default Currency",
-      cell: ({ row }) => {
-        const isDefault = row.getValue("isDefault");
-        return isDefault ? (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800'>
-            Yes
-          </span>
-        ) : (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
-            No
-          </span>
-        );
-      },
       enableColumnFilter: false,
     },
     // Is Active
@@ -217,28 +179,28 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
     }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Currencies");
+    const worksheet = workbook.addWorksheet("CostCenters");
 
     // Add headers
     const headers = displayedFields.map((field) => field.displayName);
     worksheet.addRow(headers);
 
     // Add data rows
-    data.forEach((currency: any) => {
+    data.forEach((costCenter: any) => {
       const row = displayedFields.map(
-        (field) => currency[field.fieldName] || ""
+        (field) => costCenter[field.fieldName] || ""
       );
       worksheet.addRow(row);
     });
 
     workbook.xlsx.writeBuffer().then((buffer: any) => {
-      saveAs(new Blob([buffer]), "Currencies.xlsx");
+      saveAs(new Blob([buffer]), "Cost_Centers.xlsx");
     });
   };
 
   const downloadSampleExcel = () => {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("SampleCurrencies");
+    const worksheet = workbook.addWorksheet("SampleCostCenters");
 
     // Add headers
     const headers = displayedFields.map((field) => field.displayName);
@@ -247,17 +209,14 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
     // Add sample data
     const sampleRow = displayedFields.map((field) => {
       switch (field.fieldName) {
-        case "isDefault":
+        case "costCenterCode":
+          return "CC001";
+        case "costCenterName":
+          return "Marketing Department";
+        case "description":
+          return "Marketing and advertising expenses";
         case "isActive":
           return true;
-        case "exchangeRate":
-          return 1.0;
-        case "currencyCode":
-          return "USD";
-        case "currencyName":
-          return "US Dollar";
-        case "symbol":
-          return "$";
         default:
           return `Sample ${field.displayName}`;
       }
@@ -266,7 +225,7 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
     worksheet.addRow(sampleRow);
 
     workbook.xlsx.writeBuffer().then((buffer: any) => {
-      saveAs(new Blob([buffer]), "SampleFileCurrencies.xlsx");
+      saveAs(new Blob([buffer]), "SampleFile_Cost_Centers.xlsx");
     });
   };
 
@@ -290,17 +249,17 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
           displayedFields.forEach((field, index) => {
             if (index < row.length) {
               let value = row[index];
-              if (
-                field.fieldName === "isDefault" ||
-                field.fieldName === "isActive"
-              ) {
+
+              // Handle boolean fields
+              if (field.fieldName === "isActive") {
                 value = Boolean(value);
               }
+
               payload[field.fieldName] = value;
             }
           });
 
-          await fetch(`${baseUrl}SetupCurrency`, {
+          await fetch(`${baseUrl}CostCenter`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -309,21 +268,21 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
       );
 
       setIsLoading(false);
-      alert("Currencies imported successfully! Refreshing data...");
+      alert("Cost Centers imported successfully! Refreshing data...");
       router.refresh();
     } catch (error) {
       setIsLoading(false);
-      alert("Error importing currencies. Please check the file format.");
+      alert("Error importing Cost Centers. Please check the file format.");
       console.error("Error importing data:", error);
     }
   };
 
   const handleDelete = async (item: any) => {
-    if (confirm(`Are you sure you want to delete "${item.currencyName}"?`)) {
+    if (confirm(`Are you sure you want to delete "${item.costCenterName}"?`)) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
         const response = await fetch(
-          `${baseUrl}SetupCurrency/${item.currencyId}`,
+          `${baseUrl}CostCenter/${item.costCenterId}`,
           {
             method: "DELETE",
           }
@@ -331,15 +290,17 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
 
         if (response.ok) {
           setData((prev: any) =>
-            prev.filter((record: any) => record.currencyId !== item.currencyId)
+            prev.filter(
+              (record: any) => record.costCenterId !== item.costCenterId
+            )
           );
-          alert("Currency deleted successfully.");
+          alert("Cost Center deleted successfully.");
         } else {
-          throw new Error("Failed to delete currency");
+          throw new Error("Failed to delete Cost Center");
         }
       } catch (error) {
-        alert("Error deleting currency. Please try again.");
-        console.error("Error deleting currency:", error);
+        alert("Error deleting Cost Center. Please try again.");
+        console.error("Error deleting Cost Center:", error);
       }
     }
   };
@@ -352,9 +313,9 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
 
   return (
     <div className='p-6 bg-white shadow-md rounded-md'>
-      <h1 className='text-2xl font-bold mb-4'>Currency Setup</h1>
+      <h1 className='text-2xl font-bold mb-4'>Cost Centers</h1>
       <div className='flex justify-between items-center mb-4'>
-        <CurrencyDialog
+        <CostCenterDialog
           type='add'
           defaultState={{}}
           handleAddEdit={(newItem: any) => {
@@ -391,7 +352,7 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
           </div>
           <Input
             type='text'
-            placeholder='🔍 Search currencies...'
+            placeholder='🔍 Search cost centers...'
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             className='min-w-[250px]'
@@ -405,17 +366,17 @@ export default function CurrencyPage({ initialData }: CurrencyPageProps) {
           loading={isLoading}
           columns={columns}
           searchText={searchText}
-          searchBy='currencyName'
+          searchBy='costCenterName'
           isPage
           isMultiSearch
         />
       ) : (
         <div className='text-center py-8'>
-          <p className='text-gray-500 text-lg'>No currencies found</p>
+          <p className='text-gray-500 text-lg'>No cost centers found</p>
           <p className='text-gray-400 text-sm mt-2'>
             {initialData === null
               ? "Loading..."
-              : "Add your first currency using the button above"}
+              : "Add your first cost center using the button above"}
           </p>
         </div>
       )}

@@ -8,7 +8,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import readXlsxFile from "read-excel-file";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import HSCodeDialog from "@/views/dialogs/company-dialogs/dialog-hscode";
+import HSCodeDialog from "@/views/dialogs/general-dialogs/dialog-hscode";
 import AppLoader from "@/components/app-loader";
 import { FiTrash2, FiDownload, FiEdit } from "react-icons/fi";
 import { useRouter } from "next/navigation";

@@ -8,68 +8,44 @@ import { ColumnDef } from "@tanstack/react-table";
 import readXlsxFile from "read-excel-file";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import UNLocationDialog from "@/views/dialogs/company-dialogs/dialog-unlocation";
+import UNAirportDialog from "@/views/dialogs/general-dialogs/dialog-un-airports";
 import AppLoader from "@/components/app-loader";
 import { FiTrash2, FiDownload, FiEdit } from "react-icons/fi";
 import { useRouter } from "next/navigation";
 
-type UNLocationPageProps = {
+type UNAirportsPageProps = {
   initialData: any[];
 };
 
-// Static field configuration for UNLocation
+// Static field configuration for UNAirports
 const fieldConfig = [
   {
-    fieldName: "unlocationId",
-    displayName: "UNLocation ID",
+    fieldName: "unairportId",
+    displayName: "UN Airport ID",
     isdisplayed: false,
     isselected: true,
   },
   {
-    fieldName: "parentUnlocationId",
-    displayName: "Parent Location ID",
-    isdisplayed: false,
-    isselected: true,
-  },
-  {
-    fieldName: "uncode",
-    displayName: "UN Code",
+    fieldName: "airportCode",
+    displayName: "Airport Code",
     isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "airportName",
+    displayName: "Airport Name",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "unlocationId",
+    displayName: "UN Location ID",
+    isdisplayed: false,
     isselected: true,
   },
   {
     fieldName: "locationName",
-    displayName: "Location Name",
-    isdisplayed: true,
-    isselected: true,
-  },
-  {
-    fieldName: "isCountry",
-    displayName: "Is Country",
-    isdisplayed: true,
-    isselected: true,
-  },
-  {
-    fieldName: "isSeaPort",
-    displayName: "Is Sea Port",
-    isdisplayed: true,
-    isselected: true,
-  },
-  {
-    fieldName: "isDryPort",
-    displayName: "Is Dry Port",
-    isdisplayed: true,
-    isselected: true,
-  },
-  {
-    fieldName: "isTerminal",
-    displayName: "Is Terminal",
-    isdisplayed: true,
-    isselected: true,
-  },
-  {
-    fieldName: "isCity",
-    displayName: "Is City",
+    displayName: "UN Location",
     isdisplayed: true,
     isselected: true,
   },
@@ -92,10 +68,11 @@ const displayedFields = fieldConfig.filter(
   (field) => field.isdisplayed && field.isselected
 );
 
-export default function UNLocationPage({ initialData }: UNLocationPageProps) {
+export default function UNAirportsPage({ initialData }: UNAirportsPageProps) {
   const [data, setData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [unlocations, setUnlocations] = useState<any[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -106,7 +83,43 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
       console.warn("Initial data is not an array:", initialData);
       setData([]);
     }
+    fetchUnlocations();
   }, [initialData]);
+
+  const fetchUnlocations = async () => {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(`${baseUrl}UNLocation/GetList`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          select: "UnlocationId,LocationName,Uncode",
+          where: "IsActive == true",
+          sortOn: "locationName",
+          page: "1",
+          pageSize: "100",
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUnlocations(data);
+      }
+    } catch (error) {
+      console.error("Error fetching UN locations:", error);
+    }
+  };
+
+  const getLocationName = (unlocationId: number) => {
+    const location = unlocations.find(
+      (loc) => loc.unlocationId === unlocationId
+    );
+    return location
+      ? `${location.locationName} (${location.uncode})`
+      : "Unknown";
+  };
 
   // Generate columns based on the static field configuration
   const columns: ColumnDef<any>[] = [
@@ -115,13 +128,13 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
       header: "Actions",
       cell: ({ row }) => (
         <div className='flex gap-2'>
-          <UNLocationDialog
+          <UNAirportDialog
             type='edit'
             defaultState={row.original}
             handleAddEdit={(updatedItem: any) => {
               setData((prev: any) =>
                 prev.map((item: any) =>
-                  item.unlocationId === updatedItem.unlocationId
+                  item.unairportId === updatedItem.unairportId
                     ? updatedItem
                     : item
                 )
@@ -132,7 +145,7 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
             <button className='text-blue-600 hover:text-blue-800'>
               <FiEdit size={16} />
             </button>
-          </UNLocationDialog>
+          </UNAirportDialog>
           <button
             className='text-red-600 hover:text-red-800'
             onClick={() => handleDelete(row.original)}
@@ -149,114 +162,46 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
       cell: ({ row }) => parseInt(row.id) + 1,
       enableColumnFilter: false,
     },
-    // UN Code
-    {
-      accessorKey: "uncode",
-      header: "UN Code",
-      cell: ({ row }) => (
-        <span className='font-medium'>{row.getValue("uncode") || "-"}</span>
-      ),
-      enableColumnFilter: false,
-    },
-    // Location Name
-    {
-      accessorKey: "locationName",
-      header: "Location Name",
+    //Un Airport ID
+    /*{
+      accessorKey: "unairportId",
+      header: "UN Airport ID",
       cell: ({ row }) => (
         <span className='font-medium'>
-          {row.getValue("locationName") || "-"}
+          {row.getValue("unairportId") || "-"}
+        </span>
+      ),
+      enableColumnFilter: false,
+    },*/
+    // Airport Code
+    {
+      accessorKey: "airportCode",
+      header: "Airport Code",
+      cell: ({ row }) => (
+        <span className='font-medium'>
+          {row.getValue("airportCode") || "-"}
         </span>
       ),
       enableColumnFilter: false,
     },
-    // Is Country
+    // Airport Name
     {
-      accessorKey: "isCountry",
-      header: "Is Country",
-      cell: ({ row }) => {
-        const isCountry = row.getValue("isCountry");
-        return isCountry ? (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800'>
-            Yes
-          </span>
-        ) : (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
-            No
-          </span>
-        );
-      },
+      accessorKey: "airportName",
+      header: "Airport Name",
+      cell: ({ row }) => (
+        <span className='font-medium'>
+          {row.getValue("airportName") || "-"}
+        </span>
+      ),
       enableColumnFilter: false,
     },
-    // Is Sea Port
+    // UN Location
     {
-      accessorKey: "isSeaPort",
-      header: "Is Sea Port",
-      cell: ({ row }) => {
-        const isSeaPort = row.getValue("isSeaPort");
-        return isSeaPort ? (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800'>
-            Yes
-          </span>
-        ) : (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
-            No
-          </span>
-        );
-      },
-      enableColumnFilter: false,
-    },
-    // Is Dry Port
-    {
-      accessorKey: "isDryPort",
-      header: "Is Dry Port",
-      cell: ({ row }) => {
-        const isDryPort = row.getValue("isDryPort");
-        return isDryPort ? (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800'>
-            Yes
-          </span>
-        ) : (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
-            No
-          </span>
-        );
-      },
-      enableColumnFilter: false,
-    },
-    // Is Terminal
-    {
-      accessorKey: "isTerminal",
-      header: "Is Terminal",
-      cell: ({ row }) => {
-        const isTerminal = row.getValue("isTerminal");
-        return isTerminal ? (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800'>
-            Yes
-          </span>
-        ) : (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
-            No
-          </span>
-        );
-      },
-      enableColumnFilter: false,
-    },
-    // Is City
-    {
-      accessorKey: "isCity",
-      header: "Is City",
-      cell: ({ row }) => {
-        const isCity = row.getValue("isCity");
-        return isCity ? (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-cyan-100 text-cyan-800'>
-            Yes
-          </span>
-        ) : (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
-            No
-          </span>
-        );
-      },
+      accessorKey: "unlocationId",
+      header: "UN Location",
+      cell: ({ row }) => (
+        <span>{getLocationName(row.getValue("unlocationId"))}</span>
+      ),
       enableColumnFilter: false,
     },
     // Is Active
@@ -281,7 +226,14 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
     {
       accessorKey: "remarks",
       header: "Remarks",
-      cell: ({ row }) => <span>{row.getValue("remarks") || "-"}</span>,
+      cell: ({ row }) => (
+        <span
+          className='max-w-[200px] truncate'
+          title={row.getValue("remarks") || ""}
+        >
+          {row.getValue("remarks") || "-"}
+        </span>
+      ),
       enableColumnFilter: false,
     },
   ];
@@ -293,28 +245,31 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
     }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("UNLocations");
+    const worksheet = workbook.addWorksheet("UNAirports");
 
     // Add headers
     const headers = displayedFields.map((field) => field.displayName);
     worksheet.addRow(headers);
 
     // Add data rows
-    data.forEach((location: any) => {
-      const row = displayedFields.map(
-        (field) => location[field.fieldName] || ""
-      );
+    data.forEach((airport: any) => {
+      const row = displayedFields.map((field) => {
+        if (field.fieldName === "locationName") {
+          return getLocationName(airport.unlocationId);
+        }
+        return airport[field.fieldName] || "";
+      });
       worksheet.addRow(row);
     });
 
     workbook.xlsx.writeBuffer().then((buffer: any) => {
-      saveAs(new Blob([buffer]), "UNLocations.xlsx");
+      saveAs(new Blob([buffer]), "UNAirports.xlsx");
     });
   };
 
   const downloadSampleExcel = () => {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("SampleUNLocations");
+    const worksheet = workbook.addWorksheet("SampleUNAirports");
 
     // Add headers
     const headers = displayedFields.map((field) => field.displayName);
@@ -323,19 +278,18 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
     // Add sample data
     const sampleRow = displayedFields.map((field) => {
       switch (field.fieldName) {
-        case "isCountry":
-        case "isSeaPort":
-        case "isDryPort":
-        case "isTerminal":
-        case "isCity":
         case "isActive":
           return true;
-        case "uncode":
-          return "USNYC";
+        case "airportCode":
+          return "JFK";
+        case "airportName":
+          return "John F. Kennedy International Airport";
+        case "unlocationId":
+          return 1; // Assuming New York has ID 1
         case "locationName":
-          return "New York";
+          return "New York (USNYC)";
         case "remarks":
-          return "Sample remarks";
+          return "Sample airport remarks";
         default:
           return `Sample ${field.displayName}`;
       }
@@ -344,7 +298,7 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
     worksheet.addRow(sampleRow);
 
     workbook.xlsx.writeBuffer().then((buffer: any) => {
-      saveAs(new Blob([buffer]), "SampleFileUNLocations.xlsx");
+      saveAs(new Blob([buffer]), "SampleFileUNAirports.xlsx");
     });
   };
 
@@ -368,21 +322,16 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
           displayedFields.forEach((field, index) => {
             if (index < row.length) {
               let value = row[index];
-              if (
-                field.fieldName === "isCountry" ||
-                field.fieldName === "isSeaPort" ||
-                field.fieldName === "isDryPort" ||
-                field.fieldName === "isTerminal" ||
-                field.fieldName === "isCity" ||
-                field.fieldName === "isActive"
-              ) {
+              if (field.fieldName === "isActive") {
                 value = Boolean(value);
+              } else if (field.fieldName === "unlocationId") {
+                value = parseInt(value) || 0;
               }
               payload[field.fieldName] = value;
             }
           });
 
-          await fetch(`${baseUrl}UNLocation`, {
+          await fetch(`${baseUrl}UNAIRPort`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -391,21 +340,21 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
       );
 
       setIsLoading(false);
-      alert("UN Locations imported successfully! Refreshing data...");
+      alert("UN Airports imported successfully! Refreshing data...");
       router.refresh();
     } catch (error) {
       setIsLoading(false);
-      alert("Error importing UN Locations. Please check the file format.");
+      alert("Error importing UN Airports. Please check the file format.");
       console.error("Error importing data:", error);
     }
   };
 
   const handleDelete = async (item: any) => {
-    if (confirm(`Are you sure you want to delete "${item.locationName}"?`)) {
+    if (confirm(`Are you sure you want to delete "${item.airportName}"?`)) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
         const response = await fetch(
-          `${baseUrl}UNLocation/${item.unlocationId}`,
+          `${baseUrl}UNAIRPort/${item.unairportId}`,
           {
             method: "DELETE",
           }
@@ -414,16 +363,16 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
         if (response.ok) {
           setData((prev: any) =>
             prev.filter(
-              (record: any) => record.unlocationId !== item.unlocationId
+              (record: any) => record.unairportId !== item.unairportId
             )
           );
-          alert("UN Location deleted successfully.");
+          alert("UN Airport deleted successfully.");
         } else {
-          throw new Error("Failed to delete UN Location");
+          throw new Error("Failed to delete UN Airport");
         }
       } catch (error) {
-        alert("Error deleting UN Location. Please try again.");
-        console.error("Error deleting UN Location:", error);
+        alert("Error deleting UN Airport. Please try again.");
+        console.error("Error deleting UN Airport:", error);
       }
     }
   };
@@ -436,9 +385,9 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
 
   return (
     <div className='p-6 bg-white shadow-md rounded-md'>
-      <h1 className='text-2xl font-bold mb-4'>UN Locations</h1>
+      <h1 className='text-2xl font-bold mb-4'>UN Airports</h1>
       <div className='flex justify-between items-center mb-4'>
-        <UNLocationDialog
+        <UNAirportDialog
           type='add'
           defaultState={{}}
           handleAddEdit={(newItem: any) => {
@@ -475,7 +424,7 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
           </div>
           <Input
             type='text'
-            placeholder='🔍 Search locations...'
+            placeholder='🔍 Search airports...'
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             className='min-w-[250px]'
@@ -489,17 +438,17 @@ export default function UNLocationPage({ initialData }: UNLocationPageProps) {
           loading={isLoading}
           columns={columns}
           searchText={searchText}
-          searchBy='locationName'
+          searchBy='airportName'
           isPage
           isMultiSearch
         />
       ) : (
         <div className='text-center py-8'>
-          <p className='text-gray-500 text-lg'>No UN Locations found</p>
+          <p className='text-gray-500 text-lg'>No UN Airports found</p>
           <p className='text-gray-400 text-sm mt-2'>
             {initialData === null
               ? "Loading..."
-              : "Add your first UN Location using the button above"}
+              : "Add your first UN Airport using the button above"}
           </p>
         </div>
       )}

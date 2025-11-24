@@ -8,50 +8,80 @@ import { ColumnDef } from "@tanstack/react-table";
 import readXlsxFile from "read-excel-file";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import CostCenterDialog from "@/views/dialogs/company-dialogs/dialog-costcenter";
+import UNLocationDialog from "@/views/dialogs/general-dialogs/dialog-unlocation";
 import AppLoader from "@/components/app-loader";
 import { FiTrash2, FiDownload, FiEdit } from "react-icons/fi";
 import { useRouter } from "next/navigation";
 
-type CostCenterPageProps = {
+type UNLocationPageProps = {
   initialData: any[];
 };
 
-// Static field configuration for CostCenter
+// Static field configuration for UNLocation
 const fieldConfig = [
   {
-    fieldName: "costCenterId",
-    displayName: "Cost Center ID",
+    fieldName: "unlocationId",
+    displayName: "UNLocation ID",
     isdisplayed: false,
     isselected: true,
   },
   {
-    fieldName: "companyId",
-    displayName: "Company ID",
+    fieldName: "parentUnlocationId",
+    displayName: "Parent Location ID",
     isdisplayed: false,
     isselected: true,
   },
   {
-    fieldName: "costCenterCode",
-    displayName: "Cost Center Code",
+    fieldName: "uncode",
+    displayName: "UN Code",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "costCenterName",
-    displayName: "Cost Center Name",
+    fieldName: "locationName",
+    displayName: "Location Name",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "description",
-    displayName: "Description",
+    fieldName: "isCountry",
+    displayName: "Is Country",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "isSeaPort",
+    displayName: "Is Sea Port",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "isDryPort",
+    displayName: "Is Dry Port",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "isTerminal",
+    displayName: "Is Terminal",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "isCity",
+    displayName: "Is City",
     isdisplayed: true,
     isselected: true,
   },
   {
     fieldName: "isActive",
     displayName: "Status",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "remarks",
+    displayName: "Remarks",
     isdisplayed: true,
     isselected: true,
   },
@@ -62,7 +92,7 @@ const displayedFields = fieldConfig.filter(
   (field) => field.isdisplayed && field.isselected
 );
 
-export default function CostCenterPage({ initialData }: CostCenterPageProps) {
+export default function UNLocationPage({ initialData }: UNLocationPageProps) {
   const [data, setData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -85,13 +115,13 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
       header: "Actions",
       cell: ({ row }) => (
         <div className='flex gap-2'>
-          <CostCenterDialog
+          <UNLocationDialog
             type='edit'
             defaultState={row.original}
             handleAddEdit={(updatedItem: any) => {
               setData((prev: any) =>
                 prev.map((item: any) =>
-                  item.costCenterId === updatedItem.costCenterId
+                  item.unlocationId === updatedItem.unlocationId
                     ? updatedItem
                     : item
                 )
@@ -102,7 +132,7 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
             <button className='text-blue-600 hover:text-blue-800'>
               <FiEdit size={16} />
             </button>
-          </CostCenterDialog>
+          </UNLocationDialog>
           <button
             className='text-red-600 hover:text-red-800'
             onClick={() => handleDelete(row.original)}
@@ -119,37 +149,114 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
       cell: ({ row }) => parseInt(row.id) + 1,
       enableColumnFilter: false,
     },
-    // Cost Center Code
+    // UN Code
     {
-      accessorKey: "costCenterCode",
-      header: "Cost Center Code",
+      accessorKey: "uncode",
+      header: "UN Code",
+      cell: ({ row }) => (
+        <span className='font-medium'>{row.getValue("uncode") || "-"}</span>
+      ),
+      enableColumnFilter: false,
+    },
+    // Location Name
+    {
+      accessorKey: "locationName",
+      header: "Location Name",
       cell: ({ row }) => (
         <span className='font-medium'>
-          {row.getValue("costCenterCode") || "-"}
+          {row.getValue("locationName") || "-"}
         </span>
       ),
       enableColumnFilter: false,
     },
-    // Cost Center Name
+    // Is Country
     {
-      accessorKey: "costCenterName",
-      header: "Cost Center Name",
-      cell: ({ row }) => (
-        <span className='font-medium'>
-          {row.getValue("costCenterName") || "-"}
-        </span>
-      ),
+      accessorKey: "isCountry",
+      header: "Is Country",
+      cell: ({ row }) => {
+        const isCountry = row.getValue("isCountry");
+        return isCountry ? (
+          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800'>
+            Yes
+          </span>
+        ) : (
+          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
+            No
+          </span>
+        );
+      },
       enableColumnFilter: false,
     },
-    // Description
+    // Is Sea Port
     {
-      accessorKey: "description",
-      header: "Description",
-      cell: ({ row }) => (
-        <span className='max-w-md truncate'>
-          {row.getValue("description") || "-"}
-        </span>
-      ),
+      accessorKey: "isSeaPort",
+      header: "Is Sea Port",
+      cell: ({ row }) => {
+        const isSeaPort = row.getValue("isSeaPort");
+        return isSeaPort ? (
+          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800'>
+            Yes
+          </span>
+        ) : (
+          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
+            No
+          </span>
+        );
+      },
+      enableColumnFilter: false,
+    },
+    // Is Dry Port
+    {
+      accessorKey: "isDryPort",
+      header: "Is Dry Port",
+      cell: ({ row }) => {
+        const isDryPort = row.getValue("isDryPort");
+        return isDryPort ? (
+          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800'>
+            Yes
+          </span>
+        ) : (
+          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
+            No
+          </span>
+        );
+      },
+      enableColumnFilter: false,
+    },
+    // Is Terminal
+    {
+      accessorKey: "isTerminal",
+      header: "Is Terminal",
+      cell: ({ row }) => {
+        const isTerminal = row.getValue("isTerminal");
+        return isTerminal ? (
+          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800'>
+            Yes
+          </span>
+        ) : (
+          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
+            No
+          </span>
+        );
+      },
+      enableColumnFilter: false,
+    },
+    // Is City
+    {
+      accessorKey: "isCity",
+      header: "Is City",
+      cell: ({ row }) => {
+        const isCity = row.getValue("isCity");
+        return isCity ? (
+          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-cyan-100 text-cyan-800'>
+            Yes
+          </span>
+        ) : (
+          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
+            No
+          </span>
+        );
+      },
       enableColumnFilter: false,
     },
     // Is Active
@@ -170,6 +277,13 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
       },
       enableColumnFilter: false,
     },
+    // Remarks
+    {
+      accessorKey: "remarks",
+      header: "Remarks",
+      cell: ({ row }) => <span>{row.getValue("remarks") || "-"}</span>,
+      enableColumnFilter: false,
+    },
   ];
 
   const downloadExcelWithData = () => {
@@ -179,28 +293,28 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
     }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("CostCenters");
+    const worksheet = workbook.addWorksheet("UNLocations");
 
     // Add headers
     const headers = displayedFields.map((field) => field.displayName);
     worksheet.addRow(headers);
 
     // Add data rows
-    data.forEach((costCenter: any) => {
+    data.forEach((location: any) => {
       const row = displayedFields.map(
-        (field) => costCenter[field.fieldName] || ""
+        (field) => location[field.fieldName] || ""
       );
       worksheet.addRow(row);
     });
 
     workbook.xlsx.writeBuffer().then((buffer: any) => {
-      saveAs(new Blob([buffer]), "Cost_Centers.xlsx");
+      saveAs(new Blob([buffer]), "UNLocations.xlsx");
     });
   };
 
   const downloadSampleExcel = () => {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("SampleCostCenters");
+    const worksheet = workbook.addWorksheet("SampleUNLocations");
 
     // Add headers
     const headers = displayedFields.map((field) => field.displayName);
@@ -209,14 +323,19 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
     // Add sample data
     const sampleRow = displayedFields.map((field) => {
       switch (field.fieldName) {
-        case "costCenterCode":
-          return "CC001";
-        case "costCenterName":
-          return "Marketing Department";
-        case "description":
-          return "Marketing and advertising expenses";
+        case "isCountry":
+        case "isSeaPort":
+        case "isDryPort":
+        case "isTerminal":
+        case "isCity":
         case "isActive":
           return true;
+        case "uncode":
+          return "USNYC";
+        case "locationName":
+          return "New York";
+        case "remarks":
+          return "Sample remarks";
         default:
           return `Sample ${field.displayName}`;
       }
@@ -225,7 +344,7 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
     worksheet.addRow(sampleRow);
 
     workbook.xlsx.writeBuffer().then((buffer: any) => {
-      saveAs(new Blob([buffer]), "SampleFile_Cost_Centers.xlsx");
+      saveAs(new Blob([buffer]), "SampleFileUNLocations.xlsx");
     });
   };
 
@@ -249,17 +368,21 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
           displayedFields.forEach((field, index) => {
             if (index < row.length) {
               let value = row[index];
-
-              // Handle boolean fields
-              if (field.fieldName === "isActive") {
+              if (
+                field.fieldName === "isCountry" ||
+                field.fieldName === "isSeaPort" ||
+                field.fieldName === "isDryPort" ||
+                field.fieldName === "isTerminal" ||
+                field.fieldName === "isCity" ||
+                field.fieldName === "isActive"
+              ) {
                 value = Boolean(value);
               }
-
               payload[field.fieldName] = value;
             }
           });
 
-          await fetch(`${baseUrl}CostCenter`, {
+          await fetch(`${baseUrl}UNLocation`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -268,21 +391,21 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
       );
 
       setIsLoading(false);
-      alert("Cost Centers imported successfully! Refreshing data...");
+      alert("UN Locations imported successfully! Refreshing data...");
       router.refresh();
     } catch (error) {
       setIsLoading(false);
-      alert("Error importing Cost Centers. Please check the file format.");
+      alert("Error importing UN Locations. Please check the file format.");
       console.error("Error importing data:", error);
     }
   };
 
   const handleDelete = async (item: any) => {
-    if (confirm(`Are you sure you want to delete "${item.costCenterName}"?`)) {
+    if (confirm(`Are you sure you want to delete "${item.locationName}"?`)) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
         const response = await fetch(
-          `${baseUrl}CostCenter/${item.costCenterId}`,
+          `${baseUrl}UNLocation/${item.unlocationId}`,
           {
             method: "DELETE",
           }
@@ -291,16 +414,16 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
         if (response.ok) {
           setData((prev: any) =>
             prev.filter(
-              (record: any) => record.costCenterId !== item.costCenterId
+              (record: any) => record.unlocationId !== item.unlocationId
             )
           );
-          alert("Cost Center deleted successfully.");
+          alert("UN Location deleted successfully.");
         } else {
-          throw new Error("Failed to delete Cost Center");
+          throw new Error("Failed to delete UN Location");
         }
       } catch (error) {
-        alert("Error deleting Cost Center. Please try again.");
-        console.error("Error deleting Cost Center:", error);
+        alert("Error deleting UN Location. Please try again.");
+        console.error("Error deleting UN Location:", error);
       }
     }
   };
@@ -313,9 +436,9 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
 
   return (
     <div className='p-6 bg-white shadow-md rounded-md'>
-      <h1 className='text-2xl font-bold mb-4'>Cost Centers</h1>
+      <h1 className='text-2xl font-bold mb-4'>UN Locations</h1>
       <div className='flex justify-between items-center mb-4'>
-        <CostCenterDialog
+        <UNLocationDialog
           type='add'
           defaultState={{}}
           handleAddEdit={(newItem: any) => {
@@ -352,7 +475,7 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
           </div>
           <Input
             type='text'
-            placeholder='🔍 Search cost centers...'
+            placeholder='🔍 Search locations...'
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             className='min-w-[250px]'
@@ -366,17 +489,17 @@ export default function CostCenterPage({ initialData }: CostCenterPageProps) {
           loading={isLoading}
           columns={columns}
           searchText={searchText}
-          searchBy='costCenterName'
+          searchBy='locationName'
           isPage
           isMultiSearch
         />
       ) : (
         <div className='text-center py-8'>
-          <p className='text-gray-500 text-lg'>No cost centers found</p>
+          <p className='text-gray-500 text-lg'>No UN Locations found</p>
           <p className='text-gray-400 text-sm mt-2'>
             {initialData === null
               ? "Loading..."
-              : "Add your first cost center using the button above"}
+              : "Add your first UN Location using the button above"}
           </p>
         </div>
       )}

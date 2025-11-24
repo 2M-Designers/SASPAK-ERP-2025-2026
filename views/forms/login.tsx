@@ -43,7 +43,7 @@ export default function SaspakLoginPage() {
 
       // Mock user data - ADDED companyId HERE
       const mockUser = {
-        userID: 1,
+        userID: 6,
         username: formData.username,
         displayname: formData.username,
         roleID: 1,
@@ -312,35 +312,35 @@ export default function SaspakLoginPage() {
               menuID: 84,
               name: "Cost Centers",
               title: "Cost Centers",
-              menuLink: "/portal/company-management/cost-centers",
+              menuLink: "/portal/general-setups/cost-centers",
               parentID: 8,
             },
             {
               menuID: 85,
               name: "Fiscal Year",
               title: "Fiscal Year",
-              menuLink: "/portal/company-management/fiscal-year",
+              menuLink: "/portal/general-setups/fiscal-year",
               parentID: 8,
             },
             {
               menuID: 86,
               name: "UN Locations",
               title: "UN Locations",
-              menuLink: "/portal/company-management/un-location",
+              menuLink: "/portal/general-setups/un-location",
               parentID: 8,
             },
             {
               menuID: 87,
               name: "Currency",
               title: "Currency",
-              menuLink: "/portal/company-management/currency",
+              menuLink: "/portal/general-setups/currency",
               parentID: 8,
             },
             {
               menuID: 88,
               name: "HS Code",
               title: "HS Code",
-              menuLink: "/portal/company-management/hs-code",
+              menuLink: "/portal/general-setups/hs-code",
               parentID: 8,
             },
             {
@@ -361,7 +361,7 @@ export default function SaspakLoginPage() {
               menuID: 91,
               name: "User Management",
               title: "User Management",
-              menuLink: "/portal/hr-management/users",
+              menuLink: "/portal/user-management/users",
               parentID: 8,
             },
           ],
@@ -499,7 +499,7 @@ export default function SaspakLoginPage() {
 
       // Mock user data
       const mockUser = {
-        userID: 1,
+        userID: 6,
         username: formData.username,
         displayname: formData.username,
         roleID: 1,
