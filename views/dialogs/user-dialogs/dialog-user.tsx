@@ -416,12 +416,12 @@ export default function UserDialog({
                     if (user) {
                       try {
                         const u = JSON.parse(user);
-                        return u?.companyName || "Company 1";
+                        return u?.companyName || "SASPAK CARGO";
                       } catch (error) {
-                        return "Company 1";
+                        return "SASPAK CARGO";
                       }
                     }
-                    return "Company 1";
+                    return "SASPAK CARGO";
                   })()}
                 </div>
               </div>

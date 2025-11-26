@@ -158,7 +158,7 @@ export default function EmployeeDialog({
         try {
           const u = JSON.parse(user);
           companyId = u?.companyId || 1;
-          userId = u?.userID || 0;
+          userId = u?.userId || 0;
         } catch (error) {
           console.error("Error parsing user JSON:", error);
         }
@@ -318,7 +318,7 @@ export default function EmployeeDialog({
         body: JSON.stringify({
           select: "EmployeeId,FirstName,LastName,EmployeeCode",
           where: "IsActive == true",
-          sortOn: "firstName",
+          sortOn: "FirstName",
           page: "1",
           pageSize: "100",
         }),
@@ -344,13 +344,13 @@ export default function EmployeeDialog({
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     const user = localStorage.getItem("user");
-    let userID = 0;
+    let userId = 0;
     let companyId = 1; // Default to 1 as per requirement
 
     if (user) {
       try {
         const u = JSON.parse(user);
-        userID = u?.userID || 0;
+        userId = u?.userId || 0;
         companyId = u?.companyId || 1;
       } catch (error) {
         console.error("Error parsing user JSON:", error);
@@ -386,7 +386,7 @@ export default function EmployeeDialog({
     // For add operation
     if (!isUpdate) {
       payload.companyId = companyId; // From localStorage with default 1
-      payload.userId = userID; // From localStorage
+      payload.userId = userId; // From localStorage
       payload.employeeCode = "0"; // Send 0 for auto-generation at backend
     } else {
       // For edit operation - include the ID and use received version
@@ -399,9 +399,9 @@ export default function EmployeeDialog({
 
     // Add user tracking if needed
     // if (isUpdate) {
-    //   payload.updatedBy = userID;
+    //   payload.updatedBy = userId;
     // } else {
-    //   payload.createdBy = userID;
+    //   payload.createdBy = userId;
     // }
 
     console.log("Employee Payload:", payload);
@@ -501,12 +501,12 @@ export default function EmployeeDialog({
                       if (user) {
                         try {
                           const u = JSON.parse(user);
-                          return u?.companyName || "Company 1";
+                          return u?.companyName || "SASPAK CARGO";
                         } catch (error) {
-                          return "Company 1";
+                          return "SASPAK CARGO";
                         }
                       }
-                      return "Company 1";
+                      return "SASPAK CARGO";
                     })()}
                   </div>
                 </div>

@@ -622,7 +622,7 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
           loading={isLoading}
           columns={columns}
           searchText={searchText}
-          searchBy='FirstName'
+          searchBy='fullName'
           isPage
           isMultiSearch
         />

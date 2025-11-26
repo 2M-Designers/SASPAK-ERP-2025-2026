@@ -73,12 +73,12 @@ export default function CostCenterDialog({
     if (open) {
       // Get company ID from localStorage or default to 0
       const user = localStorage.getItem("user");
-      let companyId = 0;
+      let companyId = 1;
 
       if (user) {
         try {
           const u = JSON.parse(user);
-          companyId = u?.companyId || 0;
+          companyId = u?.companyId || 1;
         } catch (error) {
           console.error("Error parsing user JSON:", error);
         }
@@ -100,13 +100,13 @@ export default function CostCenterDialog({
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     const user = localStorage.getItem("user");
     let userID = 0;
-    let companyId = 0;
+    let companyId = 1;
 
     if (user) {
       try {
         const u = JSON.parse(user);
         userID = u?.userID || 0;
-        companyId = u?.companyId || 0;
+        companyId = u?.companyId || 1;
       } catch (error) {
         console.error("Error parsing user JSON:", error);
       }
@@ -240,12 +240,12 @@ export default function CostCenterDialog({
                       if (user) {
                         try {
                           const u = JSON.parse(user);
-                          return u?.companyName || "Not specified";
+                          return u?.companyName || "SASPAK CARGO";
                         } catch (error) {
-                          return "Not specified";
+                          return "SASPAK CARGO";
                         }
                       }
-                      return "Not specified";
+                      return "SASPAK CARGO";
                     })()}
                   </div>
                 </div>

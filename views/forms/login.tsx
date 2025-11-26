@@ -9,11 +9,37 @@ import {
   Ship,
   Plane,
   Truck,
-  Building2,
-  MapPin,
-  Calendar,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+
+// Define types based on the actual API response
+interface User {
+  userId: number;
+  fullName: string;
+  username: string;
+  email: string;
+  companyId: number;
+  branchId: number;
+  departmentId: number;
+  companyName: string | null;
+  branchName: string | null;
+  departmentName: string | null;
+}
+
+interface Menu {
+  menuID: number;
+  name: string;
+  title: string;
+  menuLink: string | null;
+  parentID: number | null;
+  subMenus?: Menu[];
+}
+
+interface LoginResponse {
+  token: string;
+  user: User;
+  menus?: Menu[];
+}
 
 export default function SaspakLoginPage() {
   const router = useRouter();
@@ -26,939 +52,197 @@ export default function SaspakLoginPage() {
   });
   const [error, setError] = useState("");
 
+  const API_BASE_URL = "http://188.245.83.20:9001/api";
+
   const handleLogin = async () => {
     setIsLoading(true);
     setError("");
 
     try {
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Mock authentication - accept any non-empty username and password
+      // Validate inputs
       if (!formData.username.trim() || !formData.password.trim()) {
         setError("Please enter both username and password");
         setIsLoading(false);
         return;
       }
 
-      // Mock user data - ADDED companyId HERE
-      const mockUser = {
-        userID: 6,
-        username: formData.username,
-        displayname: formData.username,
-        roleID: 1,
-        email: `${formData.username}@saspak.com`,
-        operatorID: 1,
-        isReadOnlyMode: false,
-        language: "en",
-        companyId: 1, // ADDED THIS LINE - Company ID for SASPAK CARGO
-        companyName: "SASPAK CARGO", // Optional: Also store company name
-      };
+      console.log("Attempting login with:", { username: formData.username });
 
-      // Mock menu data for SASPAK Cargo - WITH COMPANY MANAGEMENT
-      const mockMenus = [
-        {
-          menuID: 1,
-          name: "Dashboard",
-          title: "Dashboard",
-          menuLink: "/portal",
-          parentID: null,
-          subMenus: [],
-        },
-        {
-          menuID: 2,
-          name: "Job Management",
-          title: "Job Management",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 21,
-              name: "Create Job",
-              title: "Create Job",
-              menuLink: "/portal/jobs/create",
-              parentID: 2,
-            },
-            {
-              menuID: 22,
-              name: "Active Jobs",
-              title: "Active Jobs",
-              menuLink: "/portal/jobs/active",
-              parentID: 2,
-            },
-            {
-              menuID: 23,
-              name: "Job History",
-              title: "Job History",
-              menuLink: "/portal/jobs/history",
-              parentID: 2,
-            },
-            {
-              menuID: 24,
-              name: "Track Shipment",
-              title: "Track Shipment",
-              menuLink: "/portal/jobs/tracking",
-              parentID: 2,
-            },
-          ],
-        },
-        {
-          menuID: 3,
-          name: "Freight Forwarding",
-          title: "Freight Forwarding",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 31,
-              name: "Sea Freight",
-              title: "Sea Freight",
-              menuLink: "/portal/freight/sea",
-              parentID: 3,
-            },
-            {
-              menuID: 32,
-              name: "Air Freight",
-              title: "Air Freight",
-              menuLink: "/portal/freight/air",
-              parentID: 3,
-            },
-            {
-              menuID: 33,
-              name: "Booking Management",
-              title: "Booking Management",
-              menuLink: "/portal/freight/bookings",
-              parentID: 3,
-            },
-            {
-              menuID: 34,
-              name: "Vessel Schedule",
-              title: "Vessel Schedule",
-              menuLink: "/portal/freight/schedule",
-              parentID: 3,
-            },
-          ],
-        },
-        {
-          menuID: 4,
-          name: "Customs Clearance",
-          title: "Customs Clearance",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 41,
-              name: "GD Filing",
-              title: "GD Filing",
-              menuLink: "/portal/customs/gd-filing",
-              parentID: 4,
-            },
-            {
-              menuID: 42,
-              name: "Duty Calculation",
-              title: "Duty Calculation",
-              menuLink: "/portal/customs/duty-calculation",
-              parentID: 4,
-            },
-            {
-              menuID: 43,
-              name: "Clearance Status",
-              title: "Clearance Status",
-              menuLink: "/portal/customs/status",
-              parentID: 4,
-            },
-            {
-              menuID: 44,
-              name: "Document Management",
-              title: "Document Management",
-              menuLink: "/portal/customs/documents",
-              parentID: 4,
-            },
-          ],
-        },
-        {
-          menuID: 5,
-          name: "Transport Operations",
-          title: "Transport Operations",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 51,
-              name: "Vehicle Management",
-              title: "Vehicle Management",
-              menuLink: "/portal/transport/vehicles",
-              parentID: 5,
-            },
-            {
-              menuID: 52,
-              name: "POD Management",
-              title: "POD Management",
-              menuLink: "/portal/transport/pod",
-              parentID: 5,
-            },
-            {
-              menuID: 53,
-              name: "Container Tracking",
-              title: "Container Tracking",
-              menuLink: "/portal/transport/containers",
-              parentID: 5,
-            },
-            {
-              menuID: 54,
-              name: "Delivery Schedule",
-              title: "Delivery Schedule",
-              menuLink: "/portal/transport/schedule",
-              parentID: 5,
-            },
-          ],
-        },
-        {
-          menuID: 6,
-          name: "Billing & Finance",
-          title: "Billing & Finance",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 61,
-              name: "Invoice Generation",
-              title: "Invoice Generation",
-              menuLink: "/portal/billing/invoices",
-              parentID: 6,
-            },
-            {
-              menuID: 62,
-              name: "Payment Tracking",
-              title: "Payment Tracking",
-              menuLink: "/portal/billing/payments",
-              parentID: 6,
-            },
-            {
-              menuID: 63,
-              name: "Financial Reports",
-              title: "Financial Reports",
-              menuLink: "/portal/billing/reports",
-              parentID: 6,
-            },
-            {
-              menuID: 64,
-              name: "Expense Management",
-              title: "Expense Management",
-              menuLink: "/portal/billing/expenses",
-              parentID: 6,
-            },
-          ],
-        },
-        {
-          menuID: 7,
-          name: "CRM",
-          title: "Customer Relationship Management",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 71,
-              name: "Client Management",
-              title: "Client Management",
-              menuLink: "/portal/crm/clients",
-              parentID: 7,
-            },
-            {
-              menuID: 72,
-              name: "Quotations",
-              title: "Quotations",
-              menuLink: "/portal/crm/quotations",
-              parentID: 7,
-            },
-            {
-              menuID: 73,
-              name: "Communication Log",
-              title: "Communication Log",
-              menuLink: "/portal/crm/communications",
-              parentID: 7,
-            },
-            {
-              menuID: 74,
-              name: "Lead Management",
-              title: "Lead Management",
-              menuLink: "/portal/crm/leads",
-              parentID: 7,
-            },
-          ],
-        },
-        {
-          menuID: 8,
-          name: "Company Management",
-          title: "Company Management",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 81,
-              name: "Company Profile",
-              title: "Company Profile",
-              menuLink: "/portal/company-management/company",
-              parentID: 8,
-            },
-            {
-              menuID: 82,
-              name: "Branch Management",
-              title: "Branch Management",
-              menuLink: "/portal/company-management/branch",
-              parentID: 8,
-            },
-            {
-              menuID: 83,
-              name: "Department Setup",
-              title: "Department Setup",
-              menuLink: "/portal/hr-management/department",
-              parentID: 8,
-            },
-            {
-              menuID: 84,
-              name: "Cost Centers",
-              title: "Cost Centers",
-              menuLink: "/portal/general-setups/cost-centers",
-              parentID: 8,
-            },
-            {
-              menuID: 85,
-              name: "Fiscal Year",
-              title: "Fiscal Year",
-              menuLink: "/portal/general-setups/fiscal-year",
-              parentID: 8,
-            },
-            {
-              menuID: 86,
-              name: "UN Locations",
-              title: "UN Locations",
-              menuLink: "/portal/general-setups/un-location",
-              parentID: 8,
-            },
-            {
-              menuID: 87,
-              name: "Currency",
-              title: "Currency",
-              menuLink: "/portal/general-setups/currency",
-              parentID: 8,
-            },
-            {
-              menuID: 88,
-              name: "HS Code",
-              title: "HS Code",
-              menuLink: "/portal/general-setups/hs-code",
-              parentID: 8,
-            },
-            {
-              menuID: 89,
-              name: "Designation",
-              title: "Designation",
-              menuLink: "/portal/hr-management/designation",
-              parentID: 8,
-            },
-            {
-              menuID: 90,
-              name: "Employee",
-              title: "Employee",
-              menuLink: "/portal/hr-management/employee",
-              parentID: 8,
-            },
-            {
-              menuID: 91,
-              name: "User Management",
-              title: "User Management",
-              menuLink: "/portal/user-management/users",
-              parentID: 8,
-            },
-          ],
-        },
-        {
-          menuID: 9,
-          name: "Reports & Analytics",
-          title: "Reports & Analytics",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 91,
-              name: "Operational Reports",
-              title: "Operational Reports",
-              menuLink: "/portal/reports/operational",
-              parentID: 9,
-            },
-            {
-              menuID: 92,
-              name: "Financial Analytics",
-              title: "Financial Analytics",
-              menuLink: "/portal/reports/financial",
-              parentID: 9,
-            },
-            {
-              menuID: 93,
-              name: "Performance Dashboard",
-              title: "Performance Dashboard",
-              menuLink: "/portal/reports/performance",
-              parentID: 9,
-            },
-            {
-              menuID: 94,
-              name: "Custom Reports",
-              title: "Custom Reports",
-              menuLink: "/portal/reports/custom",
-              parentID: 9,
-            },
-          ],
-        },
-        {
-          menuID: 10,
-          name: "System Administration",
-          title: "System Administration",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 101,
-              name: "User Management",
-              title: "User Management",
-              menuLink: "/portal/admin/users",
-              parentID: 10,
-            },
-            {
-              menuID: 102,
-              name: "Role Permissions",
-              title: "Role Permissions",
-              menuLink: "/portal/admin/roles",
-              parentID: 10,
-            },
-            {
-              menuID: 103,
-              name: "System Settings",
-              title: "System Settings",
-              menuLink: "/portal/admin/settings",
-              parentID: 10,
-            },
-            {
-              menuID: 104,
-              name: "Audit Logs",
-              title: "Audit Logs",
-              menuLink: "/portal/admin/audit",
-              parentID: 10,
-            },
-            {
-              menuID: 105,
-              name: "Backup & Restore",
-              title: "Backup & Restore",
-              menuLink: "/portal/admin/backup",
-              parentID: 10,
-            },
-          ],
-        },
-      ];
-
-      // FIXED: Process menus correctly - just use the mockMenus as they already have proper structure
-      const tree = mockMenus.map((menu) => ({
-        ...menu,
-        // Ensure subMenus is always an array
-        subMenus: menu.subMenus || [],
-      }));
-
-      // Store mock data in localStorage
-      localStorage.setItem("user", JSON.stringify(mockUser));
-      localStorage.setItem("menus", JSON.stringify(tree));
-
-      // Debug: Check what's being stored
-      console.log("Storing user data:", mockUser);
-      console.log("Company ID in user:", mockUser.companyId); // Verify companyId is included
-      console.log("Storing menus:", tree);
-
-      if (formData.rememberMe) {
-        localStorage.setItem("rememberMe", JSON.stringify(true));
-      } else {
-        localStorage.removeItem("rememberMe");
-      }
-
-      // Show success message
-      console.log("Login successful! Redirecting to portal...");
-
-      // Redirect to dashboard
-      router.push("/portal");
-    } catch (err) {
-      console.error("Login error:", err);
-      setError("Login failed. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleLogin2 = async () => {
-    setIsLoading(true);
-    setError("");
-
-    try {
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Mock authentication - accept any non-empty username and password
-      if (!formData.username.trim() || !formData.password.trim()) {
-        setError("Please enter both username and password");
-        setIsLoading(false);
-        return;
-      }
-
-      // Mock user data
-      const mockUser = {
-        userID: 6,
-        username: formData.username,
-        displayname: formData.username,
-        roleID: 1,
-        email: `${formData.username}@saspak.com`,
-        operatorID: 1,
-        isReadOnlyMode: false,
-        language: "en",
-      };
-
-      // Mock menu data for SASPAK Cargo - WITH COMPANY MANAGEMENT
-      const mockMenus = [
-        {
-          menuID: 1,
-          name: "Dashboard",
-          title: "Dashboard",
-          menuLink: "/portal",
-          parentID: null,
-          subMenus: [],
-        },
-        {
-          menuID: 2,
-          name: "Job Management",
-          title: "Job Management",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 21,
-              name: "Create Job",
-              title: "Create Job",
-              menuLink: "/portal/jobs/create",
-              parentID: 2,
-            },
-            {
-              menuID: 22,
-              name: "Active Jobs",
-              title: "Active Jobs",
-              menuLink: "/portal/jobs/active",
-              parentID: 2,
-            },
-            {
-              menuID: 23,
-              name: "Job History",
-              title: "Job History",
-              menuLink: "/portal/jobs/history",
-              parentID: 2,
-            },
-            {
-              menuID: 24,
-              name: "Track Shipment",
-              title: "Track Shipment",
-              menuLink: "/portal/jobs/tracking",
-              parentID: 2,
-            },
-          ],
-        },
-        {
-          menuID: 3,
-          name: "Freight Forwarding",
-          title: "Freight Forwarding",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 31,
-              name: "Sea Freight",
-              title: "Sea Freight",
-              menuLink: "/portal/freight/sea",
-              parentID: 3,
-            },
-            {
-              menuID: 32,
-              name: "Air Freight",
-              title: "Air Freight",
-              menuLink: "/portal/freight/air",
-              parentID: 3,
-            },
-            {
-              menuID: 33,
-              name: "Booking Management",
-              title: "Booking Management",
-              menuLink: "/portal/freight/bookings",
-              parentID: 3,
-            },
-            {
-              menuID: 34,
-              name: "Vessel Schedule",
-              title: "Vessel Schedule",
-              menuLink: "/portal/freight/schedule",
-              parentID: 3,
-            },
-          ],
-        },
-        {
-          menuID: 4,
-          name: "Customs Clearance",
-          title: "Customs Clearance",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 41,
-              name: "GD Filing",
-              title: "GD Filing",
-              menuLink: "/portal/customs/gd-filing",
-              parentID: 4,
-            },
-            {
-              menuID: 42,
-              name: "Duty Calculation",
-              title: "Duty Calculation",
-              menuLink: "/portal/customs/duty-calculation",
-              parentID: 4,
-            },
-            {
-              menuID: 43,
-              name: "Clearance Status",
-              title: "Clearance Status",
-              menuLink: "/portal/customs/status",
-              parentID: 4,
-            },
-            {
-              menuID: 44,
-              name: "Document Management",
-              title: "Document Management",
-              menuLink: "/portal/customs/documents",
-              parentID: 4,
-            },
-          ],
-        },
-        {
-          menuID: 5,
-          name: "Transport Operations",
-          title: "Transport Operations",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 51,
-              name: "Vehicle Management",
-              title: "Vehicle Management",
-              menuLink: "/portal/transport/vehicles",
-              parentID: 5,
-            },
-            {
-              menuID: 52,
-              name: "POD Management",
-              title: "POD Management",
-              menuLink: "/portal/transport/pod",
-              parentID: 5,
-            },
-            {
-              menuID: 53,
-              name: "Container Tracking",
-              title: "Container Tracking",
-              menuLink: "/portal/transport/containers",
-              parentID: 5,
-            },
-            {
-              menuID: 54,
-              name: "Delivery Schedule",
-              title: "Delivery Schedule",
-              menuLink: "/portal/transport/schedule",
-              parentID: 5,
-            },
-          ],
-        },
-        {
-          menuID: 6,
-          name: "Billing & Finance",
-          title: "Billing & Finance",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 61,
-              name: "Invoice Generation",
-              title: "Invoice Generation",
-              menuLink: "/portal/billing/invoices",
-              parentID: 6,
-            },
-            {
-              menuID: 62,
-              name: "Payment Tracking",
-              title: "Payment Tracking",
-              menuLink: "/portal/billing/payments",
-              parentID: 6,
-            },
-            {
-              menuID: 63,
-              name: "Financial Reports",
-              title: "Financial Reports",
-              menuLink: "/portal/billing/reports",
-              parentID: 6,
-            },
-            {
-              menuID: 64,
-              name: "Expense Management",
-              title: "Expense Management",
-              menuLink: "/portal/billing/expenses",
-              parentID: 6,
-            },
-          ],
-        },
-        {
-          menuID: 7,
-          name: "CRM",
-          title: "Customer Relationship Management",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 71,
-              name: "Client Management",
-              title: "Client Management",
-              menuLink: "/portal/crm/clients",
-              parentID: 7,
-            },
-            {
-              menuID: 72,
-              name: "Quotations",
-              title: "Quotations",
-              menuLink: "/portal/crm/quotations",
-              parentID: 7,
-            },
-            {
-              menuID: 73,
-              name: "Communication Log",
-              title: "Communication Log",
-              menuLink: "/portal/crm/communications",
-              parentID: 7,
-            },
-            {
-              menuID: 74,
-              name: "Lead Management",
-              title: "Lead Management",
-              menuLink: "/portal/crm/leads",
-              parentID: 7,
-            },
-          ],
-        },
-        {
-          menuID: 8,
-          name: "Company Management",
-          title: "Company Management",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 81,
-              name: "Company Profile",
-              title: "Company Profile",
-              menuLink: "/portal/company/profile",
-              parentID: 8,
-            },
-            {
-              menuID: 82,
-              name: "Branch Management",
-              title: "Branch Management",
-              menuLink: "/portal/company/branches",
-              parentID: 8,
-            },
-            {
-              menuID: 83,
-              name: "Department Setup",
-              title: "Department Setup",
-              menuLink: "/portal/company/department",
-              parentID: 8,
-            },
-            {
-              menuID: 84,
-              name: "Cost Centers",
-              title: "Cost Centers",
-              menuLink: "/portal/company/cost-centers",
-              parentID: 8,
-            },
-            {
-              menuID: 85,
-              name: "Fiscal Year",
-              title: "Fiscal Year",
-              menuLink: "/portal/company/fiscal-year",
-              parentID: 8,
-            },
-            {
-              menuID: 86,
-              name: "Organization Chart",
-              title: "Organization Chart",
-              menuLink: "/portal/company/org-chart",
-              parentID: 8,
-            },
-          ],
-        },
-        {
-          menuID: 9,
-          name: "Reports & Analytics",
-          title: "Reports & Analytics",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 91,
-              name: "Operational Reports",
-              title: "Operational Reports",
-              menuLink: "/portal/reports/operational",
-              parentID: 9,
-            },
-            {
-              menuID: 92,
-              name: "Financial Analytics",
-              title: "Financial Analytics",
-              menuLink: "/portal/reports/financial",
-              parentID: 9,
-            },
-            {
-              menuID: 93,
-              name: "Performance Dashboard",
-              title: "Performance Dashboard",
-              menuLink: "/portal/reports/performance",
-              parentID: 9,
-            },
-            {
-              menuID: 94,
-              name: "Custom Reports",
-              title: "Custom Reports",
-              menuLink: "/portal/reports/custom",
-              parentID: 9,
-            },
-          ],
-        },
-        {
-          menuID: 10,
-          name: "System Administration",
-          title: "System Administration",
-          parentID: null,
-          subMenus: [
-            {
-              menuID: 101,
-              name: "User Management",
-              title: "User Management",
-              menuLink: "/portal/admin/users",
-              parentID: 10,
-            },
-            {
-              menuID: 102,
-              name: "Role Permissions",
-              title: "Role Permissions",
-              menuLink: "/portal/admin/roles",
-              parentID: 10,
-            },
-            {
-              menuID: 103,
-              name: "System Settings",
-              title: "System Settings",
-              menuLink: "/portal/admin/settings",
-              parentID: 10,
-            },
-            {
-              menuID: 104,
-              name: "Audit Logs",
-              title: "Audit Logs",
-              menuLink: "/portal/admin/audit",
-              parentID: 10,
-            },
-            {
-              menuID: 105,
-              name: "Backup & Restore",
-              title: "Backup & Restore",
-              menuLink: "/portal/admin/backup",
-              parentID: 10,
-            },
-          ],
-        },
-      ];
-
-      // FIXED: Process menus correctly - just use the mockMenus as they already have proper structure
-      const tree = mockMenus.map((menu) => ({
-        ...menu,
-        // Ensure subMenus is always an array
-        subMenus: menu.subMenus || [],
-      }));
-
-      // Store mock data in localStorage
-      localStorage.setItem("user", JSON.stringify(mockUser));
-      localStorage.setItem("menus", JSON.stringify(tree));
-
-      // Debug: Check what's being stored
-      console.log("Storing menus:", tree);
-      console.log("Menu with submenus example:", tree[1]); // Job Management
-
-      if (formData.rememberMe) {
-        localStorage.setItem("rememberMe", JSON.stringify(true));
-      } else {
-        localStorage.removeItem("rememberMe");
-      }
-
-      // Show success message
-      console.log("Login successful! Redirecting to portal...");
-
-      // Redirect to dashboard
-      router.push("/portal");
-    } catch (err) {
-      console.error("Login error:", err);
-      setError("Login failed. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleActualLogin = async () => {
-    setIsLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch(
-        process.env.NEXT_PUBLIC_BASE_URL + "Authentication/login",
+      // Step 1: Authenticate user
+      const loginResponse = await fetch(
+        `${API_BASE_URL}/Authentication/login`,
         {
           method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
             username: formData.username,
             password: formData.password,
           }),
-          headers: {
-            "Content-type": "application/json;",
-          },
         }
       );
 
-      if (res.status === 200) {
-        const body = await res.json();
+      console.log("Login response status:", loginResponse.status);
 
-        // Process menus and store user data
-        const mainMenus =
-          body.menus?.filter((item: any) => item.parentID === null) || [];
+      if (!loginResponse.ok) {
+        const errorText = await loginResponse.text();
+        console.error("Login failed:", loginResponse.status, errorText);
 
-        const tree = mainMenus.map((mainMenu: any) => {
-          return {
-            ...mainMenu,
-            title: mainMenu.title, // Remove translation for now, add your t() function if needed
-            subMenus:
-              body.menus
-                ?.filter((element: any) => element.parentID === mainMenu.menuID)
-                ?.map((sub: any) => ({
-                  ...sub,
-                  title: sub.title, // Remove translation for now
-                })) || [],
-          };
-        });
-
-        // Store user data in localStorage
-        localStorage.setItem("user", JSON.stringify(body.user));
-        localStorage.setItem("menus", JSON.stringify(tree));
-
-        if (formData.rememberMe) {
-          localStorage.setItem("rememberMe", JSON.stringify(true));
-        } else {
-          localStorage.removeItem("rememberMe");
+        let errorMessage = "Login failed. Please try again.";
+        if (loginResponse.status === 401) {
+          errorMessage = "Invalid username or password";
+        } else if (loginResponse.status === 400) {
+          errorMessage = "Please check your credentials and try again";
+        } else if (loginResponse.status >= 500) {
+          errorMessage = "Server error. Please try again later.";
         }
 
-        // Redirect to dashboard
-        router.push("/portal");
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        setError(errorData.message || "Invalid username or password");
+        throw new Error(errorMessage);
       }
+
+      const loginData: LoginResponse = await loginResponse.json();
+      console.log("Login successful:", loginData);
+
+      // Step 2: Get menus for the authenticated user
+      let menusData: Menu[] = [];
+
+      try {
+        console.log("Fetching menus...");
+        const menusResponse = await fetch(
+          `${API_BASE_URL}/Authentication/GetMenus`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${loginData.token}`,
+            },
+          }
+        );
+
+        console.log("Menus response status:", menusResponse.status);
+
+        if (menusResponse.ok) {
+          menusData = await menusResponse.json();
+          console.log("Menus retrieved:", menusData);
+        } else {
+          console.warn("Failed to fetch menus, using empty array");
+          // If menus API fails, use menus from login response if available
+          if (loginData.menus && Array.isArray(loginData.menus)) {
+            menusData = loginData.menus;
+            console.log("Using menus from login response:", menusData);
+          }
+        }
+      } catch (menuError) {
+        console.warn("Error fetching menus:", menuError);
+        // Use menus from login response if available
+        if (loginData.menus && Array.isArray(loginData.menus)) {
+          menusData = loginData.menus;
+          console.log(
+            "Using menus from login response after error:",
+            menusData
+          );
+        }
+      }
+
+      // Process menus to create hierarchical structure
+      const processMenus = (menus: Menu[]): Menu[] => {
+        if (!menus || !Array.isArray(menus)) {
+          console.warn("No menus data available");
+          return [];
+        }
+
+        const mainMenus = menus.filter((menu) => menu.parentID === null);
+
+        const processedMenus = mainMenus.map((mainMenu) => ({
+          ...mainMenu,
+          subMenus: menus.filter((menu) => menu.parentID === mainMenu.menuID),
+        }));
+
+        console.log("Processed menus structure:", processedMenus);
+        return processedMenus;
+      };
+
+      const processedMenus = processMenus(menusData);
+
+      // Store ALL data in localStorage as per API response
+      localStorage.setItem("token", loginData.token);
+      localStorage.setItem("user", JSON.stringify(loginData.user));
+      localStorage.setItem("menus", JSON.stringify(processedMenus));
+
+      // Store individual user properties for easy access
+      localStorage.setItem("userId", loginData.user.userId.toString());
+      localStorage.setItem("fullName", loginData.user.fullName);
+      localStorage.setItem("username", loginData.user.username);
+      localStorage.setItem("email", loginData.user.email);
+      localStorage.setItem("companyId", loginData.user.companyId.toString());
+      localStorage.setItem("branchId", loginData.user.branchId.toString());
+      localStorage.setItem(
+        "departmentId",
+        loginData.user.departmentId.toString()
+      );
+
+      // Store nullable properties with null check
+      if (loginData.user.companyName) {
+        localStorage.setItem("companyName", loginData.user.companyName);
+      } else {
+        localStorage.removeItem("companyName");
+      }
+
+      if (loginData.user.branchName) {
+        localStorage.setItem("branchName", loginData.user.branchName);
+      } else {
+        localStorage.removeItem("branchName");
+      }
+
+      if (loginData.user.departmentName) {
+        localStorage.setItem("departmentName", loginData.user.departmentName);
+      } else {
+        localStorage.removeItem("departmentName");
+      }
+
+      // Store remember me preference
+      if (formData.rememberMe) {
+        localStorage.setItem("rememberMe", "true");
+        // Also store credentials if remember me is checked (optional - consider security implications)
+        localStorage.setItem("savedUsername", formData.username);
+      } else {
+        localStorage.removeItem("rememberMe");
+        localStorage.removeItem("savedUsername");
+      }
+
+      // Store login timestamp
+      localStorage.setItem("loginTime", new Date().toISOString());
+
+      // Debug stored data
+      console.log("=== STORED DATA IN LOCALSTORAGE ===");
+      console.log("Token:", localStorage.getItem("token"));
+      console.log("User:", JSON.parse(localStorage.getItem("user") || "{}"));
+      console.log("Menus:", JSON.parse(localStorage.getItem("menus") || "[]"));
+      console.log("UserId:", localStorage.getItem("userId"));
+      console.log("FullName:", localStorage.getItem("fullName"));
+      console.log("Username:", localStorage.getItem("username"));
+      console.log("Email:", localStorage.getItem("email"));
+      console.log("CompanyId:", localStorage.getItem("companyId"));
+      console.log("BranchId:", localStorage.getItem("branchId"));
+      console.log("DepartmentId:", localStorage.getItem("departmentId"));
+      console.log("CompanyName:", localStorage.getItem("companyName"));
+      console.log("BranchName:", localStorage.getItem("branchName"));
+      console.log("DepartmentName:", localStorage.getItem("departmentName"));
+      console.log("RememberMe:", localStorage.getItem("rememberMe"));
+      console.log("LoginTime:", localStorage.getItem("loginTime"));
+      console.log("===================================");
+
+      // Show success message
+      console.log("Login successful! Redirecting to portal...");
+
+      // Redirect to dashboard
+      router.push("/portal");
     } catch (err) {
       console.error("Login error:", err);
-      setError("Login failed. Please check your connection and try again.");
+      setError(
+        err instanceof Error ? err.message : "Login failed. Please try again."
+      );
     } finally {
       setIsLoading(false);
     }
@@ -1107,6 +391,7 @@ export default function SaspakLoginPage() {
                   onKeyPress={handleKeyPress}
                   placeholder='Enter your username or email'
                   className='w-full h-12 px-4 border border-gray-300 rounded-xl bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-[#1A94D4] focus:border-transparent transition-all'
+                  disabled={isLoading}
                 />
               </div>
 
@@ -1128,11 +413,13 @@ export default function SaspakLoginPage() {
                     onKeyPress={handleKeyPress}
                     placeholder='Enter your password'
                     className='w-full h-12 px-4 pr-12 border border-gray-300 rounded-xl bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-[#1A94D4] focus:border-transparent transition-all'
+                    disabled={isLoading}
                   />
                   <button
                     type='button'
                     onClick={() => setShowPassword(!showPassword)}
-                    className='absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#1A94D4] transition-colors'
+                    className='absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#1A94D4] transition-colors disabled:opacity-50'
+                    disabled={isLoading}
                   >
                     {showPassword ? (
                       <EyeOff className='w-5 h-5' />
@@ -1152,6 +439,7 @@ export default function SaspakLoginPage() {
                   checked={formData.rememberMe}
                   onChange={handleChange}
                   className='w-4 h-4 text-[#1A94D4] border-gray-300 rounded focus:ring-[#1A94D4]'
+                  disabled={isLoading}
                 />
                 <label htmlFor='rememberMe' className='text-sm text-gray-700'>
                   Remember me
@@ -1169,13 +457,13 @@ export default function SaspakLoginPage() {
               <button
                 onClick={handleLogin}
                 disabled={isLoading || !formData.username || !formData.password}
-                className='w-full h-12 bg-gradient-to-r from-[#0B4F6C] to-[#1A94D4] hover:from-[#094159] hover:to-[#1681b8] text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed'
+                className='w-full h-12 bg-gradient-to-r from-[#0B4F6C] to-[#1A94D4] hover:from-[#094159] hover:to-[#1681b8] text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center'
               >
                 {isLoading ? (
-                  <span className='flex items-center justify-center gap-2'>
-                    <Loader2 className='w-5 h-5 animate-spin' />
+                  <>
+                    <Loader2 className='w-5 h-5 animate-spin mr-2' />
                     Signing in...
-                  </span>
+                  </>
                 ) : (
                   "Sign In"
                 )}

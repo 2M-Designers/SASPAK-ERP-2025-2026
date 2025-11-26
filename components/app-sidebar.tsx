@@ -18,6 +18,26 @@ import {
   FileText,
   DollarSign,
   Building2,
+  User,
+  Briefcase,
+  Network,
+  Shield,
+  Database,
+  RefreshCw,
+  AlertCircle,
+  Calculator,
+  Banknote,
+  BookOpen,
+  ClipboardList,
+  CreditCard,
+  FileSearch,
+  Globe,
+  Landmark,
+  List,
+  PieChart,
+  Receipt,
+  Scale,
+  Wallet,
 } from "lucide-react";
 import {
   Sidebar,
@@ -35,163 +55,394 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface User {
-  userID: number;
+  userId: number;
+  fullName: string;
   username: string;
-  roleID: number;
-  displayname: string;
-  operatorID?: number;
+  email: string;
+  companyId: number;
+  branchId: number;
+  departmentId: number;
+  companyName: string | null;
+  branchName: string | null;
+  departmentName: string | null;
 }
 
-// Default menus structure for SASPAK Cargo
-const defaultMenus = [
-  {
-    menuID: 1,
-    name: "Dashboard",
-    title: "Dashboard",
-    menuLink: "/portal",
-    parentID: null,
-    subMenus: [],
-  },
-  {
-    menuID: 2,
-    name: "Job Management",
-    title: "Job Management",
-    parentID: null,
-    subMenus: [
-      {
-        menuID: 21,
-        name: "Create Job",
-        title: "Create Job",
-        menuLink: "/portal/jobs/create",
-        parentID: 2,
-      },
-      {
-        menuID: 22,
-        name: "Active Jobs",
-        title: "Active Jobs",
-        menuLink: "/portal/jobs/active",
-        parentID: 2,
-      },
-      {
-        menuID: 23,
-        name: "Job History",
-        title: "Job History",
-        menuLink: "/portal/jobs/history",
-        parentID: 2,
-      },
-    ],
-  },
-  {
-    menuID: 3,
-    name: "Freight Forwarding",
-    title: "Freight Forwarding",
-    parentID: null,
-    subMenus: [
-      {
-        menuID: 31,
-        name: "Sea Freight",
-        title: "Sea Freight",
-        menuLink: "/portal/freight/sea",
-        parentID: 3,
-      },
-      {
-        menuID: 32,
-        name: "Air Freight",
-        title: "Air Freight",
-        menuLink: "/portal/freight/air",
-        parentID: 3,
-      },
-    ],
-  },
-];
+interface MenuRight {
+  rightId: number;
+  rightCode: string;
+  tableName: string;
+  displayName: string;
+  category: string;
+  module: string;
+  description: string;
+}
 
-// Icon mapping for different menu types with SASPAK theme
-const getMenuIcon = (menuName: string, isOpen: boolean) => {
-  const name = menuName.toLowerCase();
-  if (name.includes("dashboard")) return LayoutDashboard;
-  if (name.includes("job") || name.includes("management")) return FileText;
-  if (name.includes("freight")) return Ship;
-  if (name.includes("custom") || name.includes("clearance")) return Package;
-  if (name.includes("transport")) return Truck;
-  if (name.includes("billing") || name.includes("finance")) return DollarSign;
-  if (name.includes("crm") || name.includes("customer")) return Users;
-  if (name.includes("company")) return Building2; // NEW: Company Management icon
-  if (name.includes("report") || name.includes("analytics")) return BarChart3;
-  if (name.includes("system") || name.includes("admin")) return Cog;
-  if (name.includes("setting")) return Settings;
-  if (name.includes("location") || name.includes("branch")) return MapPin;
+interface ProcessedMenu {
+  menuID: number;
+  name: string;
+  title: string;
+  menuLink: string | null;
+  parentID: number | null;
+  subMenus?: ProcessedMenu[];
+}
+
+// Enhanced icon mapping for different menu types based on your API response
+const getMenuIcon = (displayName: string, isOpen: boolean) => {
+  const name = displayName.toLowerCase();
+
+  // Accounting & Finance
+  if (name.includes("accounting") || name.includes("period")) return Calendar;
   if (name.includes("fiscal") || name.includes("year")) return Calendar;
+  if (name.includes("voucher")) return Receipt;
+  if (name.includes("opening") || name.includes("balance")) return Calculator;
+  if (name.includes("chart") || name.includes("account")) return PieChart;
+  if (name.includes("currency") || name.includes("exchange")) return DollarSign;
+  if (name.includes("cost") || name.includes("center")) return DollarSign;
+
+  // HR & Employee Management
+  if (name.includes("employee")) return User;
+  if (name.includes("department")) return Briefcase;
+  if (name.includes("salary") || name.includes("pay")) return Banknote;
+  if (name.includes("leave")) return ClipboardList;
+  if (name.includes("designation")) return User;
+  if (name.includes("attendance")) return Calendar;
+  if (name.includes("holiday")) return Calendar;
+
+  // Company & Setup
+  if (name.includes("company")) return Building2;
+  if (name.includes("branch")) return MapPin;
+  if (name.includes("charge")) return CreditCard;
+  if (name.includes("party")) return Users;
+
+  // System & Admin
+  if (name.includes("system") || name.includes("admin")) return Shield;
+  if (name.includes("setting")) return Settings;
+  if (name.includes("right") || name.includes("role")) return Shield;
+  if (name.includes("user")) return Users;
+  if (name.includes("audit") || name.includes("log")) return FileSearch;
+  if (name.includes("error")) return AlertCircle;
+
+  // Logistics & Operations
+  if (name.includes("awb") || name.includes("air")) return Plane;
+  if (name.includes("bl") || name.includes("sea")) return Ship;
+  if (name.includes("job") || name.includes("inquiry")) return FileText;
+  if (name.includes("container")) return Truck;
+  if (name.includes("port") || name.includes("location")) return MapPin;
+  if (name.includes("hs code") || name.includes("hscode")) return BookOpen;
+
+  // Purchase & Orders
+  if (name.includes("purchase") || name.includes("order")) return FileText;
+
+  // Default icons
+  if (name.includes("dashboard")) return LayoutDashboard;
+  if (name.includes("report") || name.includes("analytics")) return BarChart3;
+  if (name.includes("list") || name.includes("master")) return List;
+
+  // Default icons for folders
   return isOpen ? FolderOpen : Folder;
 };
 
 export function AppSidebar() {
-  const [menus, setMenus] = useState<any>([]);
+  const [menus, setMenus] = useState<ProcessedMenu[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [user, setUser] = useState<User | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { t, i18n } = useTranslation();
 
-  // Get user data from localStorage
+  const API_BASE_URL = "http://188.245.83.20:9001/api";
+
+  // Get user data and token from localStorage
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const userData = localStorage.getItem("user");
-      if (userData) {
-        try {
-          const parsedUser = JSON.parse(userData);
-          setUser(parsedUser);
-        } catch (err) {
-          console.error("Failed to parse user data from localStorage:", err);
+    const loadUserData = () => {
+      try {
+        if (typeof window !== "undefined") {
+          const userData = localStorage.getItem("user");
+          console.log("User data from localStorage:", userData);
+
+          if (userData) {
+            const parsedUser = JSON.parse(userData);
+            setUser(parsedUser);
+          } else {
+            console.warn("No user data found in localStorage");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to parse user data from localStorage:", err);
+      }
+    };
+
+    loadUserData();
+  }, []);
+
+  // Function to convert rights data to menu structure
+  const convertRightsToMenus = (rights: MenuRight[]): ProcessedMenu[] => {
+    if (!rights || rights.length === 0) {
+      return [];
+    }
+
+    console.log("Converting rights to menus:", rights);
+
+    // Group by module first
+    const modules = [
+      ...new Set(rights.map((right) => right.module || "General")),
+    ];
+
+    const menuStructure: ProcessedMenu[] = [];
+
+    modules.forEach((module, moduleIndex) => {
+      const moduleRights = rights.filter(
+        (right) => (right.module || "General") === module
+      );
+
+      // Group module rights by category
+      const categories = [
+        ...new Set(moduleRights.map((right) => right.category || "General")),
+      ];
+
+      console.log(`Module: ${module}, Categories:`, categories);
+
+      // If only one category and it's empty or "General", create flat structure
+      if (
+        categories.length === 1 &&
+        (categories[0] === "" || categories[0] === "General")
+      ) {
+        const menuItems = moduleRights.map((right, index) => ({
+          menuID: right.rightId,
+          name: right.displayName,
+          title: right.displayName,
+          menuLink:
+            right.description && right.description !== ""
+              ? right.description.startsWith("/")
+                ? `/portal${right.description}`
+                : `/portal/${right.description}`
+              : null,
+          parentID: null,
+        }));
+
+        // If there are multiple items, create a parent menu for the module
+        if (menuItems.length > 1) {
+          const parentMenu: ProcessedMenu = {
+            menuID: 1000 + moduleIndex,
+            name: module,
+            title: module,
+            menuLink: null,
+            parentID: null,
+            subMenus: menuItems,
+          };
+          menuStructure.push(parentMenu);
+        } else {
+          // If only one item, add it directly
+          menuStructure.push(...menuItems);
+        }
+      } else {
+        // Multiple categories - create hierarchical structure
+        const parentMenu: ProcessedMenu = {
+          menuID: 1000 + moduleIndex,
+          name: module,
+          title: module,
+          menuLink: null,
+          parentID: null,
+          subMenus: [],
+        };
+
+        categories.forEach((category, categoryIndex) => {
+          const categoryRights = moduleRights.filter(
+            (right) => (right.category || "General") === category
+          );
+
+          if (categoryRights.length > 0) {
+            // If category has multiple items or is not "General", create submenu
+            if (categoryRights.length > 1 || category !== "General") {
+              const categoryMenu: ProcessedMenu = {
+                menuID: 2000 + moduleIndex * 100 + categoryIndex,
+                name: category || "General",
+                title: category || "General",
+                menuLink: null,
+                parentID: parentMenu.menuID,
+                subMenus: categoryRights.map((right) => ({
+                  menuID: right.rightId,
+                  name: right.displayName,
+                  title: right.displayName,
+                  menuLink:
+                    right.description && right.description !== ""
+                      ? right.description.startsWith("/")
+                        ? `/portal${right.description}`
+                        : `/portal/${right.description}`
+                      : null,
+                  parentID: 2000 + moduleIndex * 100 + categoryIndex,
+                })),
+              };
+              parentMenu.subMenus!.push(categoryMenu);
+            } else {
+              // Single item in category, add directly to parent
+              const right = categoryRights[0];
+              parentMenu.subMenus!.push({
+                menuID: right.rightId,
+                name: right.displayName,
+                title: right.displayName,
+                menuLink:
+                  right.description && right.description !== ""
+                    ? right.description.startsWith("/")
+                      ? `/portal${right.description}`
+                      : `/portal/${right.description}`
+                    : null,
+                parentID: parentMenu.menuID,
+              });
+            }
+          }
+        });
+
+        // Only add parent menu if it has submenus
+        if (parentMenu.subMenus!.length > 0) {
+          menuStructure.push(parentMenu);
         }
       }
+    });
+
+    console.log("Final converted menu structure:", menuStructure);
+    return menuStructure;
+  };
+
+  // Function to fetch menus from API
+  const fetchMenus = async (isRefresh = false) => {
+    if (isRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+    setError(null);
+
+    try {
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        throw new Error("No authentication token found. Please login again.");
+      }
+
+      console.log("Fetching menus from API...");
+
+      const response = await fetch(`${API_BASE_URL}/Authentication/GetMenus`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      console.log("Menus API response status:", response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Failed to fetch menus:", response.status, errorText);
+
+        if (response.status === 401) {
+          throw new Error("Authentication failed. Please login again.");
+        } else if (response.status === 403) {
+          throw new Error("Access denied. Insufficient permissions.");
+        } else {
+          throw new Error(`Failed to load menus: ${response.status}`);
+        }
+      }
+
+      const rightsData: MenuRight[] = await response.json();
+      console.log("Rights data from API:", rightsData);
+
+      if (!Array.isArray(rightsData)) {
+        throw new Error("Invalid rights data format received from API");
+      }
+
+      if (rightsData.length === 0) {
+        throw new Error("No menu rights available for this user");
+      }
+
+      // Convert rights data to menu structure
+      const menuStructure = convertRightsToMenus(rightsData);
+
+      if (menuStructure.length === 0) {
+        throw new Error("No valid menus could be generated from user rights");
+      }
+
+      // Update state and localStorage
+      setMenus(menuStructure);
+      localStorage.setItem("menus", JSON.stringify(menuStructure));
+
+      // Auto-expand first menu for better UX
+      const autoExpand = new Set<string>();
+      if (menuStructure.length > 0) {
+        autoExpand.add(`menu-${menuStructure[0].menuID}`);
+      }
+      setExpandedItems(autoExpand);
+    } catch (err) {
+      console.error("Error fetching menus:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to load menus";
+      setError(errorMessage);
+
+      // Fallback to localStorage menus if available
+      try {
+        const storedMenus = localStorage.getItem("menus");
+        if (storedMenus) {
+          const parsedMenus = JSON.parse(storedMenus);
+          if (Array.isArray(parsedMenus) && parsedMenus.length > 0) {
+            setMenus(parsedMenus);
+            setError("Using cached menus (" + errorMessage + ")");
+            return;
+          }
+        }
+      } catch (parseError) {
+        console.error("Error parsing stored menus:", parseError);
+      }
+
+      // No fallback menus available
+      setMenus([]);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  // Load menus on component mount
+  useEffect(() => {
+    // Try to load from localStorage first for faster rendering
+    const loadFromLocalStorage = () => {
+      try {
+        const storedMenus = localStorage.getItem("menus");
+        if (storedMenus) {
+          const parsedMenus = JSON.parse(storedMenus);
+          if (Array.isArray(parsedMenus) && parsedMenus.length > 0) {
+            setMenus(parsedMenus);
+            setIsLoading(false);
+            console.log("Loaded menus from localStorage:", parsedMenus);
+            return true;
+          }
+        }
+      } catch (error) {
+        console.error("Error loading menus from localStorage:", error);
+      }
+      return false;
+    };
+
+    if (!loadFromLocalStorage()) {
+      fetchMenus();
     }
   }, []);
 
+  // Load language preference
   useEffect(() => {
-    const loadData = async () => {
+    const loadLanguage = () => {
       try {
-        // Load language from localStorage
         const savedLang = localStorage.getItem("lang");
         if (savedLang && i18n.language !== savedLang) {
           i18n.changeLanguage(savedLang);
         }
-
-        // Load normal menus from localStorage
-        const menusData = localStorage.getItem("menus");
-        console.log("Raw menus data from localStorage:", menusData); // Debug log
-
-        if (menusData) {
-          const parsedMenus = JSON.parse(menusData);
-          console.log("Parsed menus:", parsedMenus); // Debug log
-
-          // Check if menus have proper structure
-          if (Array.isArray(parsedMenus) && parsedMenus.length > 0) {
-            // Process menus to ensure they have the correct structure
-            const processedMenus = parsedMenus.map((menu: any) => ({
-              ...menu,
-              subMenus: menu.subMenus || [],
-            }));
-            setMenus(processedMenus);
-          } else {
-            console.log("Menus data is empty or invalid, using default menus");
-            setMenus(defaultMenus);
-            localStorage.setItem("menus", JSON.stringify(defaultMenus));
-          }
-        } else {
-          console.log("No menus in localStorage, using default menus");
-          setMenus(defaultMenus);
-          localStorage.setItem("menus", JSON.stringify(defaultMenus));
-        }
       } catch (error) {
-        console.error("Error loading sidebar data:", error);
-        // Fallback to default menus
-        setMenus(defaultMenus);
-        localStorage.setItem("menus", JSON.stringify(defaultMenus));
-      } finally {
-        setIsLoading(false);
+        console.error("Error loading language preference:", error);
       }
     };
 
-    loadData();
+    loadLanguage();
   }, [i18n]);
 
   const toggleExpanded = (id: string) => {
@@ -204,66 +455,96 @@ export function AppSidebar() {
     setExpandedItems(newExpanded);
   };
 
-  // Process menus for rendering
-  const renderMenus = menus.map((item: any) => {
-    const isOpen = expandedItems.has(`menu-${item.menuID}`);
-    const IconComponent = getMenuIcon(item.name, isOpen);
-    const hasSubMenus = item.subMenus && item.subMenus.length > 0;
+  const handleRefreshMenus = () => {
+    fetchMenus(true);
+  };
 
-    console.log(`Menu ${item.name}:`, {
-      hasSubMenus,
-      subMenuCount: item.subMenus?.length,
-      subMenus: item.subMenus,
-    }); // Debug log
+  // Filter out menus that don't have proper structure
+  const validMenus = menus.filter(
+    (menu) =>
+      menu && typeof menu.menuID === "number" && typeof menu.name === "string"
+  );
 
-    return (
-      <div
-        key={item.menuID}
-        className='border-b border-white/10 pb-2 last:border-b-0'
-      >
-        <Collapsible
-          open={isOpen}
-          onOpenChange={() => toggleExpanded(`menu-${item.menuID}`)}
-        >
-          <CollapsibleTrigger asChild>
-            <button className='w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-white hover:bg-white/20 transition-all duration-200 group border border-transparent hover:border-white/20'>
+  // Render menu items recursively
+  const renderMenuItems = (menuItems: ProcessedMenu[], level = 0) => {
+    return menuItems.map((item) => {
+      const isOpen = expandedItems.has(`menu-${item.menuID}`);
+      const IconComponent = getMenuIcon(item.name, isOpen);
+      const hasSubMenus = item.subMenus && item.subMenus.length > 0;
+      const isLinkable = !!item.menuLink && !hasSubMenus;
+
+      const paddingLeft = level * 12 + 12; // Base padding + level-based indentation
+
+      // If it's a linkable item without submenus, render as link
+      if (isLinkable) {
+        return (
+          <div
+            key={item.menuID}
+            className='border-b border-white/10 pb-2 last:border-b-0'
+          >
+            <Link
+              href={item.menuLink as string}
+              className='w-full flex items-center px-3 py-2.5 rounded-xl text-white hover:bg-white/20 transition-all duration-200 group border border-transparent hover:border-white/20'
+              style={{ paddingLeft: `${paddingLeft}px` }}
+            >
               <div className='flex items-center gap-2'>
                 <IconComponent size={18} className='text-white' />
-                <span className='font-semibold text-sm'>{t(item.name)}</span>
+                <span className='font-semibold text-sm'>
+                  {item.title || item.name}
+                </span>
               </div>
-              {hasSubMenus && (
-                <ChevronDown
-                  size={16}
-                  className={`text-white/70 transition-transform duration-200 ${
-                    isOpen ? "rotate-180" : ""
-                  }`}
-                />
-              )}
-            </button>
-          </CollapsibleTrigger>
+            </Link>
+          </div>
+        );
+      }
 
-          {/* Submenu Items */}
-          {hasSubMenus && (
-            <CollapsibleContent className='mt-1'>
-              <div className='ml-2 pl-6 space-y-0.5 border-l border-white/20'>
-                {item.subMenus.map((element: any) => (
-                  <Link
-                    key={element.menuID}
-                    href={element.menuLink || "#"}
-                    className='flex items-center gap-2 px-2 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/15 transition-all duration-200 text-sm group'
-                  >
-                    <div className='w-1.5 h-1.5 rounded-full bg-white/40 group-hover:bg-white transition-colors duration-200'></div>
-                    <span className='font-normal'>{t(element.name)}</span>
-                  </Link>
-                ))}
-              </div>
-            </CollapsibleContent>
-          )}
-        </Collapsible>
-      </div>
-    );
-  });
+      // If it has submenus, render as collapsible
+      return (
+        <div
+          key={item.menuID}
+          className='border-b border-white/10 pb-2 last:border-b-0'
+        >
+          <Collapsible
+            open={isOpen}
+            onOpenChange={() => toggleExpanded(`menu-${item.menuID}`)}
+          >
+            <CollapsibleTrigger asChild>
+              <button
+                className='w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-white hover:bg-white/20 transition-all duration-200 group border border-transparent hover:border-white/20'
+                style={{ paddingLeft: `${paddingLeft}px` }}
+              >
+                <div className='flex items-center gap-2'>
+                  <IconComponent size={18} className='text-white' />
+                  <span className='font-semibold text-sm'>
+                    {item.title || item.name}
+                  </span>
+                </div>
+                {hasSubMenus && (
+                  <ChevronDown
+                    size={16}
+                    className={`text-white/70 transition-transform duration-200 ${
+                      isOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                )}
+              </button>
+            </CollapsibleTrigger>
 
+            {/* Submenu Items */}
+            {hasSubMenus && (
+              <CollapsibleContent className='mt-1'>
+                <div className='space-y-0.5'>
+                  {renderMenuItems(item.subMenus!, level + 1)}
+                </div>
+              </CollapsibleContent>
+            )}
+          </Collapsible>
+        </div>
+      );
+    });
+  };
+
+  // Loading state
   if (isLoading) {
     return (
       <Sidebar className='w-64 bg-gradient-to-b from-[#0B4F6C] to-[#1A94D4] border-r border-white/20 shadow-2xl'>
@@ -280,8 +561,9 @@ export function AppSidebar() {
             </div>
           </div>
         </SidebarHeader>
-        <SidebarContent className='bg-transparent px-4 py-6 flex items-center justify-center'>
-          <div className='text-white/70 text-sm'>Loading...</div>
+        <SidebarContent className='bg-transparent px-4 py-6 flex flex-col items-center justify-center'>
+          <RefreshCw className='w-6 h-6 text-white/70 animate-spin mb-2' />
+          <div className='text-white/70 text-sm'>Loading menus...</div>
         </SidebarContent>
       </Sidebar>
     );
@@ -302,6 +584,11 @@ export function AppSidebar() {
             <div className='text-white'>
               <h2 className='text-lg font-bold leading-tight'>SASPAK</h2>
               <p className='text-xs text-white/80 leading-tight'>CARGO</p>
+              {user && (
+                <p className='text-xs text-white/60 mt-1 truncate max-w-[120px]'>
+                  {user.fullName || user.username}
+                </p>
+              )}
             </div>
           </div>
         </Link>
@@ -309,12 +596,60 @@ export function AppSidebar() {
 
       {/* Main Content */}
       <SidebarContent className='bg-transparent px-3 py-4'>
+        {/* Error Message */}
+        {error && (
+          <div className='mb-4 mx-2 p-3 bg-yellow-500/20 border border-yellow-500/40 rounded-xl text-yellow-200 text-xs'>
+            <div className='flex items-center gap-2 mb-1'>
+              <AlertCircle size={14} />
+              <span className='font-semibold'>Notice</span>
+            </div>
+            <p className='mb-2'>{error}</p>
+            <button
+              onClick={handleRefreshMenus}
+              disabled={isRefreshing}
+              className='w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-yellow-500/30 hover:bg-yellow-500/40 rounded-lg text-yellow-100 text-xs transition-all disabled:opacity-50'
+            >
+              <RefreshCw
+                size={12}
+                className={isRefreshing ? "animate-spin" : ""}
+              />
+              {isRefreshing ? "Refreshing..." : "Refresh Menus"}
+            </button>
+          </div>
+        )}
+
+        {/* Refresh Button */}
+        <div className='mb-4 mx-2'>
+          <button
+            onClick={handleRefreshMenus}
+            disabled={isRefreshing}
+            className='w-full flex items-center justify-center gap-2 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-white/80 hover:text-white text-sm transition-all disabled:opacity-50 border border-white/20'
+          >
+            <RefreshCw
+              size={14}
+              className={isRefreshing ? "animate-spin" : ""}
+            />
+            {isRefreshing ? "Refreshing..." : "Refresh Menus"}
+          </button>
+        </div>
+
         <div className='space-y-1'>
-          {menus.length > 0 ? (
-            renderMenus
+          {validMenus.length > 0 ? (
+            renderMenuItems(validMenus)
           ) : (
-            <div className='text-center text-white/60 py-4 text-sm bg-white/10 rounded-xl mx-2'>
-              No menus available
+            <div className='text-center text-white/60 py-8 text-sm bg-white/10 rounded-xl mx-2'>
+              <AlertCircle className='w-8 h-8 text-white/40 mx-auto mb-2' />
+              <p className='mb-2'>No menus available</p>
+              <p className='text-xs text-white/40 mb-4'>
+                Please check your permissions or contact administrator
+              </p>
+              <button
+                onClick={handleRefreshMenus}
+                disabled={isRefreshing}
+                className='px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white text-xs transition-all disabled:opacity-50'
+              >
+                {isRefreshing ? "Refreshing..." : "Try Again"}
+              </button>
             </div>
           )}
         </div>
