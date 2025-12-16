@@ -43,9 +43,7 @@ import {
   ChevronRight,
   ChevronDown,
   Eye,
-  EyeOff,
   RefreshCw,
-  Copy,
   Sparkles,
   Layers,
   TrendingUp,
@@ -67,11 +65,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -183,6 +176,7 @@ function GLAccountDialog({
   parentAccounts,
   children,
   onOpenChange,
+  open,
 }: {
   type: "add" | "edit";
   defaultState: any;
@@ -190,9 +184,9 @@ function GLAccountDialog({
   parentAccounts: { value: string; label: string }[];
   children?: React.ReactNode;
   onOpenChange?: (open: boolean) => void;
+  open?: boolean;
 }) {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -214,27 +208,13 @@ function GLAccountDialog({
     },
   });
 
-  // Reset form when dialog opens/closes
+  // Reset form when dialog opens
   useEffect(() => {
     if (open) {
-      // Get user data from localStorage
-      const user = localStorage.getItem("user");
-      let companyId = 1;
-      let userId = 0;
-
-      if (user) {
-        try {
-          const u = JSON.parse(user);
-          companyId = u?.companyId || 1;
-          userId = u?.userID || 0;
-        } catch (error) {
-          console.error("Error parsing user JSON:", error);
-        }
-      }
-
+      console.log("Setting form values for:", defaultState);
       form.reset({
         accountId: defaultState.accountId || undefined,
-        companyId: companyId,
+        companyId: defaultState.companyId || 1,
         parentAccountId: defaultState.parentAccountId || null,
         accountCode: defaultState.accountCode || "",
         accountName: defaultState.accountName || "",
@@ -248,7 +228,7 @@ function GLAccountDialog({
         version: defaultState.version || 0,
       });
     }
-  }, [open, type, defaultState, form]);
+  }, [open, defaultState, form]);
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     const user = localStorage.getItem("user");
@@ -258,8 +238,10 @@ function GLAccountDialog({
     if (user) {
       try {
         const u = JSON.parse(user);
-        userId = u?.userID || 0;
+        // Try multiple possible property names for user ID
+        userId = u?.userId || u?.userID || u?.id || 0;
         companyId = u?.companyId || 1;
+        console.log("Extracted user info:", { userId, companyId });
       } catch (error) {
         console.error("Error parsing user JSON:", error);
       }
@@ -269,18 +251,19 @@ function GLAccountDialog({
 
     // Prepare payload
     const payload: any = {
-      accountId: values.accountId,
+      accountId: values.accountId || 0,
       companyId: companyId,
       parentAccountId: values.parentAccountId,
-      accountCode: values.accountCode,
+      accountCode: isUpdate ? values.accountCode : "0", // Send "0" for add, actual code for edit
       accountName: values.accountName,
       description: values.description || "",
       accountType: values.accountType,
       accountNature: values.accountNature || "",
       isHeader: values.isHeader,
       isActive: values.isActive,
-      version: values.version,
-      accountLevel: values.parentAccountId ? 2 : 1, // Auto-calculate level
+      version: values.version || 0,
+      accountLevel: values.parentAccountId ? 2 : 1,
+      createdBy: userId, // Always include createdBy
     };
 
     // For add operation
@@ -297,7 +280,7 @@ function GLAccountDialog({
 
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}GlAccounts`, {
+      const response = await fetch(`${baseUrl}GlAccount`, {
         method: isUpdate ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
@@ -311,12 +294,12 @@ function GLAccountDialog({
       }
 
       const responseData = await response.json();
+      console.log("Response data:", responseData);
 
       if (responseData?.statusCode >= 400) {
         throw new Error(responseData.message || "Unknown error occurred");
       }
 
-      setOpen(false);
       if (onOpenChange) onOpenChange(false);
 
       // Prepare the response data
@@ -332,6 +315,7 @@ function GLAccountDialog({
         title: `Account ${type === "edit" ? "updated" : "added"} successfully.`,
       });
     } catch (error: any) {
+      console.error("Error submitting form:", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -343,22 +327,21 @@ function GLAccountDialog({
   };
 
   const handleOpenChange = (open: boolean) => {
-    setOpen(open);
     if (onOpenChange) onOpenChange(open);
   };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {type === "edit" ? (
-          children || <Button variant='outline'>Edit</Button>
-        ) : (
+      {type === "edit" ? (
+        <DialogTrigger asChild>{children}</DialogTrigger>
+      ) : (
+        <DialogTrigger asChild>
           <Button className='flex items-center gap-2'>
             <Plus size={16} />
             New Account
           </Button>
-        )}
-      </DialogTrigger>
+        </DialogTrigger>
+      )}
       <DialogContent className='max-w-2xl max-h-[90vh] overflow-y-auto'>
         <DialogHeader>
           <DialogTitle>
@@ -389,12 +372,12 @@ function GLAccountDialog({
                       if (user) {
                         try {
                           const u = JSON.parse(user);
-                          return u?.companyName || "Default Company";
+                          return u?.companyName || "SASPAK CARGO";
                         } catch (error) {
-                          return "Default Company";
+                          return "SASPAK CARGO";
                         }
                       }
-                      return "Default Company";
+                      return "SASPAK CARGO";
                     })()}
                   </div>
                 </div>
@@ -413,39 +396,64 @@ function GLAccountDialog({
             </div>
 
             <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* Account Code */}
+              {/* Account Code - Readonly in edit mode */}
               <FormField
                 control={form.control}
                 name='accountCode'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Account Code *</FormLabel>
+                    <FormLabel>
+                      Account Code {type === "edit" ? "(Read-only)" : ""}
+                    </FormLabel>
                     <FormControl>
-                      <Input placeholder='e.g., 1000, 1100' {...field} />
+                      <Input
+                        placeholder={type === "add" ? "Auto-generated" : ""}
+                        {...field}
+                        readOnly={type === "edit"}
+                        className={
+                          type === "edit"
+                            ? "bg-gray-100 cursor-not-allowed"
+                            : ""
+                        }
+                      />
                     </FormControl>
+                    {type === "add" && (
+                      <p className='text-xs text-gray-500'>
+                        Account code will be auto-generated by the system
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              {/* Parent Account */}
+              {/* Parent Account - Disabled for edit mode */}
               <FormField
                 control={form.control}
                 name='parentAccountId'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Parent Account</FormLabel>
+                    <FormLabel>
+                      Parent Account{" "}
+                      {type === "edit" ? "(Cannot be changed)" : ""}
+                    </FormLabel>
                     <FormControl>
                       <select
-                        className='w-full p-2 border rounded-md'
+                        className={`w-full p-2 border rounded-md ${
+                          type === "edit"
+                            ? "bg-gray-100 cursor-not-allowed"
+                            : ""
+                        }`}
                         value={field.value || ""}
                         onChange={(e) => {
+                          if (type === "edit") return; // Prevent changes in edit mode
                           const value =
                             e.target.value === ""
                               ? null
                               : Number(e.target.value);
                           field.onChange(value);
                         }}
+                        disabled={type === "edit"}
                       >
                         <option value=''>No Parent (Root Account)</option>
                         {parentAccounts.map((account) => (
@@ -455,6 +463,11 @@ function GLAccountDialog({
                         ))}
                       </select>
                     </FormControl>
+                    {type === "edit" && (
+                      <p className='text-xs text-gray-500'>
+                        Parent account cannot be changed after creation
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -509,6 +522,7 @@ function GLAccountDialog({
                       <Select
                         value={field.value}
                         onValueChange={field.onChange}
+                        disabled={type === "edit"} // Disable in edit mode
                       >
                         <SelectTrigger>
                           <SelectValue placeholder='Select account type' />
@@ -525,6 +539,11 @@ function GLAccountDialog({
                         </SelectContent>
                       </Select>
                     </FormControl>
+                    {type === "edit" && (
+                      <p className='text-xs text-gray-500'>
+                        Account type cannot be changed after creation
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -573,12 +592,18 @@ function GLAccountDialog({
                           checked={field.value}
                           onChange={field.onChange}
                           className='w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
+                          disabled={type === "edit"} // Disable in edit mode
                         />
                         <span className='text-sm font-medium'>
                           This is a header account
                         </span>
                       </div>
                     </FormControl>
+                    {type === "edit" && (
+                      <p className='text-xs text-gray-500'>
+                        Header status cannot be changed after creation
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -654,7 +679,6 @@ function GLAccountDialog({
                 type='button'
                 variant='outline'
                 onClick={() => {
-                  setOpen(false);
                   if (onOpenChange) onOpenChange(false);
                 }}
                 disabled={isLoading}
@@ -802,7 +826,7 @@ export default function GLAccountsPage({
     setLoading(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}GlAccounts/GetList`, {
+      const response = await fetch(`${baseUrl}GlAccount/GetList`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -819,6 +843,7 @@ export default function GLAccountsPage({
 
       if (response.ok) {
         const data = await response.json();
+        console.log("Fetched accounts:", data);
         const accountsTree = buildAccountTree(data);
         setAccounts(accountsTree);
         setFilteredAccounts(accountsTree);
@@ -928,10 +953,13 @@ export default function GLAccountsPage({
   // Handle Add/Edit
   const handleAddEdit = (updatedItem: any) => {
     fetchGLAccounts(); // Refresh data
+    setEditDialogOpen(false);
+    setAccountToEdit(null);
   };
 
   // Handle Edit button click
   const handleEditClick = (account: GLAccount) => {
+    console.log("Edit clicked for account:", account);
     setAccountToEdit(account);
     setEditDialogOpen(true);
   };
@@ -943,7 +971,7 @@ export default function GLAccountsPage({
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       const response = await fetch(
-        `${baseUrl}GlAccounts/${selectedAccount.accountId}`,
+        `${baseUrl}GlAccount/${selectedAccount.accountId}`,
         {
           method: "DELETE",
         }
@@ -1083,35 +1111,24 @@ export default function GLAccountsPage({
                 <Badge variant='outline' className='text-xs capitalize'>
                   {account.accountType?.toLowerCase()}
                 </Badge>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant='ghost' size='sm'>
-                      <MoreVertical className='h-4 w-4' />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align='end'>
-                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                    <DropdownMenuItem onClick={() => handleEditClick(account)}>
-                      <Edit className='h-4 w-4 mr-2' />
-                      Edit Account
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Copy className='h-4 w-4 mr-2' />
-                      Duplicate
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className='text-red-600'
-                      onClick={() => {
-                        setSelectedAccount(account);
-                        setIsDeleteDialogOpen(true);
-                      }}
-                    >
-                      <Trash2 className='h-4 w-4 mr-2' />
-                      Delete Account
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={() => handleEditClick(account)}
+                >
+                  <Edit className='h-4 w-4' />
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-red-600 hover:text-red-700'
+                  onClick={() => {
+                    setSelectedAccount(account);
+                    setIsDeleteDialogOpen(true);
+                  }}
+                >
+                  <Trash2 className='h-4 w-4' />
+                </Button>
               </div>
             </div>
           </div>
@@ -1543,11 +1560,18 @@ export default function GLAccountsPage({
       {/* Edit Dialog */}
       {accountToEdit && (
         <GLAccountDialog
+          key={accountToEdit.accountId}
           type='edit'
           defaultState={accountToEdit}
           handleAddEdit={handleAddEdit}
           parentAccounts={getParentAccounts()}
-          onOpenChange={setEditDialogOpen}
+          onOpenChange={(open) => {
+            setEditDialogOpen(open);
+            if (!open) {
+              setAccountToEdit(null);
+            }
+          }}
+          open={editDialogOpen}
         />
       )}
 

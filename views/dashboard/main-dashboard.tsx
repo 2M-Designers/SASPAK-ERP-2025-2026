@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Package,
   Ship,
@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 export default function SASPAKDashboard() {
+  const [userRoleId, setUserRoleId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("management");
   const [showFinancials, setShowFinancials] = useState(true);
   const [dateRange, setDateRange] = useState("current-month");
@@ -36,14 +37,50 @@ export default function SASPAKDashboard() {
   const [selectedBranch, setSelectedBranch] = useState("all");
   const [selectedCRE, setSelectedCRE] = useState("all");
 
-  // User Role Selection
+  // Get user role from localStorage on component mount
+  useEffect(() => {
+    // Try to parse the user object from localStorage
+    const userString = localStorage.getItem("user");
+    if (userString) {
+      try {
+        const user = JSON.parse(userString);
+        setUserRoleId(user.roleId || null);
+      } catch (error) {
+        console.error("Error parsing user data:", error);
+      }
+    }
+
+    // Alternative: Check if roleId is stored directly in localStorage
+    const roleId = localStorage.getItem("roleId");
+    if (roleId) {
+      setUserRoleId(parseInt(roleId));
+    }
+  }, []);
+
+  // Initialize active tab based on roleId
+  useEffect(() => {
+    if (userRoleId !== null) {
+      if (userRoleId !== 1) {
+        // If not management, set default to CRE tab (or another appropriate tab)
+        setActiveTab("cre");
+      }
+    }
+  }, [userRoleId]);
+
+  // User Role Selection - Filter management tab if roleId is not 1
   const userRoles = [
     { id: "management", label: "Management", icon: Building },
     { id: "cre", label: "CRE", icon: UserCheck },
     { id: "cre-manager", label: "CRE Manager", icon: Shield },
     { id: "shipping", label: "Shipping", icon: Ship },
     { id: "billing", label: "Billing", icon: CreditCard },
-  ];
+  ].filter((role) => {
+    // If roleId is not 1, hide management tab
+    if (role.id === "management" && userRoleId !== 1) {
+      return false;
+    }
+    return true;
+  });
 
   // Companies and Branches
   const companies = [
@@ -705,6 +742,18 @@ export default function SASPAKDashboard() {
     </div>
   );
 
+  // Show loading state while fetching roleId
+  if (userRoleId === null) {
+    return (
+      <div className='min-h-screen bg-gray-50 flex items-center justify-center'>
+        <div className='text-center'>
+          <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto'></div>
+          <p className='mt-4 text-gray-600'>Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className='min-h-screen bg-gray-50'>
       {/* Header */}
@@ -715,6 +764,12 @@ export default function SASPAKDashboard() {
               <h1 className='text-2xl font-bold text-gray-900'>Dashboard</h1>
               <p className='text-gray-500 text-sm mt-1'>
                 SASPAK Cargo - Multi-Role Operations Dashboard
+              </p>
+              {/* Show current role info */}
+              <p className='text-xs text-gray-400 mt-1'>
+                Logged in as:{" "}
+                {userRoleId === 1 ? "Management" : "Operations Administrator"}{" "}
+                (Role ID: {userRoleId})
               </p>
             </div>
             <div className='flex items-center gap-3 w-full md:w-auto flex-col md:flex-row'>
@@ -770,37 +825,38 @@ export default function SASPAKDashboard() {
         </div>
 
         {/* Role-based Filters */}
-        {(activeTab === "management" || activeTab === "cre-manager") && (
-          <div className='flex gap-4 mb-6 flex-wrap'>
-            <select
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-              className='px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white'
-            >
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </select>
-            {activeTab === "cre-manager" && (
+        {(activeTab === "management" || activeTab === "cre-manager") &&
+          userRoleId === 1 && (
+            <div className='flex gap-4 mb-6 flex-wrap'>
               <select
-                value={selectedCRE}
-                onChange={(e) => setSelectedCRE(e.target.value)}
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
                 className='px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white'
               >
-                {creStaff.map((cre) => (
-                  <option key={cre.id} value={cre.id}>
-                    {cre.name}
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
                   </option>
                 ))}
               </select>
-            )}
-          </div>
-        )}
+              {activeTab === "cre-manager" && (
+                <select
+                  value={selectedCRE}
+                  onChange={(e) => setSelectedCRE(e.target.value)}
+                  className='px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white'
+                >
+                  {creStaff.map((cre) => (
+                    <option key={cre.id} value={cre.id}>
+                      {cre.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
 
         {/* ===================== MANAGEMENT DASHBOARD ===================== */}
-        {activeTab === "management" && (
+        {activeTab === "management" && userRoleId === 1 && (
           <div className='space-y-8'>
             {/* Company Worth */}
             <div className='bg-white rounded-lg border border-gray-200 p-6'>
@@ -1015,6 +1071,25 @@ export default function SASPAKDashboard() {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Show message if trying to access management without permission */}
+        {activeTab === "management" && userRoleId !== 1 && (
+          <div className='bg-white rounded-lg border border-gray-200 p-8 text-center'>
+            <Shield size={48} className='mx-auto text-gray-400 mb-4' />
+            <h3 className='text-lg font-bold text-gray-900 mb-2'>
+              Access Denied
+            </h3>
+            <p className='text-gray-600'>
+              You dont have permission to access the Management dashboard.
+            </p>
+            <button
+              onClick={() => setActiveTab("cre")}
+              className='mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors'
+            >
+              Go to CRE Dashboard
+            </button>
           </div>
         )}
 
