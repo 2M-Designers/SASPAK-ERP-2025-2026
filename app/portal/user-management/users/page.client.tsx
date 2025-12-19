@@ -103,6 +103,12 @@ const fieldConfig = [
     isdisplayed: false,
     isselected: true,
   },
+  {
+    fieldName: "roleName",
+    displayName: "Role Name",
+    isdisplayed: false,
+    isselected: true,
+  },
 ];
 
 // Get only displayed fields for the table
@@ -318,6 +324,12 @@ export default function UserPage({ initialData }: UserPageProps) {
       accessorKey: "phoneNumber",
       header: "Phone Number",
       cell: ({ row }) => <span>{row.getValue("phoneNumber") || "-"}</span>,
+      enableColumnFilter: false,
+    },
+    {
+      accessorKey: "roleName",
+      header: "Role Name",
+      cell: ({ row }) => <span>{row.getValue("roleName") || "-"}</span>,
       enableColumnFilter: false,
     },
     // Last Login

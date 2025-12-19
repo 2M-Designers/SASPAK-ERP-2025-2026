@@ -8,7 +8,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import readXlsxFile from "read-excel-file";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import PartiesForm from "@/views/forms/parties-form/parties-form";
+import PartiesForm from "@/views/forms/parties-form/parties-form-section";
 import AppLoader from "@/components/app-loader";
 import {
   FiTrash2,

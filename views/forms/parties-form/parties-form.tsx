@@ -15,7 +15,6 @@ import Select from "react-select";
 import { useToast } from "@/hooks/use-toast";
 import {
   Loader2,
-  ChevronLeft,
   Save,
   Building,
   Contact,
@@ -23,6 +22,7 @@ import {
   Settings,
   User,
   FileText,
+  AlertCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -32,73 +32,122 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const formSchema = z.object({
-  partyId: z.number().optional(),
-  companyId: z.number().default(1),
-  partyCode: z.string().optional(),
-  partyName: z.string().min(1, "Party Name is required"),
-  partyShortName: z.string().optional(),
-  isActive: z.boolean().default(true),
-  isGLLinked: z.boolean().default(false),
-  isCustomer: z.boolean().default(false),
-  isVendor: z.boolean().default(false),
-  isCustomerVendor: z.boolean().default(false),
-  isAgent: z.boolean().default(false),
-  isOverseasAgent: z.boolean().default(false),
-  isShippingLine: z.boolean().default(false),
-  isTransporter: z.boolean().default(false),
-  isConsignee: z.boolean().default(false),
-  isShipper: z.boolean().default(false),
-  isPrincipal: z.boolean().default(false),
-  isNonGLParty: z.boolean().default(false),
-  isInSeaImport: z.boolean().default(false),
-  isInSeaExport: z.boolean().default(false),
-  isInAirImport: z.boolean().default(false),
-  isInAirExport: z.boolean().default(false),
-  isInLogistics: z.boolean().default(false),
-  unLocationId: z.number().optional(),
-  addressLine1: z.string().optional(),
-  addressLine2: z.string().optional(),
-  postalCode: z.string().optional(),
-  phone: z.string().optional(),
-  fax: z.string().optional(),
-  email: z.string().email("Invalid email address").optional().or(z.literal("")),
-  website: z.string().optional(),
-  contactPersonName: z.string().optional(),
-  contactPersonDesignation: z.string().optional(),
-  contactPersonEmail: z
-    .string()
-    .email("Invalid email address")
-    .optional()
-    .or(z.literal("")),
-  contactPersonPhone: z.string().optional(),
-  ntnNumber: z.string().optional(),
-  strnNumber: z.string().optional(),
-  bankName: z.string().optional(),
-  bankAccountNumber: z.string().optional(),
-  ibanNumber: z.string().optional(),
-  creditLimitLC: z.number().default(0),
-  creditLimitFC: z.number().default(0),
-  allowedCreditDays: z.number().default(0),
-  paymentTerms: z.string().optional(),
-  glParentAccountId: z.number().optional(),
-  glAccountId: z.string().optional(),
-  trackIdAllowed: z.boolean().default(false),
-  idPasswordAllowed: z.boolean().default(false),
-  sendEmail: z.boolean().default(false),
-  canSeeBills: z.boolean().default(false),
-  canSeeLedger: z.boolean().default(false),
-  isProcessOwner: z.boolean().default(false),
-  clearanceByOps: z.boolean().default(false),
-  clearanceByAcm: z.boolean().default(false),
-  atTradeForGDInsustrial: z.boolean().default(false),
-  atTradeForGDCommercial: z.boolean().default(false),
-  benificiaryNameOfPO: z.string().optional(),
-  salesRepId: z.number().optional(),
-  docsRepId: z.number().optional(),
-  accountsRepId: z.number().optional(),
-});
+// Define validation schema
+const formSchema = z
+  .object({
+    partyId: z.number().optional(),
+    companyId: z.number().default(1),
+    partyCode: z.string().optional(),
+    partyName: z.string().min(1, "Party Name is required"),
+    partyShortName: z.string().optional(),
+    isActive: z.boolean().default(true),
+    isGLLinked: z.boolean().default(false),
+    isCustomer: z.boolean().default(false),
+    isVendor: z.boolean().default(false),
+    isCustomerVendor: z.boolean().default(false),
+    isAgent: z.boolean().default(false),
+    isOverseasAgent: z.boolean().default(false),
+    isShippingLine: z.boolean().default(false),
+    isTransporter: z.boolean().default(false),
+    isConsignee: z.boolean().default(false),
+    isShipper: z.boolean().default(false),
+    isPrincipal: z.boolean().default(false),
+    isNonGLParty: z.boolean().default(false),
+    isInSeaImport: z.boolean().default(false),
+    isInSeaExport: z.boolean().default(false),
+    isInAirImport: z.boolean().default(false),
+    isInAirExport: z.boolean().default(false),
+    isInLogistics: z.boolean().default(false),
+    unLocationId: z.number().optional(),
+    addressLine1: z.string().optional(),
+    addressLine2: z.string().optional(),
+    postalCode: z.string().optional(),
+    phone: z.string().optional(),
+    fax: z.string().optional(),
+    email: z
+      .string()
+      .email("Invalid email address")
+      .optional()
+      .or(z.literal("")),
+    website: z.string().optional(),
+    contactPersonName: z.string().optional(),
+    contactPersonDesignation: z.string().optional(),
+    contactPersonEmail: z
+      .string()
+      .email("Invalid email address")
+      .optional()
+      .or(z.literal("")),
+    contactPersonPhone: z.string().optional(),
+    ntnNumber: z.string().optional(),
+    strnNumber: z.string().optional(),
+    bankName: z.string().optional(),
+    bankAccountNumber: z.string().optional(),
+    ibanNumber: z.string().optional(),
+    creditLimitLC: z.number().default(0),
+    creditLimitFC: z.number().default(0),
+    allowedCreditDays: z.number().default(0),
+    paymentTerms: z.string().optional(),
+    glParentAccountId: z.number().optional(),
+    glAccountId: z.string().optional(),
+    trackIdAllowed: z.boolean().default(false),
+    idPasswordAllowed: z.boolean().default(false),
+    sendEmail: z.boolean().default(false),
+    canSeeBills: z.boolean().default(false),
+    canSeeLedger: z.boolean().default(false),
+    isProcessOwner: z.boolean().default(false),
+    clearanceByOps: z.boolean().default(false),
+    clearanceByAcm: z.boolean().default(false),
+    atTradeForGDInsustrial: z.boolean().default(false),
+    atTradeForGDCommercial: z.boolean().default(false),
+    benificiaryNameOfPO: z.string().optional(),
+    salesRepId: z.number().optional(),
+    docsRepId: z.number().optional(),
+    accountsRepId: z.number().optional(),
+  })
+  .refine(
+    (data) => {
+      // Customer-Vendor validation: Cannot be both Customer and Vendor if Customer/Vendor is selected
+      if (data.isCustomerVendor) {
+        return !data.isCustomer && !data.isVendor;
+      }
+      return true;
+    },
+    {
+      message:
+        "Cannot select Customer or Vendor separately when Customer/Vendor is selected",
+      path: ["isCustomerVendor"],
+    }
+  )
+  .refine(
+    (data) => {
+      // Customer validation: Cannot be Customer if Vendor or Customer/Vendor is selected
+      if (data.isCustomer) {
+        return !data.isVendor && !data.isCustomerVendor;
+      }
+      return true;
+    },
+    {
+      message:
+        "Cannot select Vendor or Customer/Vendor when Customer is selected",
+      path: ["isCustomer"],
+    }
+  )
+  .refine(
+    (data) => {
+      // Vendor validation: Cannot be Vendor if Customer or Customer/Vendor is selected
+      if (data.isVendor) {
+        return !data.isCustomer && !data.isCustomerVendor;
+      }
+      return true;
+    },
+    {
+      message:
+        "Cannot select Customer or Customer/Vendor when Vendor is selected",
+      path: ["isVendor"],
+    }
+  );
 
 export default function PartiesForm({
   type,
@@ -124,6 +173,7 @@ export default function PartiesForm({
   const [loadingDocsReps, setLoadingDocsReps] = useState(false);
   const [loadingAccountsReps, setLoadingAccountsReps] = useState(false);
 
+  // Fetch data functions (same as before)
   const fetchUnlocations = async () => {
     setLoadingUnlocations(true);
     try {
@@ -170,28 +220,25 @@ export default function PartiesForm({
     setLoadingGlAccounts(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(
-        `${baseUrl}GlAccounts/GetChildGLChartofAccountsList`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            select: "GlAccountId,AccountCode,AccountName",
-            where: "IsActive == true",
-            sortOn: "AccountCode",
-            page: "1",
-            pageSize: "100",
-          }),
-        }
-      );
+      const response = await fetch(`${baseUrl}GlAccount/GetList`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          select: "AccountId,AccountCode,AccountName",
+          where: "IsActive == true",
+          sortOn: "AccountCode",
+          page: "1",
+          pageSize: "100",
+        }),
+      });
 
       if (response.ok) {
         const data = await response.json();
         setGlAccounts(
           data.map((account: any) => ({
-            value: account.glAccountId,
+            value: account.accountId,
             label: `${account.accountCode} - ${account.accountName}`,
           }))
         );
@@ -214,7 +261,7 @@ export default function PartiesForm({
     setLoadingSalesReps(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Employees/GetList`, {
+      const response = await fetch(`${baseUrl}Employee/GetList`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -255,7 +302,7 @@ export default function PartiesForm({
     setLoadingDocsReps(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Employees/GetList`, {
+      const response = await fetch(`${baseUrl}Employee/GetList`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -296,7 +343,7 @@ export default function PartiesForm({
     setLoadingAccountsReps(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Employees/GetList`, {
+      const response = await fetch(`${baseUrl}Employee/GetList`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -358,6 +405,48 @@ export default function PartiesForm({
         : 0,
     },
   });
+
+  // Watch important fields for conditional rendering
+  const isNonGLParty = form.watch("isNonGLParty");
+  const isGLLinked = form.watch("isGLLinked");
+  const isCustomer = form.watch("isCustomer");
+  const isVendor = form.watch("isVendor");
+  const isCustomerVendor = form.watch("isCustomerVendor");
+
+  // Handle toggle logic for mutually exclusive fields
+  const handleCustomerVendorToggle = (field: string, value: boolean) => {
+    if (field === "isCustomerVendor" && value) {
+      // If Customer/Vendor is enabled, disable Customer and Vendor
+      form.setValue("isCustomer", false);
+      form.setValue("isVendor", false);
+    } else if (field === "isCustomer" && value) {
+      // If Customer is enabled, disable Vendor and Customer/Vendor
+      form.setValue("isVendor", false);
+      form.setValue("isCustomerVendor", false);
+    } else if (field === "isVendor" && value) {
+      // If Vendor is enabled, disable Customer and Customer/Vendor
+      form.setValue("isCustomer", false);
+      form.setValue("isCustomerVendor", false);
+    }
+  };
+
+  // Handle Non-GL Party toggle
+  const handleNonGLPartyToggle = (value: boolean) => {
+    if (value) {
+      // If Non-GL Party is enabled, disable GL Linked and clear GL fields
+      form.setValue("isGLLinked", false);
+      form.setValue("glParentAccountId", undefined);
+      form.setValue("glAccountId", "");
+    }
+  };
+
+  // Handle GL Linked toggle
+  const handleGLLinkedToggle = (value: boolean) => {
+    if (value) {
+      // If GL Linked is enabled, disable Non-GL Party
+      form.setValue("isNonGLParty", false);
+    }
+  };
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsSubmitting(true);
@@ -422,10 +511,14 @@ export default function PartiesForm({
     name,
     label,
     description,
+    disabled = false,
+    onChange,
   }: {
     name: keyof z.infer<typeof formSchema>;
     label: string;
     description?: string;
+    disabled?: boolean;
+    onChange?: (checked: boolean) => void;
   }) => (
     <FormField
       control={form.control}
@@ -441,7 +534,13 @@ export default function PartiesForm({
           <FormControl>
             <Switch
               checked={field.value as boolean}
-              onCheckedChange={field.onChange}
+              onCheckedChange={(checked) => {
+                field.onChange(checked);
+                if (onChange) {
+                  onChange(checked);
+                }
+              }}
+              disabled={disabled}
             />
           </FormControl>
         </FormItem>
@@ -483,6 +582,20 @@ export default function PartiesForm({
               </FormItem>
             )}
           />
+
+          {/* Customer/Vendor Relationship Alert */}
+          {(isCustomer && (isVendor || isCustomerVendor)) ||
+          (isVendor && (isCustomer || isCustomerVendor)) ||
+          (isCustomerVendor && (isCustomer || isVendor)) ? (
+            <Alert variant='destructive'>
+              <AlertCircle className='h-4 w-4' />
+              <AlertDescription>
+                Invalid selection: A party cannot be both Customer and Vendor
+                simultaneously. Please select only one of: Customer, Vendor, or
+                Customer/Vendor.
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           {/* Basic Information Section */}
           <Card>
@@ -590,10 +703,42 @@ export default function PartiesForm({
               </CardTitle>
             </CardHeader>
             <CardContent>
+              <div className='mb-4'>
+                <h4 className='text-sm font-medium mb-2 text-muted-foreground'>
+                  Customer/Vendor Relationship (Select Only One)
+                </h4>
+                <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                  <ToggleField
+                    name='isCustomer'
+                    label='Customer'
+                    description='Party is a customer'
+                    disabled={isVendor || isCustomerVendor}
+                    onChange={(checked) =>
+                      handleCustomerVendorToggle("isCustomer", checked)
+                    }
+                  />
+                  <ToggleField
+                    name='isVendor'
+                    label='Vendor'
+                    description='Party is a vendor'
+                    disabled={isCustomer || isCustomerVendor}
+                    onChange={(checked) =>
+                      handleCustomerVendorToggle("isVendor", checked)
+                    }
+                  />
+                  <ToggleField
+                    name='isCustomerVendor'
+                    label='Customer/Vendor'
+                    description='Party is both customer and vendor'
+                    disabled={isCustomer || isVendor}
+                    onChange={(checked) =>
+                      handleCustomerVendorToggle("isCustomerVendor", checked)
+                    }
+                  />
+                </div>
+              </div>
+
               <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-                <ToggleField name='isCustomer' label='Customer' />
-                <ToggleField name='isVendor' label='Vendor' />
-                <ToggleField name='isCustomerVendor' label='Customer/Vendor' />
                 <ToggleField name='isAgent' label='Agent' />
                 <ToggleField name='isOverseasAgent' label='Overseas Agent' />
                 <ToggleField name='isShippingLine' label='Shipping Line' />
@@ -601,7 +746,12 @@ export default function PartiesForm({
                 <ToggleField name='isConsignee' label='Consignee' />
                 <ToggleField name='isShipper' label='Shipper' />
                 <ToggleField name='isPrincipal' label='Principal' />
-                <ToggleField name='isNonGLParty' label='Non-GL Party' />
+                <ToggleField
+                  name='isNonGLParty'
+                  label='Non-GL Party'
+                  description='Party is not linked to General Ledger'
+                  onChange={handleNonGLPartyToggle}
+                />
               </div>
 
               <div className='mt-6'>
@@ -965,65 +1115,78 @@ export default function PartiesForm({
             </CardContent>
           </Card>
 
-          {/* GL Integration Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className='flex items-center gap-2'>
-                <FileText className='h-5 w-5' />
-                <Badge variant='outline' className='px-2 py-1'>
-                  GL Integration
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className='grid grid-cols-1 md:grid-cols-2 gap-6'>
-              <ToggleField
-                name='isGLLinked'
-                label='GL Linked'
-                description='Link this party to General Ledger'
-              />
+          {/* GL Integration Section - Conditionally Rendered */}
+          {!isNonGLParty && (
+            <Card>
+              <CardHeader>
+                <CardTitle className='flex items-center gap-2'>
+                  <FileText className='h-5 w-5' />
+                  <Badge variant='outline' className='px-2 py-1'>
+                    GL Integration
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className='grid grid-cols-1 md:grid-cols-2 gap-6'>
+                <ToggleField
+                  name='isGLLinked'
+                  label='GL Linked'
+                  description='Link this party to General Ledger'
+                  onChange={handleGLLinkedToggle}
+                  disabled={isNonGLParty}
+                />
 
-              <FormField
-                control={form.control}
-                name='glParentAccountId'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>GL Parent Account</FormLabel>
-                    <FormControl>
-                      <Select
-                        options={glAccounts}
-                        value={glAccounts.find(
-                          (option) => option.value === field.value
-                        )}
-                        onChange={(val) => field.onChange(val?.value)}
-                        placeholder={
-                          loadingGlAccounts ? "Loading..." : "Select GL Account"
-                        }
-                        className='react-select-container'
-                        classNamePrefix='react-select'
-                        isLoading={loadingGlAccounts}
-                        isDisabled={loadingGlAccounts}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                {isGLLinked && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name='glParentAccountId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>GL Parent Account</FormLabel>
+                          <FormControl>
+                            <Select
+                              options={glAccounts}
+                              value={glAccounts.find(
+                                (option) => option.value === field.value
+                              )}
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder={
+                                loadingGlAccounts
+                                  ? "Loading..."
+                                  : "Select GL Account"
+                              }
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isLoading={loadingGlAccounts}
+                              isDisabled={loadingGlAccounts}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-              <FormField
-                control={form.control}
-                name='glAccountId'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>GL Account ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder='GL Account identifier' {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+                    <FormField
+                      control={form.control}
+                      name='glAccountId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>GL Account ID</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder='GL Account identifier'
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
                 )}
-              />
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
           {/* System Settings Section */}
           <Card>
