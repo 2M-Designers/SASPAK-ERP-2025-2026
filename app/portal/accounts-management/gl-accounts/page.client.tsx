@@ -19,14 +19,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -57,6 +54,8 @@ import {
   Banknote,
   PieChart,
   Briefcase,
+  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -75,17 +74,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface GLAccount {
   accountId: number;
@@ -113,21 +102,6 @@ interface AccountType {
   icon: any;
   color: string;
 }
-
-// Validation Schema for Account Form
-const formSchema = z.object({
-  accountId: z.number().optional(),
-  companyId: z.number().optional(),
-  parentAccountId: z.number().nullable().optional(),
-  accountCode: z.string().min(1, "Account Code is required"),
-  accountName: z.string().min(1, "Account Name is required"),
-  description: z.string().optional(),
-  accountType: z.string().min(1, "Account Type is required"),
-  accountNature: z.string().optional(),
-  isHeader: z.boolean().default(false),
-  isActive: z.boolean().default(true),
-  version: z.number().optional(),
-});
 
 const accountTypes: AccountType[] = [
   { value: "ASSET", label: "Asset", icon: Building, color: "bg-blue-500" },
@@ -171,66 +145,113 @@ const accountTypes: AccountType[] = [
 // Account Form Dialog Component
 function GLAccountDialog({
   type,
-  defaultState,
-  handleAddEdit,
+  account,
+  parentAccount,
+  isOpen,
+  onClose,
+  onSuccess,
   parentAccounts,
-  children,
-  onOpenChange,
-  open,
 }: {
-  type: "add" | "edit";
-  defaultState: any;
-  handleAddEdit: (item: any) => void;
+  type: "add" | "edit" | "add-child";
+  account?: GLAccount | null;
+  parentAccount?: GLAccount | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
   parentAccounts: { value: string; label: string }[];
-  children?: React.ReactNode;
-  onOpenChange?: (open: boolean) => void;
-  open?: boolean;
 }) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      accountId: defaultState.accountId || undefined,
-      companyId: defaultState.companyId || 1,
-      parentAccountId: defaultState.parentAccountId || null,
-      accountCode: defaultState.accountCode || "",
-      accountName: defaultState.accountName || "",
-      description: defaultState.description || "",
-      accountType: defaultState.accountType || "",
-      accountNature: defaultState.accountNature || "",
-      isHeader:
-        defaultState.isHeader !== undefined ? defaultState.isHeader : false,
-      isActive:
-        defaultState.isActive !== undefined ? defaultState.isActive : true,
-      version: defaultState.version || 0,
-    },
+  // Form state
+  const [formData, setFormData] = useState({
+    accountId: 0,
+    companyId: 1,
+    parentAccountId: null as number | null,
+    accountCode: "",
+    accountName: "",
+    description: "",
+    accountType: "",
+    accountNature: "",
+    isHeader: false,
+    isActive: true,
+    version: 0,
   });
 
-  // Reset form when dialog opens
+  // Initialize form data when dialog opens
   useEffect(() => {
-    if (open) {
-      console.log("Setting form values for:", defaultState);
-      form.reset({
-        accountId: defaultState.accountId || undefined,
-        companyId: defaultState.companyId || 1,
-        parentAccountId: defaultState.parentAccountId || null,
-        accountCode: defaultState.accountCode || "",
-        accountName: defaultState.accountName || "",
-        description: defaultState.description || "",
-        accountType: defaultState.accountType || "",
-        accountNature: defaultState.accountNature || "",
-        isHeader:
-          defaultState.isHeader !== undefined ? defaultState.isHeader : false,
-        isActive:
-          defaultState.isActive !== undefined ? defaultState.isActive : true,
-        version: defaultState.version || 0,
-      });
+    if (isOpen) {
+      if (type === "edit" && account) {
+        setFormData({
+          accountId: account.accountId,
+          companyId: account.companyId,
+          parentAccountId: account.parentAccountId,
+          accountCode: account.accountCode,
+          accountName: account.accountName,
+          description: account.description || "",
+          accountType: account.accountType,
+          accountNature: account.accountNature || "",
+          isHeader: account.isHeader,
+          isActive: account.isActive,
+          version: account.version,
+        });
+      } else if (type === "add-child" && parentAccount) {
+        setFormData({
+          accountId: 0,
+          companyId: parentAccount.companyId,
+          parentAccountId: parentAccount.accountId,
+          accountCode: "",
+          accountName: "",
+          description: "",
+          accountType: parentAccount.accountType,
+          accountNature: "",
+          isHeader: false,
+          isActive: true,
+          version: 0,
+        });
+      } else {
+        // Reset for new account
+        setFormData({
+          accountId: 0,
+          companyId: 1,
+          parentAccountId: null,
+          accountCode: "",
+          accountName: "",
+          description: "",
+          accountType: "",
+          accountNature: "",
+          isHeader: false,
+          isActive: true,
+          version: 0,
+        });
+      }
+      setErrors({});
     }
-  }, [open, defaultState, form]);
+  }, [isOpen, type, account, parentAccount]);
 
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.accountName.trim()) {
+      newErrors.accountName = "Account name is required";
+    }
+
+    if (!formData.accountType) {
+      newErrors.accountType = "Account type is required";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!validateForm()) {
+      return;
+    }
+
     const user = localStorage.getItem("user");
     let userId = 0;
     let companyId = 1;
@@ -238,10 +259,8 @@ function GLAccountDialog({
     if (user) {
       try {
         const u = JSON.parse(user);
-        // Try multiple possible property names for user ID
         userId = u?.userId || u?.userID || u?.id || 0;
         companyId = u?.companyId || 1;
-        console.log("Extracted user info:", { userId, companyId });
       } catch (error) {
         console.error("Error parsing user JSON:", error);
       }
@@ -249,37 +268,33 @@ function GLAccountDialog({
 
     const isUpdate = type === "edit";
 
-    // Prepare payload
     const payload: any = {
-      accountId: values.accountId || 0,
+      accountId: formData.accountId || 0,
       companyId: companyId,
-      parentAccountId: values.parentAccountId,
-      accountCode: isUpdate ? values.accountCode : "0", // Send "0" for add, actual code for edit
-      accountName: values.accountName,
-      description: values.description || "",
-      accountType: values.accountType,
-      accountNature: values.accountNature || "",
-      isHeader: values.isHeader,
-      isActive: values.isActive,
-      version: values.version || 0,
-      accountLevel: values.parentAccountId ? 2 : 1,
-      createdBy: userId, // Always include createdBy
+      parentAccountId: formData.parentAccountId,
+      accountCode: isUpdate ? formData.accountCode : "0",
+      accountName: formData.accountName,
+      description: formData.description || "",
+      accountType: formData.accountType,
+      accountNature: formData.accountNature || "",
+      isHeader: formData.isHeader,
+      isActive: formData.isActive,
+      version: formData.version || 0,
+      accountLevel: formData.parentAccountId ? 2 : 1,
+      createdBy: userId,
     };
 
-    // For add operation
     if (!isUpdate) {
-      payload.createdBy = userId;
       payload.createdAt = new Date().toISOString();
     } else {
       payload.updatedBy = userId;
       payload.updatedAt = new Date().toISOString();
     }
 
-    console.log("GL Account Payload:", payload);
     setIsLoading(true);
 
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
       const response = await fetch(`${baseUrl}GlAccount`, {
         method: isUpdate ? "PUT" : "POST",
         headers: {
@@ -294,406 +309,296 @@ function GLAccountDialog({
       }
 
       const responseData = await response.json();
-      console.log("Response data:", responseData);
 
       if (responseData?.statusCode >= 400) {
         throw new Error(responseData.message || "Unknown error occurred");
       }
 
-      if (onOpenChange) onOpenChange(false);
-
-      // Prepare the response data
-      const responseItem = {
-        ...values,
-        ...responseData,
-        accountId: responseData.accountId || values.accountId,
-      };
-
-      handleAddEdit(responseItem);
-
       toast({
-        title: `Account ${type === "edit" ? "updated" : "added"} successfully.`,
+        title: "Success!",
+        description: `Account ${
+          type === "edit" ? "updated" : "created"
+        } successfully.`,
       });
+
+      onSuccess();
+      onClose();
     } catch (error: any) {
       console.error("Error submitting form:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to save account",
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleOpenChange = (open: boolean) => {
-    if (onOpenChange) onOpenChange(open);
+  const getDialogTitle = () => {
+    if (type === "edit") return "Edit Account";
+    if (type === "add-child")
+      return `Add Child Account under ${parentAccount?.accountName}`;
+    return "Add New Account";
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      {type === "edit" ? (
-        <DialogTrigger asChild>{children}</DialogTrigger>
-      ) : (
-        <DialogTrigger asChild>
-          <Button className='flex items-center gap-2'>
-            <Plus size={16} />
-            New Account
-          </Button>
-        </DialogTrigger>
-      )}
+    <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className='max-w-2xl max-h-[90vh] overflow-y-auto'>
         <DialogHeader>
-          <DialogTitle>
-            {type === "edit" ? "Edit Account" : "Add New Account"}
-          </DialogTitle>
+          <DialogTitle>{getDialogTitle()}</DialogTitle>
           <DialogDescription>
             {type === "edit"
-              ? "Update account information."
-              : "Add a new account to the chart of accounts."}
+              ? "Update account information. Some fields cannot be changed after creation."
+              : "Create a new general ledger account."}
           </DialogDescription>
         </DialogHeader>
 
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className='flex flex-col gap-4'
-          >
-            {/* Company Info */}
-            <div className='p-3 bg-gray-50 rounded-md'>
-              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-                <div>
-                  <FormLabel className='text-sm font-medium text-gray-600'>
-                    Company
-                  </FormLabel>
-                  <div className='mt-1 text-sm text-gray-900'>
-                    {(() => {
-                      const user = localStorage.getItem("user");
-                      if (user) {
-                        try {
-                          const u = JSON.parse(user);
-                          return u?.companyName || "SASPAK CARGO";
-                        } catch (error) {
-                          return "SASPAK CARGO";
-                        }
+        <form onSubmit={handleSubmit} className='flex flex-col gap-4'>
+          {/* Company Info */}
+          <div className='p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100'>
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+              <div>
+                <Label className='text-sm font-medium text-gray-600'>
+                  Company
+                </Label>
+                <div className='mt-1 text-sm font-semibold text-gray-900'>
+                  {(() => {
+                    const user = localStorage.getItem("user");
+                    if (user) {
+                      try {
+                        const u = JSON.parse(user);
+                        return u?.companyName || "SASPAK CARGO";
+                      } catch (error) {
+                        return "SASPAK CARGO";
                       }
-                      return "SASPAK CARGO";
-                    })()}
-                  </div>
+                    }
+                    return "SASPAK CARGO";
+                  })()}
                 </div>
+              </div>
 
-                <div>
-                  <FormLabel className='text-sm font-medium text-gray-600'>
-                    Account Level
-                  </FormLabel>
-                  <div className='mt-1 text-sm text-gray-900'>
-                    {form.watch("parentAccountId")
+              <div>
+                <Label className='text-sm font-medium text-gray-600'>
+                  Account Level
+                </Label>
+                <div className='mt-1'>
+                  <Badge
+                    variant={formData.parentAccountId ? "default" : "secondary"}
+                  >
+                    {formData.parentAccountId
                       ? "Level 2 (Child)"
                       : "Level 1 (Root)"}
-                  </div>
+                  </Badge>
                 </div>
               </div>
             </div>
+          </div>
 
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* Account Code - Readonly in edit mode */}
-              <FormField
-                control={form.control}
-                name='accountCode'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Account Code {type === "edit" ? "(Read-only)" : ""}
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder={type === "add" ? "Auto-generated" : ""}
-                        {...field}
-                        readOnly={type === "edit"}
-                        className={
-                          type === "edit"
-                            ? "bg-gray-100 cursor-not-allowed"
-                            : ""
-                        }
-                      />
-                    </FormControl>
-                    {type === "add" && (
-                      <p className='text-xs text-gray-500'>
-                        Account code will be auto-generated by the system
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+            {/* Account Code */}
+            <div>
+              <Label htmlFor='accountCode'>
+                Account Code {type === "edit" && "(Read-only)"}
+              </Label>
+              <Input
+                id='accountCode'
+                placeholder={type === "edit" ? "" : "Auto-generated"}
+                value={formData.accountCode}
+                onChange={(e) =>
+                  setFormData({ ...formData, accountCode: e.target.value })
+                }
+                readOnly={type === "edit"}
+                className={
+                  type === "edit" ? "bg-gray-100 cursor-not-allowed" : ""
+                }
               />
-
-              {/* Parent Account - Disabled for edit mode */}
-              <FormField
-                control={form.control}
-                name='parentAccountId'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Parent Account{" "}
-                      {type === "edit" ? "(Cannot be changed)" : ""}
-                    </FormLabel>
-                    <FormControl>
-                      <select
-                        className={`w-full p-2 border rounded-md ${
-                          type === "edit"
-                            ? "bg-gray-100 cursor-not-allowed"
-                            : ""
-                        }`}
-                        value={field.value || ""}
-                        onChange={(e) => {
-                          if (type === "edit") return; // Prevent changes in edit mode
-                          const value =
-                            e.target.value === ""
-                              ? null
-                              : Number(e.target.value);
-                          field.onChange(value);
-                        }}
-                        disabled={type === "edit"}
-                      >
-                        <option value=''>No Parent (Root Account)</option>
-                        {parentAccounts.map((account) => (
-                          <option key={account.value} value={account.value}>
-                            {account.label}
-                          </option>
-                        ))}
-                      </select>
-                    </FormControl>
-                    {type === "edit" && (
-                      <p className='text-xs text-gray-500'>
-                        Parent account cannot be changed after creation
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* Account Name */}
-            <FormField
-              control={form.control}
-              name='accountName'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Account Name *</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder='e.g., Cash & Bank, Accounts Receivable'
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Description */}
-            <FormField
-              control={form.control}
-              name='description'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder='Brief description of the account'
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* Account Type */}
-              <FormField
-                control={form.control}
-                name='accountType'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Account Type *</FormLabel>
-                    <FormControl>
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        disabled={type === "edit"} // Disable in edit mode
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder='Select account type' />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {accountTypes.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
-                              <div className='flex items-center gap-2'>
-                                <type.icon className='h-4 w-4' />
-                                {type.label}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                    {type === "edit" && (
-                      <p className='text-xs text-gray-500'>
-                        Account type cannot be changed after creation
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Account Nature */}
-              <FormField
-                control={form.control}
-                name='accountNature'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Account Nature</FormLabel>
-                    <FormControl>
-                      <Select
-                        value={field.value || ""}
-                        onValueChange={field.onChange}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder='Select nature' />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value='DEBIT'>Debit</SelectItem>
-                          <SelectItem value='CREDIT'>Credit</SelectItem>
-                          <SelectItem value='BOTH'>Both</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* Is Header */}
-              <FormField
-                control={form.control}
-                name='isHeader'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Header Account</FormLabel>
-                    <FormControl>
-                      <div className='flex items-center gap-2'>
-                        <input
-                          type='checkbox'
-                          checked={field.value}
-                          onChange={field.onChange}
-                          className='w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
-                          disabled={type === "edit"} // Disable in edit mode
-                        />
-                        <span className='text-sm font-medium'>
-                          This is a header account
-                        </span>
-                      </div>
-                    </FormControl>
-                    {type === "edit" && (
-                      <p className='text-xs text-gray-500'>
-                        Header status cannot be changed after creation
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Is Active */}
-              <FormField
-                control={form.control}
-                name='isActive'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status</FormLabel>
-                    <FormControl>
-                      <div className='flex items-center gap-2'>
-                        <input
-                          type='checkbox'
-                          checked={field.value}
-                          onChange={field.onChange}
-                          className='w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
-                        />
-                        <span className='text-sm font-medium'>
-                          {field.value ? "Active" : "Inactive"}
-                        </span>
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* Hidden fields */}
-            <div className='hidden'>
-              <FormField
-                control={form.control}
-                name='version'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input type='hidden' {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name='companyId'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input type='hidden' {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              {type === "edit" && (
-                <FormField
-                  control={form.control}
-                  name='accountId'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Input type='hidden' {...field} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
+              {type !== "edit" && (
+                <p className='text-xs text-gray-500 mt-1'>
+                  Will be auto-generated by the system
+                </p>
               )}
             </div>
 
-            <div className='flex justify-end gap-3 pt-4'>
-              <Button
-                type='button'
-                variant='outline'
-                onClick={() => {
-                  if (onOpenChange) onOpenChange(false);
+            {/* Parent Account */}
+            <div>
+              <Label htmlFor='parentAccount'>
+                Parent Account {type === "edit" && "(Cannot be changed)"}
+              </Label>
+              <select
+                id='parentAccount'
+                className={`w-full p-2 border rounded-md ${
+                  type === "edit" || type === "add-child"
+                    ? "bg-gray-100 cursor-not-allowed"
+                    : ""
+                }`}
+                value={formData.parentAccountId || ""}
+                onChange={(e) => {
+                  if (type === "edit" || type === "add-child") return;
+                  const value =
+                    e.target.value === "" ? null : Number(e.target.value);
+                  setFormData({ ...formData, parentAccountId: value });
                 }}
-                disabled={isLoading}
+                disabled={type === "edit" || type === "add-child"}
               >
-                Cancel
-              </Button>
-              <Button type='submit' disabled={isLoading}>
-                {isLoading && (
-                  <RefreshCw className='mr-2 h-4 w-4 animate-spin' />
-                )}
-                {type === "edit" ? "Update Account" : "Add Account"}
-              </Button>
+                <option value=''>No Parent (Root Account)</option>
+                {parentAccounts.map((acc) => (
+                  <option key={acc.value} value={acc.value}>
+                    {acc.label}
+                  </option>
+                ))}
+              </select>
+              {type === "edit" && (
+                <p className='text-xs text-gray-500 mt-1'>
+                  Cannot be changed after creation
+                </p>
+              )}
             </div>
-          </form>
-        </Form>
+          </div>
+
+          {/* Account Name */}
+          <div>
+            <Label htmlFor='accountName'>
+              Account Name <span className='text-red-500'>*</span>
+            </Label>
+            <Input
+              id='accountName'
+              placeholder='e.g., Cash & Bank, Accounts Receivable'
+              value={formData.accountName}
+              onChange={(e) =>
+                setFormData({ ...formData, accountName: e.target.value })
+              }
+              className={errors.accountName ? "border-red-500" : ""}
+            />
+            {errors.accountName && (
+              <p className='text-xs text-red-500 mt-1'>{errors.accountName}</p>
+            )}
+          </div>
+
+          {/* Description */}
+          <div>
+            <Label htmlFor='description'>Description</Label>
+            <Input
+              id='description'
+              placeholder='Brief description of the account'
+              value={formData.description}
+              onChange={(e) =>
+                setFormData({ ...formData, description: e.target.value })
+              }
+            />
+          </div>
+
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+            {/* Account Type */}
+            <div>
+              <Label htmlFor='accountType'>
+                Account Type <span className='text-red-500'>*</span>
+              </Label>
+              <Select
+                value={formData.accountType}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, accountType: value })
+                }
+                disabled={type === "edit" || type === "add-child"}
+              >
+                <SelectTrigger
+                  className={errors.accountType ? "border-red-500" : ""}
+                >
+                  <SelectValue placeholder='Select account type' />
+                </SelectTrigger>
+                <SelectContent>
+                  {accountTypes.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      <div className='flex items-center gap-2'>
+                        <type.icon className='h-4 w-4' />
+                        {type.label}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.accountType && (
+                <p className='text-xs text-red-500 mt-1'>
+                  {errors.accountType}
+                </p>
+              )}
+              {type === "edit" && (
+                <p className='text-xs text-gray-500 mt-1'>Cannot be changed</p>
+              )}
+            </div>
+
+            {/* Account Nature */}
+            <div>
+              <Label htmlFor='accountNature'>Account Nature</Label>
+              <Select
+                value={formData.accountNature || ""}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, accountNature: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder='Select nature' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='DEBIT'>Debit</SelectItem>
+                  <SelectItem value='CREDIT'>Credit</SelectItem>
+                  <SelectItem value='BOTH'>Both</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+            {/* Is Header */}
+            <div className='flex items-center space-x-2'>
+              <input
+                type='checkbox'
+                id='isHeader'
+                checked={formData.isHeader}
+                onChange={(e) =>
+                  setFormData({ ...formData, isHeader: e.target.checked })
+                }
+                disabled={type === "edit"}
+                className='w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
+              />
+              <Label htmlFor='isHeader' className='cursor-pointer'>
+                Header Account
+                {type === "edit" && " (Cannot be changed)"}
+              </Label>
+            </div>
+
+            {/* Is Active */}
+            <div className='flex items-center space-x-2'>
+              <input
+                type='checkbox'
+                id='isActive'
+                checked={formData.isActive}
+                onChange={(e) =>
+                  setFormData({ ...formData, isActive: e.target.checked })
+                }
+                className='w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
+              />
+              <Label htmlFor='isActive' className='cursor-pointer'>
+                {formData.isActive ? "Active" : "Inactive"}
+              </Label>
+            </div>
+          </div>
+
+          <div className='flex justify-end gap-3 pt-4 border-t'>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={onClose}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button type='submit' disabled={isLoading}>
+              {isLoading && <RefreshCw className='mr-2 h-4 w-4 animate-spin' />}
+              {type === "edit" ? "Update Account" : "Create Account"}
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -719,6 +624,20 @@ export default function GLAccountsPage({
   const [selectedType, setSelectedType] = useState<string>("ALL");
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
   const [showInactive, setShowInactive] = useState(false);
+
+  // Dialog states
+  const [dialogState, setDialogState] = useState<{
+    isOpen: boolean;
+    type: "add" | "edit" | "add-child";
+    account: GLAccount | null;
+    parentAccount: GLAccount | null;
+  }>({
+    isOpen: false,
+    type: "add",
+    account: null,
+    parentAccount: null,
+  });
+
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
@@ -730,21 +649,15 @@ export default function GLAccountsPage({
     detailAccounts: 0,
   });
 
-  // State for managing edit dialog
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [accountToEdit, setAccountToEdit] = useState<GLAccount | null>(null);
-
   // Build hierarchical tree structure
   const buildAccountTree = (accounts: GLAccount[]): GLAccount[] => {
     const accountMap = new Map<number, GLAccount>();
     const tree: GLAccount[] = [];
 
-    // Create map and add children array
     accounts.forEach((account) => {
       accountMap.set(account.accountId, { ...account, children: [] });
     });
 
-    // Build tree structure
     accounts.forEach((account) => {
       const node = accountMap.get(account.accountId)!;
       if (account.parentAccountId && accountMap.has(account.parentAccountId)) {
@@ -755,7 +668,6 @@ export default function GLAccountsPage({
       }
     });
 
-    // Sort children by account code
     const sortAccounts = (nodes: GLAccount[]) => {
       nodes.sort((a, b) => a.accountCode.localeCompare(b.accountCode));
       nodes.forEach((node) => {
@@ -825,7 +737,7 @@ export default function GLAccountsPage({
   const fetchGLAccounts = async () => {
     setLoading(true);
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
       const response = await fetch(`${baseUrl}GlAccount/GetList`, {
         method: "POST",
         headers: {
@@ -843,7 +755,6 @@ export default function GLAccountsPage({
 
       if (response.ok) {
         const data = await response.json();
-        console.log("Fetched accounts:", data);
         const accountsTree = buildAccountTree(data);
         setAccounts(accountsTree);
         setFilteredAccounts(accountsTree);
@@ -869,6 +780,8 @@ export default function GLAccountsPage({
       setAccounts(accountsTree);
       setFilteredAccounts(accountsTree);
       calculateStats(accountsTree);
+    } else {
+      fetchGLAccounts();
     }
   }, [initialData]);
 
@@ -876,72 +789,56 @@ export default function GLAccountsPage({
   useEffect(() => {
     let result = [...accounts];
 
-    // Apply type filter
     if (selectedType !== "ALL") {
       const filterByType = (nodes: GLAccount[]): GLAccount[] => {
         const filteredNodes: GLAccount[] = [];
-
         nodes.forEach((node) => {
           const matchesType = node.accountType === selectedType;
           const filteredChildren = node.children
             ? filterByType(node.children)
             : [];
-
           if (matchesType || filteredChildren.length > 0) {
-            const filteredNode = { ...node, children: filteredChildren };
-            filteredNodes.push(filteredNode);
+            filteredNodes.push({ ...node, children: filteredChildren });
           }
         });
-
         return filteredNodes;
       };
       result = filterByType(result);
     }
 
-    // Apply search filter
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       const searchAccounts = (nodes: GLAccount[]): GLAccount[] => {
         const filteredNodes: GLAccount[] = [];
-
         nodes.forEach((node) => {
           const matchesSearch =
             node.accountCode.toLowerCase().includes(searchLower) ||
             node.accountName.toLowerCase().includes(searchLower) ||
             (node.description &&
               node.description.toLowerCase().includes(searchLower));
-
           const filteredChildren = node.children
             ? searchAccounts(node.children)
             : [];
-
           if (matchesSearch || filteredChildren.length > 0) {
-            const filteredNode = { ...node, children: filteredChildren };
-            filteredNodes.push(filteredNode);
+            filteredNodes.push({ ...node, children: filteredChildren });
           }
         });
-
         return filteredNodes;
       };
       result = searchAccounts(result);
     }
 
-    // Apply inactive filter
     if (!showInactive) {
       const filterActive = (nodes: GLAccount[]): GLAccount[] => {
         const filteredNodes: GLAccount[] = [];
-
         nodes.forEach((node) => {
           const filteredChildren = node.children
             ? filterActive(node.children)
             : [];
-
           if (node.isActive || filteredChildren.length > 0) {
-            const filteredNode = { ...node, children: filteredChildren };
-            filteredNodes.push(filteredNode);
+            filteredNodes.push({ ...node, children: filteredChildren });
           }
         });
-
         return filteredNodes;
       };
       result = filterActive(result);
@@ -950,26 +847,12 @@ export default function GLAccountsPage({
     setFilteredAccounts(result);
   }, [accounts, searchTerm, selectedType, showInactive]);
 
-  // Handle Add/Edit
-  const handleAddEdit = (updatedItem: any) => {
-    fetchGLAccounts(); // Refresh data
-    setEditDialogOpen(false);
-    setAccountToEdit(null);
-  };
-
-  // Handle Edit button click
-  const handleEditClick = (account: GLAccount) => {
-    console.log("Edit clicked for account:", account);
-    setAccountToEdit(account);
-    setEditDialogOpen(true);
-  };
-
   // Handle Delete
   const handleDelete = async () => {
     if (!selectedAccount) return;
 
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
       const response = await fetch(
         `${baseUrl}GlAccount/${selectedAccount.accountId}`,
         {
@@ -1009,10 +892,7 @@ export default function GLAccountsPage({
 
   // Get all parent accounts for dropdown
   const getParentAccounts = () => {
-    const parents: { value: string; label: string }[] = [
-      { value: "", label: "No Parent (Root Account)" },
-    ];
-
+    const parents: { value: string; label: string }[] = [];
     const traverse = (nodes: GLAccount[], level: number) => {
       nodes.forEach((node) => {
         if (node.isHeader) {
@@ -1027,7 +907,6 @@ export default function GLAccountsPage({
         }
       });
     };
-
     traverse(accounts, 0);
     return parents;
   };
@@ -1047,7 +926,7 @@ export default function GLAccountsPage({
       return (
         <div key={account.accountId}>
           <div
-            className={`flex items-center p-3 hover:bg-gray-50 border-b`}
+            className='flex items-center p-3 hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent border-b transition-all duration-200 group'
             style={{ paddingLeft: `${level * 24 + 16}px` }}
           >
             <div className='flex items-center flex-1 min-w-0'>
@@ -1055,13 +934,13 @@ export default function GLAccountsPage({
                 <Button
                   variant='ghost'
                   size='sm'
-                  className='h-6 w-6 p-0 mr-2'
+                  className='h-6 w-6 p-0 mr-2 hover:bg-blue-100'
                   onClick={() => toggleAccount(account.accountId)}
                 >
                   {isExpanded ? (
-                    <ChevronDown className='h-4 w-4' />
+                    <ChevronDown className='h-4 w-4 text-blue-600' />
                   ) : (
-                    <ChevronRight className='h-4 w-4' />
+                    <ChevronRight className='h-4 w-4 text-gray-600' />
                   )}
                 </Button>
               ) : (
@@ -1069,9 +948,9 @@ export default function GLAccountsPage({
               )}
 
               <div
-                className={`p-2 rounded-md mr-3 ${
+                className={`p-2 rounded-lg mr-3 ${
                   accountType?.color || "bg-gray-500"
-                } bg-opacity-10`}
+                } bg-opacity-10 group-hover:bg-opacity-20 transition-all`}
               >
                 <Icon
                   className={`h-4 w-4 ${accountType?.color?.replace(
@@ -1083,14 +962,14 @@ export default function GLAccountsPage({
 
               <div className='flex-1 min-w-0'>
                 <div className='flex items-center gap-2'>
-                  <span className='font-mono font-medium text-sm'>
+                  <span className='font-mono font-semibold text-sm text-gray-700'>
                     {account.accountCode}
                   </span>
                   <span className='text-sm font-medium truncate'>
                     {account.accountName}
                   </span>
                   {account.isHeader && (
-                    <Badge variant='outline' className='text-xs'>
+                    <Badge variant='outline' className='text-xs bg-blue-50'>
                       Header
                     </Badge>
                   )}
@@ -1107,28 +986,73 @@ export default function GLAccountsPage({
                 )}
               </div>
 
-              <div className='flex items-center gap-2 ml-4'>
-                <Badge variant='outline' className='text-xs capitalize'>
-                  {account.accountType?.toLowerCase()}
-                </Badge>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  onClick={() => handleEditClick(account)}
-                >
-                  <Edit className='h-4 w-4' />
-                </Button>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='text-red-600 hover:text-red-700'
-                  onClick={() => {
-                    setSelectedAccount(account);
-                    setIsDeleteDialogOpen(true);
-                  }}
-                >
-                  <Trash2 className='h-4 w-4' />
-                </Button>
+              <div className='flex items-center gap-1 ml-4 opacity-0 group-hover:opacity-100 transition-opacity'>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        className='h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600'
+                        onClick={() =>
+                          setDialogState({
+                            isOpen: true,
+                            type: "edit",
+                            account: account,
+                            parentAccount: null,
+                          })
+                        }
+                      >
+                        <Edit className='h-4 w-4' />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Edit Account</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                {account.isHeader && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          className='h-8 w-8 p-0 hover:bg-green-100 hover:text-green-600'
+                          onClick={() =>
+                            setDialogState({
+                              isOpen: true,
+                              type: "add-child",
+                              account: null,
+                              parentAccount: account,
+                            })
+                          }
+                        >
+                          <Plus className='h-4 w-4' />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Add Child Account</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        className='h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600'
+                        onClick={() => {
+                          setSelectedAccount(account);
+                          setIsDeleteDialogOpen(true);
+                        }}
+                      >
+                        <Trash2 className='h-4 w-4' />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Delete Account</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
             </div>
           </div>
@@ -1160,17 +1084,18 @@ export default function GLAccountsPage({
     const flatAccounts = flattenAccounts(filteredAccounts);
 
     return (
-      <div className='border rounded-lg'>
+      <div className='border rounded-lg overflow-hidden'>
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead className='w-32'>Account Code</TableHead>
-              <TableHead>Account Name</TableHead>
-              <TableHead className='w-32'>Type</TableHead>
-              <TableHead className='w-32'>Nature</TableHead>
-              <TableHead className='w-24'>Level</TableHead>
-              <TableHead className='w-24'>Status</TableHead>
-              <TableHead className='w-20'>Actions</TableHead>
+            <TableRow className='bg-gray-50'>
+              <TableHead className='w-32 font-semibold'>Code</TableHead>
+              <TableHead className='font-semibold'>Account Name</TableHead>
+              <TableHead className='w-32 font-semibold'>Type</TableHead>
+              <TableHead className='w-24 font-semibold'>Level</TableHead>
+              <TableHead className='w-24 font-semibold'>Status</TableHead>
+              <TableHead className='w-24 text-center font-semibold'>
+                Actions
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1181,7 +1106,10 @@ export default function GLAccountsPage({
               const Icon = accountType?.icon || FileText;
 
               return (
-                <TableRow key={account.accountId}>
+                <TableRow
+                  key={account.accountId}
+                  className='hover:bg-gray-50 group'
+                >
                   <TableCell className='font-mono font-medium'>
                     {account.accountCode}
                   </TableCell>
@@ -1199,18 +1127,18 @@ export default function GLAccountsPage({
                           )}`}
                         />
                       </div>
-                      <span>{account.accountName}</span>
-                      {account.description && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Eye className='h-3.5 w-3.5 text-gray-400' />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className='max-w-xs'>{account.description}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                      <div>
+                        <div className='font-medium'>{account.accountName}</div>
+                        {account.description && (
+                          <div className='text-xs text-gray-500 truncate max-w-xs'>
+                            {account.description}
+                          </div>
+                        )}
+                      </div>
+                      {account.isHeader && (
+                        <Badge variant='outline' className='text-xs'>
+                          Header
+                        </Badge>
                       )}
                     </div>
                   </TableCell>
@@ -1220,14 +1148,7 @@ export default function GLAccountsPage({
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <span className='text-sm capitalize'>
-                      {account.accountNature?.toLowerCase() || "—"}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant='secondary'>
-                      Level {account.accountLevel}
-                    </Badge>
+                    <Badge variant='secondary'>L{account.accountLevel}</Badge>
                   </TableCell>
                   <TableCell>
                     {account.isActive ? (
@@ -1239,32 +1160,58 @@ export default function GLAccountsPage({
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className='flex gap-1'>
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        onClick={() => handleEditClick(account)}
-                      >
-                        <Edit className='h-4 w-4' />
-                      </Button>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant='ghost'
-                              size='sm'
-                              className='text-red-600 hover:text-red-700'
-                              onClick={() => {
-                                setSelectedAccount(account);
-                                setIsDeleteDialogOpen(true);
-                              }}
+                    <div className='flex items-center justify-center gap-1'>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            className='h-8 w-8 p-0'
+                          >
+                            <MoreVertical className='h-4 w-4' />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align='end'>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              setDialogState({
+                                isOpen: true,
+                                type: "edit",
+                                account: account,
+                                parentAccount: null,
+                              })
+                            }
+                          >
+                            <Edit className='h-4 w-4 mr-2' />
+                            Edit
+                          </DropdownMenuItem>
+                          {account.isHeader && (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setDialogState({
+                                  isOpen: true,
+                                  type: "add-child",
+                                  account: null,
+                                  parentAccount: account,
+                                })
+                              }
                             >
-                              <Trash2 className='h-4 w-4' />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Delete Account</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                              <Plus className='h-4 w-4 mr-2' />
+                              Add Child
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            className='text-red-600'
+                            onClick={() => {
+                              setSelectedAccount(account);
+                              setIsDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className='h-4 w-4 mr-2' />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -1281,7 +1228,9 @@ export default function GLAccountsPage({
       <div className='flex items-center justify-center h-96'>
         <div className='text-center'>
           <RefreshCw className='h-8 w-8 animate-spin mx-auto text-blue-600' />
-          <p className='mt-2 text-gray-600'>Loading Chart of Accounts...</p>
+          <p className='mt-4 text-gray-600 font-medium'>
+            Loading Chart of Accounts...
+          </p>
         </div>
       </div>
     );
@@ -1292,7 +1241,7 @@ export default function GLAccountsPage({
       {/* Header */}
       <div className='flex items-center justify-between'>
         <div>
-          <h1 className='text-3xl font-bold tracking-tight'>
+          <h1 className='text-3xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent'>
             Chart of Accounts
           </h1>
           <p className='text-gray-600 mt-1'>
@@ -1310,27 +1259,39 @@ export default function GLAccountsPage({
             />
             Refresh
           </Button>
-          <GLAccountDialog
-            type='add'
-            defaultState={{}}
-            handleAddEdit={handleAddEdit}
-            parentAccounts={getParentAccounts()}
-          />
+          <Button
+            className='bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+            onClick={() =>
+              setDialogState({
+                isOpen: true,
+                type: "add",
+                account: null,
+                parentAccount: null,
+              })
+            }
+          >
+            <Plus className='h-4 w-4 mr-2' />
+            New Account
+          </Button>
         </div>
       </div>
 
       {/* Statistics Cards */}
       <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6'>
-        <Card className='border-l-4 border-l-blue-500'>
+        <Card className='border-l-4 border-l-blue-500 hover:shadow-lg transition-shadow'>
           <CardContent className='pt-6'>
             <div className='flex items-center justify-between'>
               <div>
                 <p className='text-sm font-medium text-gray-600'>
                   Total Accounts
                 </p>
-                <h3 className='text-2xl font-bold mt-1'>{stats.total}</h3>
+                <h3 className='text-3xl font-bold mt-1 text-blue-600'>
+                  {stats.total}
+                </h3>
               </div>
-              <Layers className='h-8 w-8 text-blue-500' />
+              <div className='p-3 bg-blue-100 rounded-full'>
+                <Layers className='h-6 w-6 text-blue-600' />
+              </div>
             </div>
             <Progress
               value={stats.total > 0 ? (stats.active / stats.total) * 100 : 0}
@@ -1342,14 +1303,18 @@ export default function GLAccountsPage({
           </CardContent>
         </Card>
 
-        <Card className='border-l-4 border-l-green-500'>
+        <Card className='border-l-4 border-l-green-500 hover:shadow-lg transition-shadow'>
           <CardContent className='pt-6'>
             <div className='flex items-center justify-between'>
               <div>
                 <p className='text-sm font-medium text-gray-600'>Assets</p>
-                <h3 className='text-2xl font-bold mt-1'>{stats.assets}</h3>
+                <h3 className='text-3xl font-bold mt-1 text-green-600'>
+                  {stats.assets}
+                </h3>
               </div>
-              <Building className='h-8 w-8 text-green-500' />
+              <div className='p-3 bg-green-100 rounded-full'>
+                <Building className='h-6 w-6 text-green-600' />
+              </div>
             </div>
             <Progress
               value={stats.total > 0 ? (stats.assets / stats.total) * 100 : 0}
@@ -1364,14 +1329,18 @@ export default function GLAccountsPage({
           </CardContent>
         </Card>
 
-        <Card className='border-l-4 border-l-purple-500'>
+        <Card className='border-l-4 border-l-purple-500 hover:shadow-lg transition-shadow'>
           <CardContent className='pt-6'>
             <div className='flex items-center justify-between'>
               <div>
                 <p className='text-sm font-medium text-gray-600'>Revenue</p>
-                <h3 className='text-2xl font-bold mt-1'>{stats.revenue}</h3>
+                <h3 className='text-3xl font-bold mt-1 text-purple-600'>
+                  {stats.revenue}
+                </h3>
               </div>
-              <PieChart className='h-8 w-8 text-purple-500' />
+              <div className='p-3 bg-purple-100 rounded-full'>
+                <PieChart className='h-6 w-6 text-purple-600' />
+              </div>
             </div>
             <Progress
               value={stats.total > 0 ? (stats.revenue / stats.total) * 100 : 0}
@@ -1383,16 +1352,18 @@ export default function GLAccountsPage({
           </CardContent>
         </Card>
 
-        <Card className='border-l-4 border-l-amber-500'>
+        <Card className='border-l-4 border-l-amber-500 hover:shadow-lg transition-shadow'>
           <CardContent className='pt-6'>
             <div className='flex items-center justify-between'>
               <div>
                 <p className='text-sm font-medium text-gray-600'>Structure</p>
-                <h3 className='text-2xl font-bold mt-1'>
+                <h3 className='text-3xl font-bold mt-1 text-amber-600'>
                   {stats.headerAccounts}:{stats.detailAccounts}
                 </h3>
               </div>
-              <FolderTree className='h-8 w-8 text-amber-500' />
+              <div className='p-3 bg-amber-100 rounded-full'>
+                <FolderTree className='h-6 w-6 text-amber-600' />
+              </div>
             </div>
             <div className='flex items-center gap-2 mt-4'>
               <Badge variant='outline' className='text-xs'>
@@ -1444,17 +1415,17 @@ export default function GLAccountsPage({
               </div>
 
               <div className='flex items-center gap-2'>
-                <Label
-                  htmlFor='show-inactive'
-                  className='text-sm text-gray-600'
-                >
-                  Show Inactive
-                </Label>
                 <Switch
                   id='show-inactive'
                   checked={showInactive}
                   onCheckedChange={setShowInactive}
                 />
+                <Label
+                  htmlFor='show-inactive'
+                  className='text-sm text-gray-600 cursor-pointer'
+                >
+                  Show Inactive
+                </Label>
               </div>
 
               <div className='flex border rounded-lg overflow-hidden'>
@@ -1465,7 +1436,7 @@ export default function GLAccountsPage({
                   className='rounded-none'
                 >
                   <FolderTree className='h-4 w-4 mr-2' />
-                  Tree View
+                  Tree
                 </Button>
                 <Button
                   variant={viewMode === "list" ? "default" : "ghost"}
@@ -1474,7 +1445,7 @@ export default function GLAccountsPage({
                   className='rounded-none'
                 >
                   <FileText className='h-4 w-4 mr-2' />
-                  List View
+                  List
                 </Button>
               </div>
             </div>
@@ -1483,7 +1454,23 @@ export default function GLAccountsPage({
           <div className='flex items-center justify-between mt-4'>
             <div className='flex items-center gap-2'>
               <Badge variant='outline' className='text-sm'>
-                {filteredAccounts.length} Accounts
+                {(() => {
+                  const flattenAccounts = (
+                    accounts: GLAccount[]
+                  ): GLAccount[] => {
+                    let result: GLAccount[] = [];
+                    const traverse = (nodes: GLAccount[]) => {
+                      nodes.forEach((node) => {
+                        result.push(node);
+                        if (node.children) traverse(node.children);
+                      });
+                    };
+                    traverse(accounts);
+                    return result;
+                  };
+                  return flattenAccounts(filteredAccounts).length;
+                })()}{" "}
+                Accounts
               </Badge>
               {searchTerm && (
                 <Badge variant='secondary' className='text-sm'>
@@ -1514,19 +1501,36 @@ export default function GLAccountsPage({
 
       {/* Accounts Display */}
       {viewMode === "tree" ? (
-        <Card>
+        <Card className='overflow-hidden'>
           <CardContent className='p-0'>
             {filteredAccounts.length === 0 ? (
-              <div className='flex flex-col items-center justify-center py-12'>
-                <Sparkles className='h-12 w-12 text-gray-300 mb-4' />
-                <h3 className='text-lg font-medium text-gray-900'>
+              <div className='flex flex-col items-center justify-center py-16'>
+                <div className='p-4 bg-gray-100 rounded-full mb-4'>
+                  <Sparkles className='h-12 w-12 text-gray-400' />
+                </div>
+                <h3 className='text-lg font-semibold text-gray-900'>
                   No accounts found
                 </h3>
-                <p className='text-gray-500 mt-1'>
+                <p className='text-gray-500 mt-1 mb-4'>
                   {searchTerm
                     ? "Try adjusting your search terms"
                     : "Create your first account to get started"}
                 </p>
+                {!searchTerm && (
+                  <Button
+                    onClick={() =>
+                      setDialogState({
+                        isOpen: true,
+                        type: "add",
+                        account: null,
+                        parentAccount: null,
+                      })
+                    }
+                  >
+                    <Plus className='h-4 w-4 mr-2' />
+                    Create First Account
+                  </Button>
+                )}
               </div>
             ) : (
               <div className='divide-y'>
@@ -1539,16 +1543,33 @@ export default function GLAccountsPage({
         <Card>
           <CardContent className='p-0'>
             {filteredAccounts.length === 0 ? (
-              <div className='flex flex-col items-center justify-center py-12'>
-                <Sparkles className='h-12 w-12 text-gray-300 mb-4' />
-                <h3 className='text-lg font-medium text-gray-900'>
+              <div className='flex flex-col items-center justify-center py-16'>
+                <div className='p-4 bg-gray-100 rounded-full mb-4'>
+                  <Sparkles className='h-12 w-12 text-gray-400' />
+                </div>
+                <h3 className='text-lg font-semibold text-gray-900'>
                   No accounts found
                 </h3>
-                <p className='text-gray-500 mt-1'>
+                <p className='text-gray-500 mt-1 mb-4'>
                   {searchTerm
                     ? "Try adjusting your search terms"
                     : "Create your first account to get started"}
                 </p>
+                {!searchTerm && (
+                  <Button
+                    onClick={() =>
+                      setDialogState({
+                        isOpen: true,
+                        type: "add",
+                        account: null,
+                        parentAccount: null,
+                      })
+                    }
+                  >
+                    <Plus className='h-4 w-4 mr-2' />
+                    Create First Account
+                  </Button>
+                )}
               </div>
             ) : (
               renderListView()
@@ -1557,29 +1578,32 @@ export default function GLAccountsPage({
         </Card>
       )}
 
-      {/* Edit Dialog */}
-      {accountToEdit && (
-        <GLAccountDialog
-          key={accountToEdit.accountId}
-          type='edit'
-          defaultState={accountToEdit}
-          handleAddEdit={handleAddEdit}
-          parentAccounts={getParentAccounts()}
-          onOpenChange={(open) => {
-            setEditDialogOpen(open);
-            if (!open) {
-              setAccountToEdit(null);
-            }
-          }}
-          open={editDialogOpen}
-        />
-      )}
+      {/* Account Dialog */}
+      <GLAccountDialog
+        type={dialogState.type}
+        account={dialogState.account}
+        parentAccount={dialogState.parentAccount}
+        isOpen={dialogState.isOpen}
+        onClose={() =>
+          setDialogState({
+            isOpen: false,
+            type: "add",
+            account: null,
+            parentAccount: null,
+          })
+        }
+        onSuccess={fetchGLAccounts}
+        parentAccounts={getParentAccounts()}
+      />
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Account</DialogTitle>
+            <DialogTitle className='flex items-center gap-2 text-red-600'>
+              <AlertCircle className='h-5 w-5' />
+              Delete Account
+            </DialogTitle>
             <DialogDescription>
               This action cannot be undone. This will permanently delete the
               account
@@ -1591,21 +1615,26 @@ export default function GLAccountsPage({
             </DialogDescription>
           </DialogHeader>
           <div className='py-4'>
-            <p className='text-gray-600'>
-              Are you sure you want to delete account{" "}
-              <span className='font-semibold'>
-                {selectedAccount?.accountCode} - {selectedAccount?.accountName}
-              </span>
-              ?
-            </p>
+            <Alert variant='destructive' className='mb-4'>
+              <AlertCircle className='h-4 w-4' />
+              <AlertDescription>
+                Are you sure you want to delete account{" "}
+                <span className='font-semibold'>
+                  {selectedAccount?.accountCode} -{" "}
+                  {selectedAccount?.accountName}
+                </span>
+                ?
+              </AlertDescription>
+            </Alert>
             {selectedAccount?.children &&
               selectedAccount.children.length > 0 && (
-                <div className='mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md'>
-                  <p className='text-amber-800 text-sm'>
-                    ⚠️ This account has {selectedAccount.children.length} child
+                <Alert className='bg-amber-50 border-amber-200'>
+                  <AlertCircle className='h-4 w-4 text-amber-600' />
+                  <AlertDescription className='text-amber-800'>
+                    This account has {selectedAccount.children.length} child
                     account(s). Deleting it will also delete all child accounts.
-                  </p>
-                </div>
+                  </AlertDescription>
+                </Alert>
               )}
           </div>
           <div className='flex justify-end gap-2'>
@@ -1616,6 +1645,7 @@ export default function GLAccountsPage({
               Cancel
             </Button>
             <Button variant='destructive' onClick={handleDelete}>
+              <Trash2 className='h-4 w-4 mr-2' />
               Delete Account
             </Button>
           </div>
