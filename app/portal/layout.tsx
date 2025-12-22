@@ -52,6 +52,7 @@ export default function RootLayout({
   const router = useRouter();
 
   const [displayName, setDisplayName] = useState<string>("Guest");
+  const [userEmail, setUserEmail] = useState<string>("");
   const [language, setLanguage] = useState<string>(i18n.language || "en");
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
@@ -66,7 +67,12 @@ export default function RootLayout({
 
     try {
       const u = JSON.parse(user);
-      setDisplayName(u?.displayname || "Guest");
+      // Try multiple possible field names for display name
+      const name = u?.fullName || u?.displayname || u?.username || "Guest";
+      const email = u?.email || "";
+
+      setDisplayName(name);
+      setUserEmail(email);
 
       if (u?.language) {
         setLanguage(u.language);
@@ -86,11 +92,13 @@ export default function RootLayout({
   if (isAuthenticated === null) {
     return (
       <div className='flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-[#0B4F6C] via-[#0D5C7D] to-[#1A94D4] text-white'>
-        <div className='w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center border border-white/30 mb-4'>
-          <Package className='w-10 h-10 text-white animate-pulse' />
+        <div className='w-16 h-16 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/30 mb-3'>
+          <Package className='w-8 h-8 text-white animate-pulse' />
         </div>
-        <h2 className='text-xl font-semibold mb-2'>SASPAK CARGO</h2>
-        <p className='text-white/80'>{t("Loading...") || "Loading..."}</p>
+        <h2 className='text-base font-semibold mb-1.5'>SASPAK CARGO</h2>
+        <p className='text-sm text-white/80'>
+          {t("Loading...") || "Loading..."}
+        </p>
       </div>
     );
   }
@@ -195,49 +203,40 @@ export default function RootLayout({
           <AppSidebar />
 
           <SidebarInset>
-            {/* Header with SASPAK Theme */}
-            <header className='flex h-20 shrink-0 items-center justify-between border-b border-white/20 px-8 bg-gradient-to-r from-[#0B4F6C] via-[#1A94D4] to-[#0B4F6C] text-white shadow-2xl backdrop-blur-md'>
+            {/* Compact Header */}
+            <header className='flex h-14 shrink-0 items-center justify-between border-b border-white/20 px-4 bg-gradient-to-r from-[#0B4F6C] via-[#1A94D4] to-[#0B4F6C] text-white shadow-xl backdrop-blur-md'>
               {/* Left: Sidebar + Breadcrumb */}
-              <div className='flex items-center gap-4'>
-                <div className='flex items-center gap-3'>
-                  <SidebarTrigger className='-ml-1 text-white hover:bg-white/20 p-2.5 rounded-xl transition-all duration-200 border border-white/30 backdrop-blur-sm' />
+              <div className='flex items-center gap-3'>
+                <div className='flex items-center gap-2'>
+                  <SidebarTrigger className='-ml-1 text-white hover:bg-white/20 p-1.5 rounded-lg transition-all duration-200 border border-white/30 backdrop-blur-sm' />
                   <Separator
                     orientation='vertical'
-                    className='h-8 w-[1px] bg-white/40'
+                    className='h-5 w-[1px] bg-white/40'
                   />
                 </div>
 
-                {/* SASPAK Logo Mini 
-                <div className='flex items-center gap-3 mr-4'>
-                  <div className='w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/30'>
-                    <Package className='w-6 h-6 text-white' />
-                  </div>
-                  <div className='hidden md:block'>
-                    <h3 className='text-sm font-bold leading-tight'>SASPAK</h3>
-                    <p className='text-xs text-white/70 leading-tight'>CARGO</p>
-                  </div>
-                </div>*/}
-
                 <Breadcrumb>
-                  <BreadcrumbList className='flex gap-2 text-lg font-medium'>
+                  <BreadcrumbList className='flex gap-1.5 text-xs font-medium'>
                     <BreadcrumbItem>
                       <BreadcrumbLink
                         href='#'
-                        className='text-white/90 hover:text-white transition-colors duration-200 flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/20'
+                        className='text-white/90 hover:text-white transition-colors duration-200 flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-2.5 py-1.5 rounded-lg border border-white/20'
                       >
-                        <div className='w-2 h-2 rounded-full bg-white/80'></div>
-                        {first}
+                        <div className='w-1.5 h-1.5 rounded-full bg-white/80'></div>
+                        <span className='truncate max-w-[150px]'>{first}</span>
                       </BreadcrumbLink>
                     </BreadcrumbItem>
                     {second && (
                       <>
-                        <BreadcrumbSeparator className='text-white/60 font-medium mx-1'>
-                          <ChevronRight size={18} />
+                        <BreadcrumbSeparator className='text-white/60 font-medium mx-0.5'>
+                          <ChevronRight size={14} />
                         </BreadcrumbSeparator>
                         <BreadcrumbItem>
-                          <BreadcrumbPage className='text-white font-semibold flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/30'>
-                            <div className='w-2 h-2 rounded-full bg-white'></div>
-                            {second}
+                          <BreadcrumbPage className='text-white font-semibold flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-2.5 py-1.5 rounded-lg border border-white/30'>
+                            <div className='w-1.5 h-1.5 rounded-full bg-white'></div>
+                            <span className='truncate max-w-[150px]'>
+                              {second}
+                            </span>
                           </BreadcrumbPage>
                         </BreadcrumbItem>
                       </>
@@ -246,57 +245,56 @@ export default function RootLayout({
                 </Breadcrumb>
               </div>
 
-              {/* Right: Language + User */}
-              <div className='flex items-center gap-3'>
-                {/* Service Icons */}
-                <div className='hidden lg:flex items-center gap-2 mr-4'>
-                  <div className='flex flex-col items-center gap-1 p-2 bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 hover:bg-white/20 transition-all cursor-pointer'>
-                    <Ship className='w-4 h-4' />
-                    <span className='text-xs'>Sea</span>
+              {/* Right: Service Icons + User */}
+              <div className='flex items-center gap-2'>
+                {/* Service Icons - Compact */}
+                <div className='hidden lg:flex items-center gap-1.5 mr-2'>
+                  <div className='flex flex-col items-center gap-0.5 p-1.5 bg-white/10 backdrop-blur-sm rounded-md border border-white/20 hover:bg-white/20 transition-all cursor-pointer group'>
+                    <Ship className='w-3.5 h-3.5 group-hover:scale-110 transition-transform' />
+                    <span className='text-[9px] font-medium'>Sea</span>
                   </div>
-                  <div className='flex flex-col items-center gap-1 p-2 bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 hover:bg-white/20 transition-all cursor-pointer'>
-                    <Plane className='w-4 h-4' />
-                    <span className='text-xs'>Air</span>
+                  <div className='flex flex-col items-center gap-0.5 p-1.5 bg-white/10 backdrop-blur-sm rounded-md border border-white/20 hover:bg-white/20 transition-all cursor-pointer group'>
+                    <Plane className='w-3.5 h-3.5 group-hover:scale-110 transition-transform' />
+                    <span className='text-[9px] font-medium'>Air</span>
                   </div>
-                  <div className='flex flex-col items-center gap-1 p-2 bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 hover:bg-white/20 transition-all cursor-pointer'>
-                    <Truck className='w-4 h-4' />
-                    <span className='text-xs'>Land</span>
+                  <div className='flex flex-col items-center gap-0.5 p-1.5 bg-white/10 backdrop-blur-sm rounded-md border border-white/20 hover:bg-white/20 transition-all cursor-pointer group'>
+                    <Truck className='w-3.5 h-3.5 group-hover:scale-110 transition-transform' />
+                    <span className='text-[9px] font-medium'>Land</span>
                   </div>
                 </div>
 
-                {/* Language Switcher 
+                {/* Language Switcher - Compact */}
                 <DropdownMenu>
-                  <DropdownMenuTrigger className='flex items-center gap-3 bg-white/15 backdrop-blur-sm px-4 py-2.5 rounded-xl shadow-lg hover:bg-white/25 transition-all duration-300 border border-white/30 group'>
-                    <div className='w-8 h-8 rounded-full bg-white/20 flex items-center justify-center'>
+                  <DropdownMenuTrigger className='flex items-center gap-2 bg-white/15 backdrop-blur-sm px-2.5 py-1.5 rounded-lg shadow-md hover:bg-white/25 transition-all duration-300 border border-white/30 group'>
+                    <div className='w-6 h-6 rounded-full bg-white/20 flex items-center justify-center'>
                       <Globe
-                        size={18}
+                        size={14}
                         className='text-white group-hover:text-white transition-colors duration-200'
                       />
                     </div>
-
-                    <span className='text-sm font-semibold text-white uppercase tracking-wide'>
+                    <span className='text-[11px] font-semibold text-white uppercase tracking-wide'>
                       {language}
                     </span>
                     <ChevronDown
-                      size={14}
+                      size={12}
                       className='text-white/80 group-hover:text-white transition-all duration-200 group-hover:rotate-180'
                     />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align='end'
-                    className='w-48 bg-white/95 backdrop-blur-md border border-gray-200/60 shadow-2xl rounded-xl p-2 mt-2'
+                    className='w-40 bg-white/95 backdrop-blur-md border border-gray-200/60 shadow-xl rounded-lg p-1.5 mt-1'
                   >
-                    <DropdownMenuLabel className='text-gray-700 font-semibold px-3 py-2 flex items-center gap-2'>
-                      <Globe className='w-4 h-4 text-[#1A94D4]' />
+                    <DropdownMenuLabel className='text-gray-700 font-semibold px-2.5 py-1.5 flex items-center gap-1.5 text-xs'>
+                      <Globe className='w-3.5 h-3.5 text-[#1A94D4]' />
                       {t("language") || "Language"}
                     </DropdownMenuLabel>
-                    <DropdownMenuSeparator className='bg-gray-200/80 my-2' />
+                    <DropdownMenuSeparator className='bg-gray-200/80 my-1' />
                     <DropdownMenuItem
                       onClick={() => handleLanguageChange("en")}
-                      className='rounded-lg hover:bg-[#1A94D4]/10 transition-colors duration-200 px-3 py-2.5 cursor-pointer group'
+                      className='rounded-md hover:bg-[#1A94D4]/10 transition-colors duration-200 px-2.5 py-1.5 cursor-pointer group text-xs'
                     >
-                      <span className='flex items-center gap-3 text-gray-700 font-medium'>
-                        <div className='w-6 h-6 rounded-full bg-[#1A94D4] flex items-center justify-center text-white text-xs font-bold'>
+                      <span className='flex items-center gap-2 text-gray-700 font-medium'>
+                        <div className='w-5 h-5 rounded-full bg-[#1A94D4] flex items-center justify-center text-white text-[10px] font-bold'>
                           EN
                         </div>
                         {t("english") || "English"}
@@ -304,72 +302,94 @@ export default function RootLayout({
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => handleLanguageChange("pt")}
-                      className='rounded-lg hover:bg-[#1A94D4]/10 transition-colors duration-200 px-3 py-2.5 cursor-pointer group'
+                      className='rounded-md hover:bg-[#1A94D4]/10 transition-colors duration-200 px-2.5 py-1.5 cursor-pointer group text-xs'
                     >
-                      <span className='flex items-center gap-3 text-gray-700 font-medium'>
-                        <div className='w-6 h-6 rounded-full bg-[#0B4F6C] flex items-center justify-center text-white text-xs font-bold'>
+                      <span className='flex items-center gap-2 text-gray-700 font-medium'>
+                        <div className='w-5 h-5 rounded-full bg-[#0B4F6C] flex items-center justify-center text-white text-[10px] font-bold'>
                           PT
                         </div>
                         {t("portuguese") || "Portuguese"}
                       </span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
-                </DropdownMenu>*/}
+                </DropdownMenu>
 
-                {/* User Menu */}
+                {/* User Menu - Compact */}
                 <DropdownMenu>
-                  <DropdownMenuTrigger className='flex items-center gap-3 bg-white/15 backdrop-blur-sm px-4 py-2.5 rounded-xl shadow-lg hover:bg-white/25 transition-all duration-300 border border-white/30 group'>
-                    <div className='w-10 h-10 rounded-full bg-gradient-to-r from-[#1A94D4] to-[#0B4F6C] flex items-center justify-center shadow-md'>
-                      <User size={18} className='text-white' />
+                  <DropdownMenuTrigger className='flex items-center gap-2 bg-white/15 backdrop-blur-sm px-2.5 py-1.5 rounded-lg shadow-md hover:bg-white/25 transition-all duration-300 border border-white/30 group'>
+                    <div className='w-7 h-7 rounded-full bg-gradient-to-r from-[#1A94D4] to-[#0B4F6C] flex items-center justify-center shadow-md'>
+                      <User size={14} className='text-white' />
                     </div>
-                    <div className='flex flex-col items-start'>
-                      <span className='text-sm font-bold text-white leading-tight'>
+                    <div className='hidden md:flex flex-col items-start'>
+                      <span className='text-xs font-bold text-white leading-tight truncate max-w-[120px]'>
                         {displayName}
                       </span>
-                      <span className='text-xs text-white/80 leading-tight'>
-                        SASPAK User
-                      </span>
+                      {userEmail && (
+                        <span className='text-[9px] text-white/80 leading-tight truncate max-w-[120px]'>
+                          {userEmail}
+                        </span>
+                      )}
                     </div>
                     <ChevronDown
-                      size={14}
+                      size={12}
                       className='text-white/80 group-hover:text-white transition-all duration-200 group-hover:rotate-180'
                     />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align='end'
-                    className='w-56 bg-white/95 backdrop-blur-md border border-gray-200/60 shadow-2xl rounded-xl p-2 mt-2'
+                    className='w-56 bg-white/95 backdrop-blur-md border border-gray-200/60 shadow-xl rounded-lg p-1.5 mt-1'
                   >
-                    <DropdownMenuLabel className='text-gray-700 font-semibold px-3 py-2 flex items-center gap-2'>
-                      <User className='w-4 h-4 text-[#1A94D4]' />
-                      {t("myAccount") || "My Account"}
+                    <DropdownMenuLabel className='px-2.5 py-2 border-b border-gray-200/80'>
+                      <div className='flex items-center gap-2 mb-1.5'>
+                        <div className='w-8 h-8 rounded-full bg-gradient-to-r from-[#1A94D4] to-[#0B4F6C] flex items-center justify-center'>
+                          <User size={16} className='text-white' />
+                        </div>
+                        <div className='flex-1 min-w-0'>
+                          <p className='text-xs font-bold text-gray-800 truncate'>
+                            {displayName}
+                          </p>
+                          {userEmail && (
+                            <p className='text-[10px] text-gray-500 truncate'>
+                              {userEmail}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <p className='text-[10px] text-gray-500 flex items-center gap-1'>
+                        <div className='w-1.5 h-1.5 rounded-full bg-green-500'></div>
+                        Active
+                      </p>
                     </DropdownMenuLabel>
-                    <DropdownMenuSeparator className='bg-gray-200/80 my-2' />
-                    <DropdownMenuItem
-                      onClick={() => router.push("/portal/management/profile")}
-                      className='rounded-lg hover:bg-[#1A94D4]/10 transition-colors duration-200 px-3 py-2.5 cursor-pointer group'
-                    >
-                      <div className='flex items-center gap-3'>
-                        <div className='w-8 h-8 rounded-lg bg-[#1A94D4]/20 flex items-center justify-center group-hover:bg-[#1A94D4]/30 transition-colors duration-200'>
-                          <Settings className='h-4 w-4 text-[#1A94D4]' />
+                    <div className='py-1'>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          router.push("/portal/management/profile")
+                        }
+                        className='rounded-md hover:bg-[#1A94D4]/10 transition-colors duration-200 px-2.5 py-1.5 cursor-pointer group'
+                      >
+                        <div className='flex items-center gap-2'>
+                          <div className='w-6 h-6 rounded-md bg-[#1A94D4]/20 flex items-center justify-center group-hover:bg-[#1A94D4]/30 transition-colors duration-200'>
+                            <Settings className='h-3 w-3 text-[#1A94D4]' />
+                          </div>
+                          <span className='text-gray-700 font-medium text-xs'>
+                            {t("profile") || "Profile Settings"}
+                          </span>
                         </div>
-                        <span className='text-gray-700 font-medium'>
-                          {t("profile") || "Profile Settings"}
-                        </span>
-                      </div>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={handleLogout}
-                      className='rounded-lg hover:bg-red-50 transition-colors duration-200 px-3 py-2.5 cursor-pointer group'
-                    >
-                      <div className='flex items-center gap-3'>
-                        <div className='w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center group-hover:bg-red-200 transition-colors duration-200'>
-                          <LogOut className='h-4 w-4 text-red-600' />
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={handleLogout}
+                        className='rounded-md hover:bg-red-50 transition-colors duration-200 px-2.5 py-1.5 cursor-pointer group'
+                      >
+                        <div className='flex items-center gap-2'>
+                          <div className='w-6 h-6 rounded-md bg-red-100 flex items-center justify-center group-hover:bg-red-200 transition-colors duration-200'>
+                            <LogOut className='h-3 w-3 text-red-600' />
+                          </div>
+                          <span className='text-gray-700 font-medium text-xs'>
+                            {t("logout") || "Logout"}
+                          </span>
                         </div>
-                        <span className='text-gray-700 font-medium'>
-                          {t("logout") || "Logout"}
-                        </span>
-                      </div>
-                    </DropdownMenuItem>
+                      </DropdownMenuItem>
+                    </div>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -380,17 +400,17 @@ export default function RootLayout({
               {children}
             </main>
 
-            {/* Footer */}
-            <footer className='bg-white/90 backdrop-blur-sm border-t border-gray-200/50 py-4 px-8'>
-              <div className='flex items-center justify-between text-sm text-gray-600'>
-                <div className='flex items-center gap-4'>
-                  <span>
-                    © 2025 SASPAK Cargo (Pvt) Limited. All rights reserved.
+            {/* Compact Footer */}
+            <footer className='bg-white/90 backdrop-blur-sm border-t border-gray-200/50 py-2.5 px-4'>
+              <div className='flex items-center justify-between text-xs text-gray-600'>
+                <div className='flex items-center gap-3'>
+                  <span className='font-medium'>
+                    © 2025 SASPAK Cargo (Pvt) Ltd.
                   </span>
                 </div>
-                <div className='flex items-center gap-2'>
-                  <span className='text-xs text-gray-500'>Powered by</span>
-                  <span className='font-semibold text-[#0B4F6C]'>
+                <div className='flex items-center gap-1.5'>
+                  <span className='text-[10px] text-gray-500'>Powered by</span>
+                  <span className='font-semibold text-[#0B4F6C] text-xs'>
                     NJ IT Solutions
                   </span>
                 </div>

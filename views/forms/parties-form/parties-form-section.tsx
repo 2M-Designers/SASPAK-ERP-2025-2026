@@ -113,7 +113,9 @@ const formSchema = z
     clearanceByAcm: z.boolean().default(false),
     atTradeForGDInsustrial: z.boolean().default(false),
     atTradeForGDCommercial: z.boolean().default(false),
-    benificiaryNameOfPO: z.string().optional(),
+    benificiaryNameOfPO: z
+      .string()
+      .min(1, "Beneficiary Name of PO is required"),
     salesRepId: z.number().optional(),
     docsRepId: z.number().optional(),
     accountsRepId: z.number().optional(),
@@ -419,41 +421,133 @@ export default function PartiesForm({
 
   const handleNonGLPartyToggle = (value: boolean) => {
     if (value) {
+      // If Non-GL Party is enabled, disable GL Linkage
       form.setValue("isGLLinked", false);
       form.setValue("glParentAccountId", undefined);
+    } else {
+      // If Non-GL Party is disabled, auto-enable GL Linkage
+      form.setValue("isGLLinked", true);
     }
   };
 
   const handleGLLinkedToggle = (value: boolean) => {
     if (value) {
+      // If GL Linkage is enabled, disable Non-GL Party
       form.setValue("isNonGLParty", false);
     }
   };
 
-  // Navigation with validation
-  const validateCurrentStep = () => {
-    const errors = form.formState.errors;
+  // Validation function for each step
+  const validateCurrentStep = async () => {
+    let isValid = true;
+    const errors: string[] = [];
 
     switch (currentStep) {
       case 1:
-        return !errors.partyName && formValues.partyName;
+        if (!formValues.partyName || formValues.partyName.trim() === "") {
+          errors.push("Party Name is required");
+          isValid = false;
+        }
+        break;
+
       case 2:
-        return true;
+        // Check if at least one of Customer, Vendor, or Customer/Vendor is selected
+        if (
+          !formValues.isCustomer &&
+          !formValues.isVendor &&
+          !formValues.isCustomerVendor
+        ) {
+          errors.push(
+            "Please select at least one: Customer, Vendor, or Customer/Vendor"
+          );
+          isValid = false;
+        }
+        break;
+
       case 3:
-        return !errors.email && !errors.contactPersonEmail;
+        if (!formValues.addressLine1 || formValues.addressLine1.trim() === "") {
+          errors.push("Address Line 1 is required");
+          isValid = false;
+        }
+        if (!formValues.phone || formValues.phone.trim() === "") {
+          errors.push("Phone is required");
+          isValid = false;
+        }
+        if (!formValues.email || formValues.email.trim() === "") {
+          errors.push("Email is required");
+          isValid = false;
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.email)) {
+          errors.push("Invalid email address");
+          isValid = false;
+        }
+        if (
+          !formValues.contactPersonEmail ||
+          formValues.contactPersonEmail.trim() === ""
+        ) {
+          errors.push("Contact Person Email is required");
+          isValid = false;
+        } else if (
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.contactPersonEmail)
+        ) {
+          errors.push("Invalid contact person email address");
+          isValid = false;
+        }
+        if (
+          !formValues.contactPersonPhone ||
+          formValues.contactPersonPhone.trim() === ""
+        ) {
+          errors.push("Contact Person Phone is required");
+          isValid = false;
+        }
+        break;
+
       case 4:
-        return !errors.creditLimitLC && !errors.creditLimitFC;
+        // No mandatory fields in step 4
+        break;
+
       case 5:
-        return true;
+        // If not a Non-GL Party and GL Linked, then GL Parent Account is required
+        if (
+          !formValues.isNonGLParty &&
+          formValues.isGLLinked &&
+          !formValues.glParentAccountId
+        ) {
+          errors.push(
+            "GL Parent Account is required when GL Linkage is enabled"
+          );
+          isValid = false;
+        }
+        break;
+
       case 6:
-        return true;
+        if (
+          !formValues.benificiaryNameOfPO ||
+          formValues.benificiaryNameOfPO.trim() === ""
+        ) {
+          errors.push("Beneficiary Name of PO is required");
+          isValid = false;
+        }
+        break;
+
       default:
-        return true;
+        break;
     }
+
+    if (!isValid) {
+      toast({
+        variant: "destructive",
+        title: "Required Fields Missing",
+        description: errors.join(", "),
+      });
+    }
+
+    return isValid;
   };
 
-  const nextStep = () => {
-    if (validateCurrentStep()) {
+  const nextStep = async () => {
+    const isValid = await validateCurrentStep();
+
+    if (isValid) {
       if (!completedSteps.includes(currentStep)) {
         setCompletedSteps([...completedSteps, currentStep]);
       }
@@ -461,13 +555,6 @@ export default function PartiesForm({
         setCurrentStep(currentStep + 1);
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
-    } else {
-      toast({
-        variant: "destructive",
-        title: "Validation Error",
-        description:
-          "Please fix the errors before proceeding to the next step.",
-      });
     }
   };
 
@@ -562,15 +649,15 @@ export default function PartiesForm({
       render={({ field }) => (
         <FormItem
           className={cn(
-            "flex flex-row items-center justify-between rounded-lg border p-4 transition-all hover:shadow-md",
-            highlight && "border-primary bg-primary/5",
+            "flex flex-row items-center justify-between rounded-lg border p-3 transition-all hover:shadow-sm hover:border-blue-300",
+            highlight && "border-blue-500 bg-blue-50 shadow-sm",
             disabled && "opacity-50 cursor-not-allowed"
           )}
         >
           <div className='space-y-0.5 flex-1'>
-            <FormLabel className='text-base font-medium'>{label}</FormLabel>
+            <FormLabel className='text-sm font-medium'>{label}</FormLabel>
             {description && (
-              <FormDescription className='text-sm'>
+              <FormDescription className='text-xs text-gray-600'>
                 {description}
               </FormDescription>
             )}
@@ -592,47 +679,55 @@ export default function PartiesForm({
     />
   );
 
-  const progress = ((currentStep - 1) / (formSteps.length - 1)) * 100;
+  const progress = Math.round(
+    ((currentStep - 1) / (formSteps.length - 1)) * 100
+  );
 
   const renderStepContent = () => {
     switch (currentStep) {
       case 1:
         return (
-          <Card className='border-2'>
-            <CardHeader className='bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950'>
+          <Card className='border shadow-sm'>
+            <CardHeader className='bg-gradient-to-r from-blue-50 to-indigo-50 py-4 px-5 border-b'>
               <div className='flex items-center gap-3'>
-                <div className='p-2 bg-primary rounded-lg'>
-                  <Building className='h-6 w-6 text-primary-foreground' />
+                <div className='p-2 bg-blue-600 rounded-lg shadow-sm'>
+                  <Building className='h-5 w-5 text-white' />
                 </div>
                 <div>
-                  <CardTitle className='text-2xl'>Basic Information</CardTitle>
-                  <CardDescription>
+                  <CardTitle className='text-lg font-semibold text-gray-900'>
+                    Basic Information
+                  </CardTitle>
+                  <CardDescription className='text-xs text-gray-600'>
                     Enter the fundamental details of the party
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className='grid grid-cols-1 md:grid-cols-2 gap-6 pt-6'>
+            <CardContent className='grid grid-cols-1 md:grid-cols-2 gap-5 pt-5 pb-4 px-5'>
               <FormField
                 control={form.control}
                 name='partyCode'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className='flex items-center gap-2'>
+                    <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
                       Party Code
-                      <Badge variant='secondary' className='text-xs'>
-                        Auto-generated
+                      <Badge
+                        variant='secondary'
+                        className='text-[10px] px-1.5 py-0.5'
+                      >
+                        Auto
                       </Badge>
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder='Will be generated automatically'
+                        placeholder='Auto-generated'
                         {...field}
+                        value={field.value || ""}
                         disabled
-                        className='bg-muted'
+                        className='bg-gray-100 h-10 text-sm border-gray-200'
                       />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className='text-xs' />
                   </FormItem>
                 )}
               />
@@ -642,23 +737,21 @@ export default function PartiesForm({
                 name='partyName'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className='flex items-center gap-2'>
+                    <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
                       Party Name
-                      <Badge variant='destructive' className='text-xs'>
-                        Required
-                      </Badge>
+                      <span className='text-red-500 text-base'>*</span>
                     </FormLabel>
                     <FormControl>
                       <Input
                         placeholder='Enter full party name'
                         {...field}
-                        className='font-medium'
+                        className='font-medium h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500'
                       />
                     </FormControl>
-                    <FormDescription>
+                    <FormDescription className='text-xs text-gray-500'>
                       Official registered name of the party
                     </FormDescription>
-                    <FormMessage />
+                    <FormMessage className='text-xs' />
                   </FormItem>
                 )}
               />
@@ -668,14 +761,20 @@ export default function PartiesForm({
                 name='partyShortName'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Short Name</FormLabel>
+                    <FormLabel className='text-sm font-medium'>
+                      Short Name
+                    </FormLabel>
                     <FormControl>
-                      <Input placeholder='Enter abbreviated name' {...field} />
+                      <Input
+                        placeholder='Enter abbreviated name'
+                        {...field}
+                        className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                      />
                     </FormControl>
-                    <FormDescription>
+                    <FormDescription className='text-xs text-gray-500'>
                       A shorter version for display purposes
                     </FormDescription>
-                    <FormMessage />
+                    <FormMessage className='text-xs' />
                   </FormItem>
                 )}
               />
@@ -685,7 +784,9 @@ export default function PartiesForm({
                 name='unLocationId'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>UN Location</FormLabel>
+                    <FormLabel className='text-sm font-medium'>
+                      UN Location
+                    </FormLabel>
                     <FormControl>
                       <Select
                         options={unLocations}
@@ -702,12 +803,24 @@ export default function PartiesForm({
                         classNamePrefix='react-select'
                         isLoading={loadingUnlocations}
                         isDisabled={loadingUnlocations}
+                        styles={{
+                          control: (base) => ({
+                            ...base,
+                            minHeight: "40px",
+                            fontSize: "14px",
+                            borderColor: "#d1d5db",
+                          }),
+                          menu: (base) => ({
+                            ...base,
+                            zIndex: 50,
+                          }),
+                        }}
                       />
                     </FormControl>
-                    <FormDescription>
+                    <FormDescription className='text-xs text-gray-500'>
                       Primary location for this party
                     </FormDescription>
-                    <FormMessage />
+                    <FormMessage className='text-xs' />
                   </FormItem>
                 )}
               />
@@ -732,13 +845,13 @@ export default function PartiesForm({
             (isCustomerVendor && (isCustomer || isVendor)) ? (
               <Alert
                 variant='destructive'
-                className='mb-6 animate-in fade-in-50'
+                className='mb-4 animate-in fade-in-50 border-red-300 bg-red-50'
               >
-                <AlertCircle className='h-5 w-5' />
-                <AlertTitle className='font-semibold'>
+                <AlertCircle className='h-4 w-4 text-red-600' />
+                <AlertTitle className='font-semibold text-sm text-red-900'>
                   Invalid Selection
                 </AlertTitle>
-                <AlertDescription className='mt-2'>
+                <AlertDescription className='mt-1 text-xs text-red-800'>
                   A party cannot be both Customer and Vendor simultaneously.
                   Please select only one of: Customer, Vendor, or
                   Customer/Vendor.
@@ -746,36 +859,54 @@ export default function PartiesForm({
               </Alert>
             ) : null}
 
-            <Card className='border-2'>
-              <CardHeader className='bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950'>
+            {!isCustomer && !isVendor && !isCustomerVendor ? (
+              <Alert
+                variant='destructive'
+                className='mb-4 animate-in fade-in-50 border-orange-300 bg-orange-50'
+              >
+                <AlertCircle className='h-4 w-4 text-orange-600' />
+                <AlertTitle className='font-semibold text-sm text-orange-900'>
+                  Selection Required
+                </AlertTitle>
+                <AlertDescription className='mt-1 text-xs text-orange-800'>
+                  Please select at least one option: Customer, Vendor, or
+                  Customer/Vendor to proceed to the next step.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            <Card className='border shadow-sm'>
+              <CardHeader className='bg-gradient-to-r from-purple-50 to-pink-50 py-4 px-5 border-b'>
                 <div className='flex items-center gap-3'>
-                  <div className='p-2 bg-primary rounded-lg'>
-                    <User className='h-6 w-6 text-primary-foreground' />
+                  <div className='p-2 bg-purple-600 rounded-lg shadow-sm'>
+                    <User className='h-5 w-5 text-white' />
                   </div>
                   <div>
-                    <CardTitle className='text-2xl'>
+                    <CardTitle className='text-lg font-semibold text-gray-900'>
                       Party Classification
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className='text-xs text-gray-600'>
                       Define the type and operational scope of the party
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className='pt-6 space-y-6'>
-                <div className='bg-amber-50 dark:bg-amber-950/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800'>
+              <CardContent className='pt-5 pb-4 px-5 space-y-5'>
+                <div className='bg-amber-50 p-4 rounded-lg border border-amber-200'>
                   <div className='flex gap-2 mb-3'>
-                    <Info className='h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5' />
+                    <Info className='h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5' />
                     <div>
-                      <h4 className='text-sm font-semibold text-amber-900 dark:text-amber-100'>
+                      <h4 className='text-xs font-semibold text-amber-900 flex items-center gap-1.5'>
                         Customer/Vendor Relationship
+                        <span className='text-red-500 text-sm'>*</span>
                       </h4>
-                      <p className='text-sm text-amber-700 dark:text-amber-300'>
-                        Select only one option from the three below
+                      <p className='text-xs text-amber-700 mt-0.5'>
+                        Select at least one option from the three below
+                        (required)
                       </p>
                     </div>
                   </div>
-                  <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mt-4'>
+                  <div className='grid grid-cols-1 md:grid-cols-3 gap-3 mt-3'>
                     <ToggleField
                       name='isCustomer'
                       label='Customer'
@@ -812,11 +943,11 @@ export default function PartiesForm({
                 <Separator />
 
                 <div>
-                  <h4 className='text-sm font-semibold mb-4 flex items-center gap-2'>
-                    <span className='h-1 w-1 rounded-full bg-primary'></span>
+                  <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
                     Party Roles
                   </h4>
-                  <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
+                  <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
                     <ToggleField
                       name='isAgent'
                       label='Agent'
@@ -865,11 +996,11 @@ export default function PartiesForm({
                 <Separator />
 
                 <div>
-                  <h4 className='text-sm font-semibold mb-4 flex items-center gap-2'>
-                    <span className='h-1 w-1 rounded-full bg-primary'></span>
+                  <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
                     Business Operations
                   </h4>
-                  <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4'>
+                  <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3'>
                     <ToggleField name='isInSeaImport' label='Sea Import' />
                     <ToggleField name='isInSeaExport' label='Sea Export' />
                     <ToggleField name='isInAirImport' label='Air Import' />
@@ -884,35 +1015,41 @@ export default function PartiesForm({
 
       case 3:
         return (
-          <div className='space-y-6'>
-            <Card className='border-2'>
-              <CardHeader className='bg-gradient-to-r from-green-50 to-teal-50 dark:from-green-950 dark:to-teal-950'>
+          <div className='space-y-4'>
+            <Card className='border shadow-sm'>
+              <CardHeader className='bg-gradient-to-r from-green-50 to-teal-50 py-4 px-5 border-b'>
                 <div className='flex items-center gap-3'>
-                  <div className='p-2 bg-primary rounded-lg'>
-                    <Contact className='h-6 w-6 text-primary-foreground' />
+                  <div className='p-2 bg-green-600 rounded-lg shadow-sm'>
+                    <Contact className='h-5 w-5 text-white' />
                   </div>
                   <div>
-                    <CardTitle className='text-2xl'>Company Contact</CardTitle>
-                    <CardDescription>
+                    <CardTitle className='text-lg font-semibold text-gray-900'>
+                      Company Contact
+                    </CardTitle>
+                    <CardDescription className='text-xs text-gray-600'>
                       General contact information for the party
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className='grid grid-cols-1 md:grid-cols-2 gap-6 pt-6'>
+              <CardContent className='grid grid-cols-1 md:grid-cols-2 gap-5 pt-5 pb-4 px-5'>
                 <FormField
                   control={form.control}
                   name='addressLine1'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Address Line 1</FormLabel>
+                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                        Address Line 1
+                        <span className='text-red-500 text-base'>*</span>
+                      </FormLabel>
                       <FormControl>
                         <Input
                           placeholder='Street address, building name'
                           {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -922,14 +1059,17 @@ export default function PartiesForm({
                   name='addressLine2'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Address Line 2</FormLabel>
+                      <FormLabel className='text-sm font-medium'>
+                        Address Line 2
+                      </FormLabel>
                       <FormControl>
                         <Input
                           placeholder='Apartment, suite, unit, floor'
                           {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -939,11 +1079,17 @@ export default function PartiesForm({
                   name='postalCode'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Postal Code</FormLabel>
+                      <FormLabel className='text-sm font-medium'>
+                        Postal Code
+                      </FormLabel>
                       <FormControl>
-                        <Input placeholder='ZIP/Postal code' {...field} />
+                        <Input
+                          placeholder='ZIP/Postal code'
+                          {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                        />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -953,12 +1099,21 @@ export default function PartiesForm({
                   name='phone'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Phone</FormLabel>
+                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                        Phone
+                        <span className='text-red-500 text-base'>*</span>
+                      </FormLabel>
                       <FormControl>
-                        <Input placeholder='+92 XXX XXXXXXX' {...field} />
+                        <Input
+                          placeholder='+92 XXX XXXXXXX'
+                          {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                        />
                       </FormControl>
-                      <FormDescription>Include country code</FormDescription>
-                      <FormMessage />
+                      <FormDescription className='text-xs text-gray-500'>
+                        Include country code
+                      </FormDescription>
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -968,11 +1123,15 @@ export default function PartiesForm({
                   name='fax'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Fax</FormLabel>
+                      <FormLabel className='text-sm font-medium'>Fax</FormLabel>
                       <FormControl>
-                        <Input placeholder='Fax number' {...field} />
+                        <Input
+                          placeholder='Fax number'
+                          {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                        />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -982,16 +1141,22 @@ export default function PartiesForm({
                   name='email'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                        Email
+                        <span className='text-red-500 text-base'>*</span>
+                      </FormLabel>
                       <FormControl>
                         <Input
                           type='email'
                           placeholder='company@example.com'
                           {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
                         />
                       </FormControl>
-                      <FormDescription>Primary company email</FormDescription>
-                      <FormMessage />
+                      <FormDescription className='text-xs text-gray-500'>
+                        Primary company email
+                      </FormDescription>
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -1001,45 +1166,56 @@ export default function PartiesForm({
                   name='website'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Website</FormLabel>
+                      <FormLabel className='text-sm font-medium'>
+                        Website
+                      </FormLabel>
                       <FormControl>
                         <Input
                           placeholder='https://www.example.com'
                           {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
               </CardContent>
             </Card>
 
-            <Card className='border-2'>
-              <CardHeader className='bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-950 dark:to-blue-950'>
+            <Card className='border shadow-sm'>
+              <CardHeader className='bg-gradient-to-r from-cyan-50 to-blue-50 py-4 px-5 border-b'>
                 <div className='flex items-center gap-3'>
-                  <div className='p-2 bg-primary rounded-lg'>
-                    <User className='h-6 w-6 text-primary-foreground' />
+                  <div className='p-2 bg-cyan-600 rounded-lg shadow-sm'>
+                    <User className='h-5 w-5 text-white' />
                   </div>
                   <div>
-                    <CardTitle className='text-2xl'>Contact Person</CardTitle>
-                    <CardDescription>
+                    <CardTitle className='text-lg font-semibold text-gray-900'>
+                      Contact Person
+                    </CardTitle>
+                    <CardDescription className='text-xs text-gray-600'>
                       Primary point of contact for this party
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className='grid grid-cols-1 md:grid-cols-2 gap-6 pt-6'>
+              <CardContent className='grid grid-cols-1 md:grid-cols-2 gap-5 pt-5 pb-4 px-5'>
                 <FormField
                   control={form.control}
                   name='contactPersonName'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Full Name</FormLabel>
+                      <FormLabel className='text-sm font-medium'>
+                        Full Name
+                      </FormLabel>
                       <FormControl>
-                        <Input placeholder='John Doe' {...field} />
+                        <Input
+                          placeholder='John Doe'
+                          {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                        />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -1049,14 +1225,17 @@ export default function PartiesForm({
                   name='contactPersonDesignation'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Designation</FormLabel>
+                      <FormLabel className='text-sm font-medium'>
+                        Designation
+                      </FormLabel>
                       <FormControl>
                         <Input
                           placeholder='Manager, Director, etc.'
                           {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -1066,18 +1245,22 @@ export default function PartiesForm({
                   name='contactPersonEmail'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Contact Email</FormLabel>
+                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                        Contact Email
+                        <span className='text-red-500 text-base'>*</span>
+                      </FormLabel>
                       <FormControl>
                         <Input
                           type='email'
                           placeholder='contact@example.com'
                           {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
                         />
                       </FormControl>
-                      <FormDescription>
+                      <FormDescription className='text-xs text-gray-500'>
                         Direct email of contact person
                       </FormDescription>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -1087,14 +1270,21 @@ export default function PartiesForm({
                   name='contactPersonPhone'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Contact Phone</FormLabel>
+                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                        Contact Phone
+                        <span className='text-red-500 text-base'>*</span>
+                      </FormLabel>
                       <FormControl>
-                        <Input placeholder='+92 XXX XXXXXXX' {...field} />
+                        <Input
+                          placeholder='+92 XXX XXXXXXX'
+                          {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                        />
                       </FormControl>
-                      <FormDescription>
+                      <FormDescription className='text-xs text-gray-500'>
                         Direct phone of contact person
                       </FormDescription>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -1105,42 +1295,48 @@ export default function PartiesForm({
 
       case 4:
         return (
-          <Card className='border-2'>
-            <CardHeader className='bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-950 dark:to-orange-950'>
+          <Card className='border shadow-sm'>
+            <CardHeader className='bg-gradient-to-r from-yellow-50 to-orange-50 py-4 px-5 border-b'>
               <div className='flex items-center gap-3'>
-                <div className='p-2 bg-primary rounded-lg'>
-                  <Banknote className='h-6 w-6 text-primary-foreground' />
+                <div className='p-2 bg-yellow-600 rounded-lg shadow-sm'>
+                  <Banknote className='h-5 w-5 text-white' />
                 </div>
                 <div>
-                  <CardTitle className='text-2xl'>
+                  <CardTitle className='text-lg font-semibold text-gray-900'>
                     Financial Information
                   </CardTitle>
-                  <CardDescription>
+                  <CardDescription className='text-xs text-gray-600'>
                     Banking and tax details for the party
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className='pt-6 space-y-6'>
+            <CardContent className='pt-5 pb-4 px-5 space-y-5'>
               <div>
-                <h4 className='text-sm font-semibold mb-4 flex items-center gap-2'>
-                  <span className='h-1 w-1 rounded-full bg-primary'></span>
+                <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                  <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
                   Tax Information
                 </h4>
-                <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
+                <div className='grid grid-cols-1 md:grid-cols-2 gap-5'>
                   <FormField
                     control={form.control}
                     name='ntnNumber'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>NTN Number</FormLabel>
+                        <FormLabel className='text-sm font-medium'>
+                          NTN Number
+                        </FormLabel>
                         <FormControl>
-                          <Input placeholder='National Tax Number' {...field} />
+                          <Input
+                            placeholder='National Tax Number'
+                            {...field}
+                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                          />
                         </FormControl>
-                        <FormDescription>
+                        <FormDescription className='text-xs text-gray-500'>
                           Tax registration number
                         </FormDescription>
-                        <FormMessage />
+                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
@@ -1150,15 +1346,20 @@ export default function PartiesForm({
                     name='strnNumber'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>STRN Number</FormLabel>
+                        <FormLabel className='text-sm font-medium'>
+                          STRN Number
+                        </FormLabel>
                         <FormControl>
                           <Input
                             placeholder='Sales Tax Registration Number'
                             {...field}
+                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
                           />
                         </FormControl>
-                        <FormDescription>Sales tax number</FormDescription>
-                        <FormMessage />
+                        <FormDescription className='text-xs text-gray-500'>
+                          Sales tax number
+                        </FormDescription>
+                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
@@ -1168,21 +1369,27 @@ export default function PartiesForm({
               <Separator />
 
               <div>
-                <h4 className='text-sm font-semibold mb-4 flex items-center gap-2'>
-                  <span className='h-1 w-1 rounded-full bg-primary'></span>
+                <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                  <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
                   Banking Details
                 </h4>
-                <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
+                <div className='grid grid-cols-1 md:grid-cols-2 gap-5'>
                   <FormField
                     control={form.control}
                     name='bankName'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Bank Name</FormLabel>
+                        <FormLabel className='text-sm font-medium'>
+                          Bank Name
+                        </FormLabel>
                         <FormControl>
-                          <Input placeholder='Enter bank name' {...field} />
+                          <Input
+                            placeholder='Enter bank name'
+                            {...field}
+                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                          />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
@@ -1192,11 +1399,17 @@ export default function PartiesForm({
                     name='bankAccountNumber'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Bank Account Number</FormLabel>
+                        <FormLabel className='text-sm font-medium'>
+                          Bank Account Number
+                        </FormLabel>
                         <FormControl>
-                          <Input placeholder='Account number' {...field} />
+                          <Input
+                            placeholder='Account number'
+                            {...field}
+                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                          />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
@@ -1206,17 +1419,20 @@ export default function PartiesForm({
                     name='ibanNumber'
                     render={({ field }) => (
                       <FormItem className='md:col-span-2'>
-                        <FormLabel>IBAN Number</FormLabel>
+                        <FormLabel className='text-sm font-medium'>
+                          IBAN Number
+                        </FormLabel>
                         <FormControl>
                           <Input
                             placeholder='PK XX XXXX XXXX XXXX XXXX XXXX XXXX'
                             {...field}
+                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
                           />
                         </FormControl>
-                        <FormDescription>
+                        <FormDescription className='text-xs text-gray-500'>
                           International Bank Account Number
                         </FormDescription>
-                        <FormMessage />
+                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
@@ -1226,17 +1442,19 @@ export default function PartiesForm({
               <Separator />
 
               <div>
-                <h4 className='text-sm font-semibold mb-4 flex items-center gap-2'>
-                  <span className='h-1 w-1 rounded-full bg-primary'></span>
+                <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                  <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
                   Credit Terms
                 </h4>
-                <div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
+                <div className='grid grid-cols-1 md:grid-cols-3 gap-5'>
                   <FormField
                     control={form.control}
                     name='creditLimitLC'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Credit Limit (LC)</FormLabel>
+                        <FormLabel className='text-sm font-medium'>
+                          Credit Limit (LC)
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type='number'
@@ -1245,10 +1463,13 @@ export default function PartiesForm({
                             onChange={(e) =>
                               field.onChange(Number(e.target.value))
                             }
+                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
                           />
                         </FormControl>
-                        <FormDescription>Local currency</FormDescription>
-                        <FormMessage />
+                        <FormDescription className='text-xs text-gray-500'>
+                          Local currency
+                        </FormDescription>
+                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
@@ -1258,7 +1479,9 @@ export default function PartiesForm({
                     name='creditLimitFC'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Credit Limit (FC)</FormLabel>
+                        <FormLabel className='text-sm font-medium'>
+                          Credit Limit (FC)
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type='number'
@@ -1267,10 +1490,13 @@ export default function PartiesForm({
                             onChange={(e) =>
                               field.onChange(Number(e.target.value))
                             }
+                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
                           />
                         </FormControl>
-                        <FormDescription>Foreign currency</FormDescription>
-                        <FormMessage />
+                        <FormDescription className='text-xs text-gray-500'>
+                          Foreign currency
+                        </FormDescription>
+                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
@@ -1280,7 +1506,9 @@ export default function PartiesForm({
                     name='allowedCreditDays'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Allowed Credit Days</FormLabel>
+                        <FormLabel className='text-sm font-medium'>
+                          Allowed Credit Days
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type='number'
@@ -1289,10 +1517,13 @@ export default function PartiesForm({
                             onChange={(e) =>
                               field.onChange(Number(e.target.value))
                             }
+                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
                           />
                         </FormControl>
-                        <FormDescription>Payment period</FormDescription>
-                        <FormMessage />
+                        <FormDescription className='text-xs text-gray-500'>
+                          Payment period
+                        </FormDescription>
+                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
@@ -1302,19 +1533,21 @@ export default function PartiesForm({
                   control={form.control}
                   name='paymentTerms'
                   render={({ field }) => (
-                    <FormItem className='mt-6'>
-                      <FormLabel>Payment Terms</FormLabel>
+                    <FormItem className='mt-5'>
+                      <FormLabel className='text-sm font-medium'>
+                        Payment Terms
+                      </FormLabel>
                       <FormControl>
                         <Textarea
                           placeholder='Enter detailed payment terms and conditions...'
-                          className='min-h-[100px]'
+                          className='min-h-[90px] text-sm border-gray-300 focus:border-blue-500'
                           {...field}
                         />
                       </FormControl>
-                      <FormDescription>
+                      <FormDescription className='text-xs text-gray-500'>
                         Additional payment terms or conditions
                       </FormDescription>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -1325,21 +1558,23 @@ export default function PartiesForm({
 
       case 5:
         return !isNonGLParty ? (
-          <Card className='border-2'>
-            <CardHeader className='bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950 dark:to-purple-950'>
+          <Card className='border shadow-sm'>
+            <CardHeader className='bg-gradient-to-r from-indigo-50 to-purple-50 py-4 px-5 border-b'>
               <div className='flex items-center gap-3'>
-                <div className='p-2 bg-primary rounded-lg'>
-                  <FileText className='h-6 w-6 text-primary-foreground' />
+                <div className='p-2 bg-indigo-600 rounded-lg shadow-sm'>
+                  <FileText className='h-5 w-5 text-white' />
                 </div>
                 <div>
-                  <CardTitle className='text-2xl'>GL Integration</CardTitle>
-                  <CardDescription>
+                  <CardTitle className='text-lg font-semibold text-gray-900'>
+                    GL Integration
+                  </CardTitle>
+                  <CardDescription className='text-xs text-gray-600'>
                     Link this party to your General Ledger
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className='pt-6 space-y-6'>
+            <CardContent className='pt-5 pb-4 px-5 space-y-5'>
               <ToggleField
                 name='isGLLinked'
                 label='Enable GL Linkage'
@@ -1352,14 +1587,14 @@ export default function PartiesForm({
               {isGLLinked && (
                 <>
                   <Separator />
-                  <div className='bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800'>
-                    <div className='flex gap-2 mb-3'>
-                      <Info className='h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5' />
+                  <div className='bg-blue-50 p-4 rounded-lg border border-blue-200'>
+                    <div className='flex gap-2 mb-2'>
+                      <Info className='h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5' />
                       <div>
-                        <h4 className='text-sm font-semibold text-blue-900 dark:text-blue-100'>
+                        <h4 className='text-xs font-semibold text-blue-900'>
                           GL Account Selection
                         </h4>
-                        <p className='text-sm text-blue-700 dark:text-blue-300'>
+                        <p className='text-xs text-blue-700 mt-0.5'>
                           Select the parent GL account for this party
                         </p>
                       </div>
@@ -1371,7 +1606,10 @@ export default function PartiesForm({
                     name='glParentAccountId'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>GL Parent Account</FormLabel>
+                        <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                          GL Parent Account
+                          <span className='text-red-500 text-base'>*</span>
+                        </FormLabel>
                         <FormControl>
                           <Select
                             options={glAccounts}
@@ -1388,13 +1626,25 @@ export default function PartiesForm({
                             classNamePrefix='react-select'
                             isLoading={loadingGlAccounts}
                             isDisabled={loadingGlAccounts}
+                            styles={{
+                              control: (base) => ({
+                                ...base,
+                                minHeight: "40px",
+                                fontSize: "14px",
+                                borderColor: "#d1d5db",
+                              }),
+                              menu: (base) => ({
+                                ...base,
+                                zIndex: 50,
+                              }),
+                            }}
                           />
                         </FormControl>
-                        <FormDescription>
-                          The parent account under which this partys
-                          transactions will be recorded
+                        <FormDescription className='text-xs text-gray-500'>
+                          The parent account under which this party transactions
+                          will be recorded (Required)
                         </FormDescription>
-                        <FormMessage />
+                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
@@ -1403,27 +1653,29 @@ export default function PartiesForm({
             </CardContent>
           </Card>
         ) : (
-          <Card className='border-2'>
-            <CardHeader className='bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950 dark:to-purple-950'>
+          <Card className='border shadow-sm'>
+            <CardHeader className='bg-gradient-to-r from-indigo-50 to-purple-50 py-4 px-5 border-b'>
               <div className='flex items-center gap-3'>
-                <div className='p-2 bg-primary rounded-lg'>
-                  <FileText className='h-6 w-6 text-primary-foreground' />
+                <div className='p-2 bg-indigo-600 rounded-lg shadow-sm'>
+                  <FileText className='h-5 w-5 text-white' />
                 </div>
                 <div>
-                  <CardTitle className='text-2xl'>GL Integration</CardTitle>
-                  <CardDescription>
+                  <CardTitle className='text-lg font-semibold text-gray-900'>
+                    GL Integration
+                  </CardTitle>
+                  <CardDescription className='text-xs text-gray-600'>
                     Configure General Ledger linkage
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className='pt-6'>
-              <Alert className='border-yellow-200 bg-yellow-50 dark:bg-yellow-950/20 dark:border-yellow-800'>
-                <AlertCircle className='h-5 w-5 text-yellow-600' />
-                <AlertTitle className='text-yellow-900 dark:text-yellow-100 font-semibold'>
+            <CardContent className='pt-5 pb-4 px-5'>
+              <Alert className='border-yellow-200 bg-yellow-50'>
+                <AlertCircle className='h-4 w-4 text-yellow-600' />
+                <AlertTitle className='text-yellow-900 font-semibold text-sm'>
                   GL Integration Not Available
                 </AlertTitle>
-                <AlertDescription className='text-yellow-800 dark:text-yellow-200 mt-2'>
+                <AlertDescription className='text-yellow-800 mt-1 text-xs'>
                   This party is marked as a <strong>Non-GL Party</strong>, which
                   means GL linking options are disabled. To enable GL
                   integration, go back to Step 2 (Party Classification) and turn
@@ -1436,28 +1688,30 @@ export default function PartiesForm({
 
       case 6:
         return (
-          <div className='space-y-6'>
-            <Card className='border-2'>
-              <CardHeader className='bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-950 dark:to-pink-950'>
+          <div className='space-y-4'>
+            <Card className='border shadow-sm'>
+              <CardHeader className='bg-gradient-to-r from-rose-50 to-pink-50 py-4 px-5 border-b'>
                 <div className='flex items-center gap-3'>
-                  <div className='p-2 bg-primary rounded-lg'>
-                    <Settings className='h-6 w-6 text-primary-foreground' />
+                  <div className='p-2 bg-rose-600 rounded-lg shadow-sm'>
+                    <Settings className='h-5 w-5 text-white' />
                   </div>
                   <div>
-                    <CardTitle className='text-2xl'>System Settings</CardTitle>
-                    <CardDescription>
+                    <CardTitle className='text-lg font-semibold text-gray-900'>
+                      System Settings
+                    </CardTitle>
+                    <CardDescription className='text-xs text-gray-600'>
                       Configure system permissions and access
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className='pt-6 space-y-6'>
+              <CardContent className='pt-5 pb-4 px-5 space-y-5'>
                 <div>
-                  <h4 className='text-sm font-semibold mb-4 flex items-center gap-2'>
-                    <span className='h-1 w-1 rounded-full bg-primary'></span>
+                  <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
                     Portal Access
                   </h4>
-                  <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                  <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
                     <ToggleField
                       name='trackIdAllowed'
                       label='Track ID Allowed'
@@ -1489,11 +1743,11 @@ export default function PartiesForm({
                 <Separator />
 
                 <div>
-                  <h4 className='text-sm font-semibold mb-4 flex items-center gap-2'>
-                    <span className='h-1 w-1 rounded-full bg-primary'></span>
+                  <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
                     Operational Settings
                   </h4>
-                  <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                  <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
                     <ToggleField
                       name='isProcessOwner'
                       label='Process Owner'
@@ -1529,48 +1783,52 @@ export default function PartiesForm({
                   name='benificiaryNameOfPO'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
+                      <FormLabel className='text-sm font-medium'>
                         Beneficiary Name for Purchase Orders
+                        <span className='text-red-500 text-base'>*</span>
                       </FormLabel>
                       <FormControl>
                         <Input
                           placeholder='Enter beneficiary name'
                           {...field}
+                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
                         />
                       </FormControl>
-                      <FormDescription>
+                      <FormDescription className='text-xs text-gray-500'>
                         Name to be used as beneficiary in purchase orders
                       </FormDescription>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
               </CardContent>
             </Card>
 
-            <Card className='border-2'>
-              <CardHeader className='bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950 dark:to-purple-950'>
+            <Card className='border shadow-sm'>
+              <CardHeader className='bg-gradient-to-r from-violet-50 to-purple-50 py-4 px-5 border-b'>
                 <div className='flex items-center gap-3'>
-                  <div className='p-2 bg-primary rounded-lg'>
-                    <User className='h-6 w-6 text-primary-foreground' />
+                  <div className='p-2 bg-violet-600 rounded-lg shadow-sm'>
+                    <User className='h-5 w-5 text-white' />
                   </div>
                   <div>
-                    <CardTitle className='text-2xl'>
+                    <CardTitle className='text-lg font-semibold text-gray-900'>
                       Assign Representatives
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className='text-xs text-gray-600'>
                       Assign employees to handle this party
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className='grid grid-cols-1 md:grid-cols-3 gap-6 pt-6'>
+              <CardContent className='grid grid-cols-1 md:grid-cols-3 gap-5 pt-5 pb-4 px-5'>
                 <FormField
                   control={form.control}
                   name='salesRepId'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Sales Representative</FormLabel>
+                      <FormLabel className='text-sm font-medium'>
+                        Sales Representative
+                      </FormLabel>
                       <FormControl>
                         <Select
                           options={salesReps}
@@ -1585,12 +1843,24 @@ export default function PartiesForm({
                           classNamePrefix='react-select'
                           isLoading={loadingSalesReps}
                           isDisabled={loadingSalesReps}
+                          styles={{
+                            control: (base) => ({
+                              ...base,
+                              minHeight: "40px",
+                              fontSize: "14px",
+                              borderColor: "#d1d5db",
+                            }),
+                            menu: (base) => ({
+                              ...base,
+                              zIndex: 50,
+                            }),
+                          }}
                         />
                       </FormControl>
-                      <FormDescription>
+                      <FormDescription className='text-xs text-gray-500'>
                         Handles sales activities
                       </FormDescription>
-                      <FormMessage />
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -1600,7 +1870,9 @@ export default function PartiesForm({
                   name='docsRepId'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Documentation Rep</FormLabel>
+                      <FormLabel className='text-sm font-medium'>
+                        Documentation Rep
+                      </FormLabel>
                       <FormControl>
                         <Select
                           options={docsReps}
@@ -1615,10 +1887,24 @@ export default function PartiesForm({
                           classNamePrefix='react-select'
                           isLoading={loadingDocsReps}
                           isDisabled={loadingDocsReps}
+                          styles={{
+                            control: (base) => ({
+                              ...base,
+                              minHeight: "40px",
+                              fontSize: "14px",
+                              borderColor: "#d1d5db",
+                            }),
+                            menu: (base) => ({
+                              ...base,
+                              zIndex: 50,
+                            }),
+                          }}
                         />
                       </FormControl>
-                      <FormDescription>Handles documentation</FormDescription>
-                      <FormMessage />
+                      <FormDescription className='text-xs text-gray-500'>
+                        Handles documentation
+                      </FormDescription>
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -1628,7 +1914,9 @@ export default function PartiesForm({
                   name='accountsRepId'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Accounts Representative</FormLabel>
+                      <FormLabel className='text-sm font-medium'>
+                        Accounts Representative
+                      </FormLabel>
                       <FormControl>
                         <Select
                           options={accountsReps}
@@ -1645,10 +1933,24 @@ export default function PartiesForm({
                           classNamePrefix='react-select'
                           isLoading={loadingAccountsReps}
                           isDisabled={loadingAccountsReps}
+                          styles={{
+                            control: (base) => ({
+                              ...base,
+                              minHeight: "40px",
+                              fontSize: "14px",
+                              borderColor: "#d1d5db",
+                            }),
+                            menu: (base) => ({
+                              ...base,
+                              zIndex: 50,
+                            }),
+                          }}
                         />
                       </FormControl>
-                      <FormDescription>Handles accounting</FormDescription>
-                      <FormMessage />
+                      <FormDescription className='text-xs text-gray-500'>
+                        Handles accounting
+                      </FormDescription>
+                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -1658,75 +1960,91 @@ export default function PartiesForm({
         );
 
       case 7:
-        const isFormValid = formValues.partyName && validateCurrentStep();
+        const isFormValid =
+          formValues.partyName &&
+          formValues.addressLine1 &&
+          formValues.phone &&
+          formValues.email &&
+          formValues.contactPersonEmail &&
+          formValues.contactPersonPhone &&
+          (!isGLLinked || (isGLLinked && formValues.glParentAccountId)) &&
+          (!formValues.isNonGLParty || !isNonGLParty) &&
+          formValues.benificiaryNameOfPO;
 
         return (
-          <Card className='border-2'>
-            <CardHeader className='bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950'>
+          <Card className='border shadow-sm'>
+            <CardHeader className='bg-gradient-to-r from-green-50 to-emerald-50 py-4 px-5 border-b'>
               <div className='flex items-center gap-3'>
-                <div className='p-2 bg-green-600 rounded-lg'>
-                  <CheckCircle className='h-6 w-6 text-white' />
+                <div className='p-2 bg-green-600 rounded-lg shadow-sm'>
+                  <CheckCircle className='h-5 w-5 text-white' />
                 </div>
                 <div>
-                  <CardTitle className='text-2xl'>Review & Submit</CardTitle>
-                  <CardDescription>
+                  <CardTitle className='text-lg font-semibold text-gray-900'>
+                    Review & Submit
+                  </CardTitle>
+                  <CardDescription className='text-xs text-gray-600'>
                     Review all information before submitting
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className='pt-6 space-y-6'>
+            <CardContent className='pt-5 pb-4 px-5 space-y-5'>
               {!isFormValid && (
-                <Alert variant='destructive'>
-                  <AlertCircle className='h-4 w-4' />
-                  <AlertTitle>Incomplete Information</AlertTitle>
-                  <AlertDescription>
+                <Alert
+                  variant='destructive'
+                  className='border-red-300 bg-red-50'
+                >
+                  <AlertCircle className='h-4 w-4 text-red-600' />
+                  <AlertTitle className='text-sm font-semibold text-red-900'>
+                    Incomplete Information
+                  </AlertTitle>
+                  <AlertDescription className='text-xs text-red-800'>
                     Please ensure all required fields are filled correctly
                     before submitting.
                   </AlertDescription>
                 </Alert>
               )}
 
-              <Alert className='border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800'>
+              <Alert className='border-blue-200 bg-blue-50'>
                 <Info className='h-4 w-4 text-blue-600' />
-                <AlertDescription className='text-blue-900 dark:text-blue-100'>
+                <AlertDescription className='text-blue-900 text-xs'>
                   Review all the information below. You can go back to any step
                   to make changes.
                 </AlertDescription>
               </Alert>
 
-              <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
-                <Card className='border shadow-sm'>
-                  <CardHeader className='pb-3'>
-                    <CardTitle className='text-lg flex items-center gap-2'>
-                      <Building className='h-4 w-4' />
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                <Card className='border shadow-sm bg-white'>
+                  <CardHeader className='pb-2 pt-3 px-4 bg-gray-50 border-b'>
+                    <CardTitle className='text-sm flex items-center gap-2 font-semibold text-gray-900'>
+                      <Building className='h-4 w-4 text-blue-600' />
                       Basic Information
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className='space-y-3'>
+                  <CardContent className='space-y-2.5 pb-3 px-4 pt-3'>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         Party Name:
                       </span>
-                      <span className='font-medium text-sm text-right'>
+                      <span className='font-semibold text-xs text-right text-gray-900'>
                         {formValues.partyName || "—"}
                       </span>
                     </div>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         Short Name:
                       </span>
-                      <span className='font-medium text-sm'>
+                      <span className='font-semibold text-xs text-gray-900'>
                         {formValues.partyShortName || "—"}
                       </span>
                     </div>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         Status:
                       </span>
                       <Badge
                         variant={formValues.isActive ? "default" : "secondary"}
-                        className='text-xs'
+                        className='text-[10px] px-2 py-0.5'
                       >
                         {formValues.isActive ? "Active" : "Inactive"}
                       </Badge>
@@ -1734,45 +2052,45 @@ export default function PartiesForm({
                   </CardContent>
                 </Card>
 
-                <Card className='border shadow-sm'>
-                  <CardHeader className='pb-3'>
-                    <CardTitle className='text-lg flex items-center gap-2'>
-                      <User className='h-4 w-4' />
+                <Card className='border shadow-sm bg-white'>
+                  <CardHeader className='pb-2 pt-3 px-4 bg-gray-50 border-b'>
+                    <CardTitle className='text-sm flex items-center gap-2 font-semibold text-gray-900'>
+                      <User className='h-4 w-4 text-purple-600' />
                       Party Type
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className='space-y-3'>
+                  <CardContent className='space-y-2.5 pb-3 px-4 pt-3'>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         Customer:
                       </span>
                       <Badge
                         variant={formValues.isCustomer ? "default" : "outline"}
-                        className='text-xs'
+                        className='text-[10px] px-2 py-0.5'
                       >
                         {formValues.isCustomer ? "Yes" : "No"}
                       </Badge>
                     </div>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         Vendor:
                       </span>
                       <Badge
                         variant={formValues.isVendor ? "default" : "outline"}
-                        className='text-xs'
+                        className='text-[10px] px-2 py-0.5'
                       >
                         {formValues.isVendor ? "Yes" : "No"}
                       </Badge>
                     </div>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         Non-GL Party:
                       </span>
                       <Badge
                         variant={
                           formValues.isNonGLParty ? "default" : "outline"
                         }
-                        className='text-xs'
+                        className='text-[10px] px-2 py-0.5'
                       >
                         {formValues.isNonGLParty ? "Yes" : "No"}
                       </Badge>
@@ -1780,70 +2098,70 @@ export default function PartiesForm({
                   </CardContent>
                 </Card>
 
-                <Card className='border shadow-sm'>
-                  <CardHeader className='pb-3'>
-                    <CardTitle className='text-lg flex items-center gap-2'>
-                      <Contact className='h-4 w-4' />
+                <Card className='border shadow-sm bg-white'>
+                  <CardHeader className='pb-2 pt-3 px-4 bg-gray-50 border-b'>
+                    <CardTitle className='text-sm flex items-center gap-2 font-semibold text-gray-900'>
+                      <Contact className='h-4 w-4 text-green-600' />
                       Contact Information
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className='space-y-3'>
+                  <CardContent className='space-y-2.5 pb-3 px-4 pt-3'>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         Phone:
                       </span>
-                      <span className='font-medium text-sm'>
+                      <span className='font-semibold text-xs text-gray-900'>
                         {formValues.phone || "—"}
                       </span>
                     </div>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         Email:
                       </span>
-                      <span className='font-medium text-sm truncate max-w-[200px]'>
+                      <span className='font-semibold text-xs truncate max-w-[200px] text-gray-900'>
                         {formValues.email || "—"}
                       </span>
                     </div>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         Contact Person:
                       </span>
-                      <span className='font-medium text-sm'>
+                      <span className='font-semibold text-xs text-gray-900'>
                         {formValues.contactPersonName || "—"}
                       </span>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className='border shadow-sm'>
-                  <CardHeader className='pb-3'>
-                    <CardTitle className='text-lg flex items-center gap-2'>
-                      <Banknote className='h-4 w-4' />
+                <Card className='border shadow-sm bg-white'>
+                  <CardHeader className='pb-2 pt-3 px-4 bg-gray-50 border-b'>
+                    <CardTitle className='text-sm flex items-center gap-2 font-semibold text-gray-900'>
+                      <Banknote className='h-4 w-4 text-yellow-600' />
                       Financial Information
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className='space-y-3'>
+                  <CardContent className='space-y-2.5 pb-3 px-4 pt-3'>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         NTN:
                       </span>
-                      <span className='font-medium text-sm'>
+                      <span className='font-semibold text-xs text-gray-900'>
                         {formValues.ntnNumber || "—"}
                       </span>
                     </div>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         Credit Limit (LC):
                       </span>
-                      <span className='font-medium text-sm'>
+                      <span className='font-semibold text-xs text-gray-900'>
                         {formValues.creditLimitLC}
                       </span>
                     </div>
                     <div className='flex justify-between items-start'>
-                      <span className='text-sm text-muted-foreground'>
+                      <span className='text-xs text-gray-600 font-medium'>
                         Credit Days:
                       </span>
-                      <span className='font-medium text-sm'>
+                      <span className='font-semibold text-xs text-gray-900'>
                         {formValues.allowedCreditDays}
                       </span>
                     </div>
@@ -1853,9 +2171,9 @@ export default function PartiesForm({
 
               <Separator />
 
-              <div className='bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 p-6 rounded-lg border-2 border-green-200 dark:border-green-800'>
-                <h4 className='font-semibold mb-3 text-green-900 dark:text-green-100 flex items-center gap-2'>
-                  <CheckCircle className='h-5 w-5' />
+              <div className='bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200'>
+                <h4 className='font-semibold mb-3 text-green-900 flex items-center gap-2 text-sm'>
+                  <CheckCircle className='h-4 w-4' />
                   Completion Summary
                 </h4>
                 <ul className='space-y-2'>
@@ -1864,27 +2182,27 @@ export default function PartiesForm({
                     const isCompleted =
                       completedSteps.includes(step.id) || currentStep > step.id;
                     return (
-                      <li key={step.id} className='flex items-center gap-3'>
+                      <li key={step.id} className='flex items-center gap-2.5'>
                         <div
                           className={cn(
-                            "flex items-center justify-center w-6 h-6 rounded-full",
+                            "flex items-center justify-center w-6 h-6 rounded-full transition-colors",
                             isCompleted
                               ? "bg-green-600 text-white"
-                              : "bg-gray-200 dark:bg-gray-700"
+                              : "bg-gray-200 text-gray-600"
                           )}
                         >
                           {isCompleted ? (
-                            <CheckCircle className='h-4 w-4' />
+                            <CheckCircle className='h-3.5 w-3.5' />
                           ) : (
-                            <Icon className='h-4 w-4' />
+                            <Icon className='h-3.5 w-3.5' />
                           )}
                         </div>
                         <span
                           className={cn(
-                            "text-sm",
+                            "text-xs",
                             isCompleted
-                              ? "text-green-900 dark:text-green-100 font-medium"
-                              : "text-muted-foreground"
+                              ? "text-green-900 font-semibold"
+                              : "text-gray-600"
                           )}
                         >
                           {step.fullTitle}
@@ -1904,207 +2222,233 @@ export default function PartiesForm({
   };
 
   return (
-    <div className='container mx-auto px-4 py-6 max-w-7xl'>
-      {/* Header */}
-      <div className='flex items-center justify-between mb-6'>
-        <div>
-          <h1 className='text-3xl font-bold tracking-tight'>
-            {type === "edit" ? "Edit Party" : "Create New Party"}
-          </h1>
-          <p className='text-muted-foreground mt-1'>
-            {type === "edit"
-              ? "Update party information"
-              : "Add a new party to the system"}
-          </p>
-        </div>
-        <Button
-          variant='ghost'
-          size='sm'
-          onClick={() => router.back()}
-          disabled={isSubmitting}
-        >
-          <X className='h-4 w-4 mr-2' />
-          Cancel
-        </Button>
-      </div>
-
-      {/* Progress Bar */}
-      <Card className='mb-6 border-2'>
-        <CardContent className='pt-6'>
-          <div className='flex justify-between mb-3'>
-            <div>
-              <span className='text-sm font-medium'>
-                Step {currentStep} of {formSteps.length}
-              </span>
-              <p className='text-xs text-muted-foreground mt-1'>
-                {formSteps[currentStep - 1].description}
-              </p>
-            </div>
-            <span className='text-sm font-bold text-primary'>
-              {Math.round(progress)}% Complete
-            </span>
+    <div className='min-h-screen bg-gradient-to-br from-gray-50 to-blue-50'>
+      <div className='container mx-auto px-4 py-5 max-w-7xl'>
+        {/* Header */}
+        <div className='flex items-center justify-between mb-5'>
+          <div>
+            <h1 className='text-2xl font-bold tracking-tight text-gray-900'>
+              {type === "edit" ? "Edit Party" : "Create New Party"}
+            </h1>
+            <p className='text-muted-foreground mt-1 text-xs'>
+              {type === "edit"
+                ? "Update party information"
+                : "Add a new party to the system"}
+            </p>
           </div>
-          <Progress value={progress} className='h-3' />
-        </CardContent>
-      </Card>
+          <Button
+            variant='ghost'
+            size='sm'
+            onClick={() => router.back()}
+            disabled={isSubmitting}
+            className='h-9 hover:bg-red-50 hover:text-red-600'
+          >
+            <X className='h-4 w-4 mr-1.5' />
+            Cancel
+          </Button>
+        </div>
 
-      {/* Step Navigation */}
-      <div className='mb-6'>
-        <div className='grid grid-cols-7 gap-2'>
-          {formSteps.map((step) => {
-            const Icon = step.icon;
-            const isCompleted =
-              completedSteps.includes(step.id) || currentStep > step.id;
-            const isCurrent = currentStep === step.id;
+        {/* Progress Bar */}
+        <Card className='mb-5 border shadow-sm bg-white'>
+          <CardContent className='pt-4 pb-4 px-5'>
+            <div className='flex justify-between mb-2.5'>
+              <div>
+                <span className='text-sm font-semibold text-gray-900'>
+                  Step {currentStep} of {formSteps.length}
+                </span>
+                <p className='text-[11px] text-gray-600 mt-0.5'>
+                  {formSteps[currentStep - 1].description}
+                </p>
+              </div>
+              <div className='flex items-center gap-2'>
+                <span className='text-sm font-bold text-blue-600'>
+                  {progress}%
+                </span>
+                <Badge variant='secondary' className='text-[10px] px-2 py-0.5'>
+                  Complete
+                </Badge>
+              </div>
+            </div>
+            <Progress value={progress} className='h-2.5' />
+          </CardContent>
+        </Card>
 
-            return (
-              <button
-                key={step.id}
-                type='button'
-                onClick={() => goToStep(step.id)}
-                className={cn(
-                  "flex flex-col items-center p-3 rounded-xl transition-all duration-200 border-2",
-                  isCurrent &&
-                    "bg-primary text-primary-foreground shadow-lg scale-105 border-primary",
-                  isCompleted &&
-                    !isCurrent &&
-                    "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20",
-                  !isCurrent &&
-                    !isCompleted &&
-                    "bg-background hover:bg-muted border-border hover:border-primary/50"
-                )}
-              >
-                <div
+        {/* Step Navigation */}
+        <div className='mb-5'>
+          <div className='grid grid-cols-7 gap-2'>
+            {formSteps.map((step) => {
+              const Icon = step.icon;
+              const isCompleted =
+                completedSteps.includes(step.id) || currentStep > step.id;
+              const isCurrent = currentStep === step.id;
+
+              return (
+                <button
+                  key={step.id}
+                  type='button'
+                  onClick={() => goToStep(step.id)}
                   className={cn(
-                    "flex items-center justify-center w-10 h-10 rounded-full mb-2 transition-colors",
-                    isCurrent && "bg-primary-foreground text-primary",
+                    "flex flex-col items-center p-3 rounded-xl transition-all duration-200 border-2 shadow-sm hover:shadow-md",
+                    isCurrent &&
+                      "bg-blue-600 text-white shadow-lg scale-105 border-blue-600",
                     isCompleted &&
                       !isCurrent &&
-                      "bg-primary text-primary-foreground",
-                    !isCurrent && !isCompleted && "bg-muted"
+                      "bg-green-50 text-green-700 border-green-300 hover:bg-green-100",
+                    !isCurrent &&
+                      !isCompleted &&
+                      "bg-white hover:bg-gray-50 border-gray-200 hover:border-blue-300"
                   )}
                 >
-                  {isCompleted && !isCurrent ? (
-                    <CheckCircle className='h-5 w-5' />
-                  ) : (
-                    <Icon className='h-5 w-5' />
-                  )}
-                </div>
-                <span className='text-[10px] text-center font-semibold leading-tight'>
-                  {step.title}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
-          {/* Hidden Fields */}
-          <FormField
-            control={form.control}
-            name='partyId'
-            render={({ field }) => (
-              <FormItem className='hidden'>
-                <FormControl>
-                  <Input type='hidden' {...field} />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name='companyId'
-            render={({ field }) => (
-              <FormItem className='hidden'>
-                <FormControl>
-                  <Input type='hidden' {...field} />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-
-          {/* Current Step Content */}
-          <div className='min-h-[600px] animate-in fade-in-50 duration-500'>
-            {renderStepContent()}
-          </div>
-
-          {/* Navigation Buttons */}
-          <Card className='sticky bottom-4 border-2 shadow-lg'>
-            <CardContent className='p-4'>
-              <div className='flex justify-between items-center gap-4'>
-                <div>
-                  {currentStep > 1 && (
-                    <Button
-                      variant='outline'
-                      type='button'
-                      onClick={prevStep}
-                      disabled={isSubmitting}
-                      className='gap-2'
-                      size='lg'
-                    >
-                      <ChevronLeft className='h-5 w-5' />
-                      Previous
-                    </Button>
-                  )}
-                </div>
-
-                <div className='flex items-center gap-2'>
-                  <span className='text-sm text-muted-foreground hidden md:block'>
-                    {formSteps[currentStep - 1].fullTitle}
+                  <div
+                    className={cn(
+                      "flex items-center justify-center w-10 h-10 rounded-full mb-2 transition-colors",
+                      isCurrent && "bg-white text-blue-600",
+                      isCompleted && !isCurrent && "bg-green-600 text-white",
+                      !isCurrent && !isCompleted && "bg-gray-100 text-gray-600"
+                    )}
+                  >
+                    {isCompleted && !isCurrent ? (
+                      <CheckCircle className='h-5 w-5' />
+                    ) : (
+                      <Icon className='h-5 w-5' />
+                    )}
+                  </div>
+                  <span className='text-[10px] text-center font-semibold leading-tight'>
+                    {step.title}
                   </span>
-                </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-                <div className='flex gap-3'>
-                  {currentStep < formSteps.length ? (
-                    <Button
-                      type='button'
-                      onClick={nextStep}
-                      className='gap-2'
-                      size='lg'
-                    >
-                      Next
-                      <ChevronRight className='h-5 w-5' />
-                    </Button>
-                  ) : (
-                    <>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-5'>
+            {/* Hidden Fields */}
+            <FormField
+              control={form.control}
+              name='partyId'
+              render={({ field }) => (
+                <FormItem className='hidden'>
+                  <FormControl>
+                    <Input type='hidden' {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='companyId'
+              render={({ field }) => (
+                <FormItem className='hidden'>
+                  <FormControl>
+                    <Input type='hidden' {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            {/* Current Step Content */}
+            <div className='animate-in fade-in-50 duration-500 mb-6'>
+              {renderStepContent()}
+            </div>
+
+            {/* Navigation Buttons */}
+            <Card className='border shadow-lg bg-white mt-6'>
+              <CardContent className='p-4'>
+                <div className='flex justify-between items-center'>
+                  <div className='min-w-[120px]'>
+                    {currentStep > 1 && (
                       <Button
                         variant='outline'
                         type='button'
-                        onClick={() => setCurrentStep(1)}
+                        onClick={prevStep}
                         disabled={isSubmitting}
-                        size='lg'
+                        className='gap-2 h-10 px-5 border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all'
+                        size='sm'
                       >
-                        Edit Details
+                        <ChevronLeft className='h-4 w-4' />
+                        Previous
                       </Button>
+                    )}
+                  </div>
+
+                  <div className='flex items-center gap-3 px-4'>
+                    <div className='text-center'>
+                      <span className='text-sm text-gray-700 font-semibold block'>
+                        {formSteps[currentStep - 1].fullTitle}
+                      </span>
+                      <span className='text-[11px] text-gray-500'>
+                        Step {currentStep} of {formSteps.length}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className='flex gap-3 min-w-[120px] justify-end'>
+                    {currentStep < formSteps.length ? (
                       <Button
-                        type='submit'
-                        disabled={isSubmitting || !formValues.partyName}
-                        className='gap-2 min-w-[140px]'
-                        size='lg'
+                        type='button'
+                        onClick={nextStep}
+                        className='gap-2 h-10 px-6 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all'
+                        size='sm'
                       >
-                        {isSubmitting ? (
-                          <>
-                            <Loader2 className='h-5 w-5 animate-spin' />
-                            Submitting...
-                          </>
-                        ) : (
-                          <>
-                            <Save className='h-5 w-5' />
-                            {type === "edit" ? "Update Party" : "Create Party"}
-                          </>
-                        )}
+                        Next Step
+                        <ChevronRight className='h-4 w-4' />
                       </Button>
-                    </>
-                  )}
+                    ) : (
+                      <>
+                        <Button
+                          variant='outline'
+                          type='button'
+                          onClick={() => setCurrentStep(1)}
+                          disabled={isSubmitting}
+                          size='sm'
+                          className='h-10 px-4 border-gray-300 hover:bg-gray-50'
+                        >
+                          Edit Details
+                        </Button>
+                        <Button
+                          type='submit'
+                          onClick={form.handleSubmit(onSubmit)}
+                          disabled={
+                            isSubmitting ||
+                            !formValues.partyName ||
+                            !formValues.addressLine1 ||
+                            !formValues.phone ||
+                            !formValues.email ||
+                            !formValues.contactPersonEmail ||
+                            !formValues.contactPersonPhone ||
+                            (isGLLinked && !formValues.glParentAccountId) ||
+                            (formValues.isNonGLParty && isNonGLParty) ||
+                            !formValues.benificiaryNameOfPO
+                          }
+                          className='gap-2 min-w-[140px] h-10 px-6 bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed'
+                          size='sm'
+                        >
+                          {isSubmitting ? (
+                            <>
+                              <Loader2 className='h-4 w-4 animate-spin' />
+                              Submitting...
+                            </>
+                          ) : (
+                            <>
+                              <Save className='h-4 w-4' />
+                              {type === "edit"
+                                ? "Update Party"
+                                : "Create Party"}
+                            </>
+                          )}
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </form>
-      </Form>
+              </CardContent>
+            </Card>
+          </form>
+        </Form>
+      </div>
     </div>
   );
 }

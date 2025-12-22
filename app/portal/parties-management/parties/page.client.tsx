@@ -22,6 +22,10 @@ import {
   FiBriefcase,
   FiTruck,
   FiRefreshCw,
+  FiUpload,
+  FiSearch,
+  FiX,
+  FiFilter,
 } from "react-icons/fi";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -467,7 +471,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     setIsLoading(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Parties/GetList`, {
+      const response = await fetch(`${baseUrl}Party/GetList`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -662,22 +666,22 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       accessorKey: "actions",
       header: "Actions",
       cell: ({ row }) => (
-        <div className='flex gap-2'>
+        <div className='flex gap-1.5'>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className='text-blue-600 hover:text-blue-800'
+                  className='p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors'
                   onClick={() => {
                     setSelectedParty(row.original);
                     setShowForm(true);
                   }}
                 >
-                  <FiEdit size={16} />
+                  <FiEdit size={14} />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Edit Party</p>
+                <p className='text-xs'>Edit Party</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -685,14 +689,14 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className='text-red-600 hover:text-red-800'
+                  className='p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors'
                   onClick={() => handleDelete(row.original)}
                 >
-                  <FiTrash2 size={16} />
+                  <FiTrash2 size={14} />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Delete Party</p>
+                <p className='text-xs'>Delete Party</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -703,14 +707,18 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     {
       accessorKey: "row",
       header: "S.No",
-      cell: ({ row }) => parseInt(row.id) + 1,
+      cell: ({ row }) => (
+        <span className='text-xs text-gray-600'>{parseInt(row.id) + 1}</span>
+      ),
       enableColumnFilter: false,
     },
     {
       accessorKey: "partyCode",
       header: "Party Code",
       cell: ({ row }) => (
-        <span className='font-medium'>{row.getValue("partyCode") || "-"}</span>
+        <span className='font-semibold text-sm text-gray-900'>
+          {row.getValue("partyCode") || "-"}
+        </span>
       ),
       enableColumnFilter: false,
     },
@@ -718,34 +726,50 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       accessorKey: "partyName",
       header: "Party Name",
       cell: ({ row }) => (
-        <span className='font-medium'>{row.getValue("partyName") || "-"}</span>
+        <span className='font-medium text-sm text-gray-900'>
+          {row.getValue("partyName") || "-"}
+        </span>
       ),
       enableColumnFilter: false,
     },
     {
       accessorKey: "partyShortName",
       header: "Short Name",
-      cell: ({ row }) => <span>{row.getValue("partyShortName") || "-"}</span>,
+      cell: ({ row }) => (
+        <span className='text-sm text-gray-700'>
+          {row.getValue("partyShortName") || "-"}
+        </span>
+      ),
       enableColumnFilter: false,
     },
     {
       accessorKey: "contactPersonName",
       header: "Contact Person",
       cell: ({ row }) => (
-        <span>{row.getValue("contactPersonName") || "-"}</span>
+        <span className='text-sm text-gray-700'>
+          {row.getValue("contactPersonName") || "-"}
+        </span>
       ),
       enableColumnFilter: false,
     },
     {
       accessorKey: "email",
       header: "Email",
-      cell: ({ row }) => <span>{row.getValue("email") || "-"}</span>,
+      cell: ({ row }) => (
+        <span className='text-sm text-blue-600'>
+          {row.getValue("email") || "-"}
+        </span>
+      ),
       enableColumnFilter: false,
     },
     {
       accessorKey: "phone",
       header: "Phone",
-      cell: ({ row }) => <span>{row.getValue("phone") || "-"}</span>,
+      cell: ({ row }) => (
+        <span className='text-sm text-gray-700'>
+          {row.getValue("phone") || "-"}
+        </span>
+      ),
       enableColumnFilter: false,
     },
     {
@@ -764,17 +788,17 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
 
         return (
           <div className='flex flex-wrap gap-1'>
-            {types.slice(0, 3).map((type, index) => (
+            {types.slice(0, 2).map((type, index) => (
               <span
                 key={index}
-                className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800'
+                className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200'
               >
                 {type}
               </span>
             ))}
-            {types.length > 3 && (
-              <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800'>
-                +{types.length - 3}
+            {types.length > 2 && (
+              <span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200'>
+                +{types.length - 2}
               </span>
             )}
           </div>
@@ -790,8 +814,10 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
         const creditDays = row.original.allowedCreditDays;
 
         return (
-          <div className='text-sm'>
-            {creditLimit ? <div>LC: {creditLimit}</div> : null}
+          <div className='text-xs text-gray-600'>
+            {creditLimit ? (
+              <div className='font-medium'>LC: {creditLimit}</div>
+            ) : null}
             {creditDays ? <div>Days: {creditDays}</div> : null}
             {!creditLimit && !creditDays ? "-" : null}
           </div>
@@ -805,11 +831,11 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       cell: ({ row }) => {
         const isActive = row.getValue("isActive");
         return isActive ? (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800'>
+          <span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200'>
             Active
           </span>
         ) : (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800'>
+          <span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200'>
             Inactive
           </span>
         );
@@ -989,7 +1015,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
             }
           });
 
-          await fetch(`${baseUrl}Parties`, {
+          await fetch(`${baseUrl}Party`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -1011,7 +1037,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     if (confirm(`Are you sure you want to delete "${item.partyName}"?`)) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        const response = await fetch(`${baseUrl}Parties/${item.partyId}`, {
+        const response = await fetch(`${baseUrl}Party/${item.partyId}`, {
           method: "DELETE",
         });
 
@@ -1192,96 +1218,103 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     };
 
     return (
-      <div className='space-y-6'>
+      <div className='space-y-4'>
         {/* Header with Export Button */}
         <div className='flex justify-between items-center'>
-          <h2 className='text-2xl font-bold text-gray-800'>
+          <h2 className='text-xl font-semibold text-gray-900'>
             Parties Statistics
           </h2>
           <Button
             onClick={exportStatsPDF}
-            className='flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+            size='sm'
+            className='flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white'
           >
-            <FiDownload />
+            <FiDownload size={14} />
             Export PDF Report
           </Button>
         </div>
 
         {/* Summary Cards */}
-        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6'>
-          <Card className='shadow-lg border-l-4 border-l-blue-500'>
-            <CardHeader className='pb-3'>
-              <CardTitle className='text-sm font-semibold text-blue-700'>
+        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3'>
+          <Card className='border border-blue-200 shadow-sm'>
+            <CardHeader className='pb-2 pt-3 px-4'>
+              <CardTitle className='text-xs font-medium text-blue-700 uppercase tracking-wide'>
                 Total Parties
               </CardTitle>
-              <div className='text-2xl font-bold text-blue-800'>
+              <div className='text-2xl font-bold text-blue-900 mt-1'>
                 {stats.totalParties}
               </div>
             </CardHeader>
-            <CardContent className='pt-0'>
-              <div className='text-sm text-gray-600'>
+            <CardContent className='pt-0 pb-3 px-4'>
+              <div className='text-xs text-gray-600'>
                 {stats.activeParties} active •{" "}
                 {stats.totalParties - stats.activeParties} inactive
               </div>
             </CardContent>
           </Card>
 
-          <Card className='shadow-lg border-l-4 border-l-green-500'>
-            <CardHeader className='pb-3'>
-              <CardTitle className='text-sm font-semibold text-green-700'>
+          <Card className='border border-green-200 shadow-sm'>
+            <CardHeader className='pb-2 pt-3 px-4'>
+              <CardTitle className='text-xs font-medium text-green-700 uppercase tracking-wide'>
                 Customers
               </CardTitle>
-              <div className='text-2xl font-bold text-green-800'>
+              <div className='text-2xl font-bold text-green-900 mt-1'>
                 {stats.customers}
               </div>
             </CardHeader>
-            <CardContent className='pt-0'></CardContent>
+            <CardContent className='pt-0 pb-3 px-4'>
+              <div className='text-xs text-gray-600'>Business clients</div>
+            </CardContent>
           </Card>
 
-          <Card className='shadow-lg border-l-4 border-l-orange-500'>
-            <CardHeader className='pb-3'>
-              <CardTitle className='text-sm font-semibold text-orange-700'>
+          <Card className='border border-orange-200 shadow-sm'>
+            <CardHeader className='pb-2 pt-3 px-4'>
+              <CardTitle className='text-xs font-medium text-orange-700 uppercase tracking-wide'>
                 Vendors
               </CardTitle>
-              <div className='text-2xl font-bold text-orange-800'>
+              <div className='text-2xl font-bold text-orange-900 mt-1'>
                 {stats.vendors}
               </div>
             </CardHeader>
-            <CardContent className='pt-0'></CardContent>
+            <CardContent className='pt-0 pb-3 px-4'>
+              <div className='text-xs text-gray-600'>Service providers</div>
+            </CardContent>
           </Card>
 
-          <Card className='shadow-lg border-l-4 border-l-purple-500'>
-            <CardHeader className='pb-3'>
-              <CardTitle className='text-sm font-semibold text-purple-700'>
+          <Card className='border border-purple-200 shadow-sm'>
+            <CardHeader className='pb-2 pt-3 px-4'>
+              <CardTitle className='text-xs font-medium text-purple-700 uppercase tracking-wide'>
                 Agents
               </CardTitle>
-              <div className='text-2xl font-bold text-purple-800'>
+              <div className='text-2xl font-bold text-purple-900 mt-1'>
                 {stats.agents}
               </div>
             </CardHeader>
-            <CardContent className='pt-0'></CardContent>
+            <CardContent className='pt-0 pb-3 px-4'>
+              <div className='text-xs text-gray-600'>Representatives</div>
+            </CardContent>
           </Card>
         </div>
 
         {/* Charts Section */}
-        <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
+        <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
           {/* Party Types Chart */}
-          <Card className='shadow-lg'>
-            <CardHeader>
-              <CardTitle className='text-lg font-semibold text-gray-800'>
+          <Card className='border shadow-sm'>
+            <CardHeader className='pb-3 pt-4 px-4'>
+              <CardTitle className='text-sm font-semibold text-gray-900'>
                 Party Types Distribution
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className='h-80'>
+            <CardContent className='pt-0 pb-4 px-4'>
+              <div className='h-64'>
                 <ResponsiveContainer width='100%' height='100%'>
                   <PieChart>
                     <Pie
                       data={partyTypeData}
                       cx='50%'
                       cy='50%'
-                      innerRadius={60}
-                      outerRadius={80}
+                      innerRadius={50}
+                      outerRadius={70}
                       paddingAngle={5}
                       dataKey='value'
                     >
@@ -1290,7 +1323,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
                       ))}
                     </Pie>
                     <RechartsTooltip />
-                    <Legend />
+                    <Legend wrapperStyle={{ fontSize: "12px" }} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -1298,21 +1331,25 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
           </Card>
 
           {/* Operations Chart */}
-          <Card className='shadow-lg'>
-            <CardHeader>
-              <CardTitle className='text-lg font-semibold text-gray-800'>
+          <Card className='border shadow-sm'>
+            <CardHeader className='pb-3 pt-4 px-4'>
+              <CardTitle className='text-sm font-semibold text-gray-900'>
                 Operations Distribution
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className='h-80'>
+            <CardContent className='pt-0 pb-4 px-4'>
+              <div className='h-64'>
                 <ResponsiveContainer width='100%' height='100%'>
                   <BarChart data={operationTypeData}>
-                    <CartesianGrid strokeDasharray='3 3' />
-                    <XAxis dataKey='name' />
-                    <YAxis />
+                    <CartesianGrid strokeDasharray='3 3' stroke='#e5e7eb' />
+                    <XAxis
+                      dataKey='name'
+                      tick={{ fontSize: 11 }}
+                      stroke='#6b7280'
+                    />
+                    <YAxis tick={{ fontSize: 11 }} stroke='#6b7280' />
                     <RechartsTooltip />
-                    <Bar dataKey='value' fill='#3b82f6' />
+                    <Bar dataKey='value' fill='#3b82f6' radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1329,9 +1366,10 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
 
     if (Object.keys(groupedData).length === 0) {
       return (
-        <div className='flex flex-col items-center justify-center py-12'>
+        <div className='flex flex-col items-center justify-center py-16'>
           <div className='text-center'>
-            <h3 className='text-lg font-medium text-gray-900'>
+            <FiUsers className='mx-auto h-12 w-12 text-gray-400 mb-3' />
+            <h3 className='text-base font-medium text-gray-900'>
               No parties found
             </h3>
             <p className='mt-1 text-sm text-gray-500'>
@@ -1345,34 +1383,37 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     }
 
     return (
-      <div className='space-y-4'>
+      <div className='space-y-3'>
         {Object.entries(groupedData).map(([groupKey, items]) => (
-          <Card key={groupKey} className='border border-gray-200'>
+          <Card key={groupKey} className='border shadow-sm'>
             <Collapsible
               open={expandedGroups[groupKey]}
               onOpenChange={() => toggleGroupExpansion(groupKey)}
             >
               <CollapsibleTrigger asChild>
-                <CardHeader className='cursor-pointer hover:bg-gray-50 transition-colors'>
+                <CardHeader className='cursor-pointer hover:bg-gray-50 transition-colors py-3 px-4'>
                   <div className='flex items-center justify-between'>
-                    <CardTitle className='text-lg font-semibold'>
+                    <CardTitle className='text-sm font-semibold text-gray-900'>
                       {groupKey}
                     </CardTitle>
                     <div className='flex items-center gap-2'>
-                      <Badge variant='outline' className='text-sm'>
+                      <Badge
+                        variant='outline'
+                        className='text-xs px-2 py-0.5 font-medium'
+                      >
                         {items.length} party{items.length !== 1 ? "ies" : ""}
                       </Badge>
                       {expandedGroups[groupKey] ? (
-                        <FiChevronDown className='h-5 w-5' />
+                        <FiChevronDown className='h-4 w-4 text-gray-500' />
                       ) : (
-                        <FiChevronRight className='h-5 w-5' />
+                        <FiChevronRight className='h-4 w-4 text-gray-500' />
                       )}
                     </div>
                   </div>
                 </CardHeader>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <CardContent className='pt-0'>
+                <CardContent className='pt-0 pb-3 px-4'>
                   <AppDataTable
                     data={items}
                     loading={false}
@@ -1396,9 +1437,10 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
 
     if (!currentData || currentData.length === 0) {
       return (
-        <div className='flex flex-col items-center justify-center py-12'>
+        <div className='flex flex-col items-center justify-center py-16'>
           <div className='text-center'>
-            <h3 className='text-lg font-medium text-gray-900'>
+            <FiUsers className='mx-auto h-12 w-12 text-gray-400 mb-3' />
+            <h3 className='text-base font-medium text-gray-900'>
               No parties found
             </h3>
             <p className='mt-1 text-sm text-gray-500'>
@@ -1425,24 +1467,29 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
 
   if (showForm) {
     return (
-      <div className='p-6 bg-white shadow-md rounded-md'>
-        <Button
-          variant='outline'
-          onClick={() => {
-            setShowForm(false);
-            setSelectedParty(null);
-          }}
-          className='mb-4 gap-1'
-        >
-          <FiArrowLeft className='h-4 w-4' />
-          Back to Parties List
-        </Button>
+      <div className='p-4 bg-gray-50 min-h-screen'>
+        <div className='max-w-7xl mx-auto'>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              setShowForm(false);
+              setSelectedParty(null);
+            }}
+            className='mb-3 gap-1.5'
+          >
+            <FiArrowLeft className='h-3.5 w-3.5' />
+            Back to Parties List
+          </Button>
 
-        <PartiesForm
-          type={selectedParty ? "edit" : "add"}
-          defaultState={selectedParty || {}}
-          handleAddEdit={handleAddEditComplete}
-        />
+          <div className='bg-white rounded-lg shadow-sm border p-4'>
+            <PartiesForm
+              type={selectedParty ? "edit" : "add"}
+              defaultState={selectedParty || {}}
+              handleAddEdit={handleAddEditComplete}
+            />
+          </div>
+        </div>
       </div>
     );
   }
@@ -1450,168 +1497,208 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
   const currentTabData = getCurrentTabData();
 
   return (
-    <div className='p-6 bg-white shadow-md rounded-md'>
-      <div className='flex items-center justify-between mb-6'>
-        <div>
-          <h1 className='text-2xl font-bold'>Parties Management</h1>
-          <p className='text-sm text-muted-foreground'>
-            Manage all business parties, customers, vendors, and agents
-          </p>
-        </div>
-        <div className='flex gap-2'>
-          <Button
-            onClick={fetchParties}
-            variant='outline'
-            className='flex items-center gap-2'
-            disabled={isLoading}
-          >
-            <FiRefreshCw
-              className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-            />
-            Refresh
-          </Button>
-          <Button
-            onClick={() => {
-              setSelectedParty(null);
-              setShowForm(true);
-            }}
-            className='bg-blue-600 hover:bg-blue-700 text-white'
-          >
-            Add New Party
-          </Button>
-        </div>
-      </div>
-
-      {/* Search and Filters */}
-      <div className='flex justify-between items-center mb-6'>
-        <div className='flex items-center gap-4'>
-          <div className='flex flex-col'>
-            <Input
-              type='text'
-              placeholder='🔍 Search by code, name, email, phone, contact person...'
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className='w-96'
-            />
-            {searchText === "" && (
-              <p className='text-xs text-gray-500 mt-1'>
-                Search across: Party Code, Name, Email, Phone, Contact Person,
-                Address, etc.
-              </p>
-            )}
+    <div className='p-4 bg-gray-50 min-h-screen'>
+      <div className='max-w-7xl mx-auto'>
+        {/* Header Section */}
+        <div className='flex items-center justify-between mb-4'>
+          <div>
+            <h1 className='text-xl font-bold text-gray-900'>
+              Parties Management
+            </h1>
+            <p className='text-xs text-gray-600 mt-0.5'>
+              Manage all business parties, customers, vendors, and agents
+            </p>
           </div>
-          {searchText && (
+          <div className='flex gap-2'>
             <Button
-              variant='ghost'
+              onClick={fetchParties}
+              variant='outline'
               size='sm'
-              onClick={() => setSearchText("")}
-              className='text-gray-500 hover:text-gray-700'
+              className='flex items-center gap-1.5'
+              disabled={isLoading}
             >
-              Clear
+              <FiRefreshCw
+                className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`}
+              />
+              Refresh
             </Button>
-          )}
-        </div>
-        <div className='flex gap-3 items-center'>
-          <Button
-            onClick={downloadSampleExcel}
-            className='flex items-center gap-2'
-            variant='outline'
-          >
-            <FiDownload />
-            Sample File
-          </Button>
-          <div className='flex items-center gap-2'>
-            <span className='text-sm text-gray-600'>Import:</span>
-            <Input
-              type='file'
-              accept='.xlsx'
-              onChange={handleFileUpload}
-              className='w-auto'
-            />
+            <Button
+              onClick={() => {
+                setSelectedParty(null);
+                setShowForm(true);
+              }}
+              size='sm'
+              className='bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5'
+            >
+              <FiUsers className='h-3.5 w-3.5' />
+              Add New Party
+            </Button>
           </div>
         </div>
-      </div>
 
-      {/* Tabs */}
-      <Tabs
-        defaultValue='ALL_PARTIES'
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className='space-y-4'
-      >
-        <TabsList className='grid w-full grid-cols-7'>
-          <TabsTrigger value='ALL_PARTIES'>
-            <FiUsers className='w-4 h-4 mr-2' />
-            ALL PARTIES ({getAllParties().length})
-          </TabsTrigger>
-          <TabsTrigger value='ACTIVE'>
-            <FiBriefcase className='w-4 h-4 mr-2' />
-            ACTIVE ({getActiveParties().length})
-          </TabsTrigger>
-          <TabsTrigger value='CUSTOMERS'>
-            <FiUsers className='w-4 h-4 mr-2' />
-            CUSTOMERS ({getCustomers().length})
-          </TabsTrigger>
-          <TabsTrigger value='VENDORS'>
-            <FiBriefcase className='w-4 h-4 mr-2' />
-            VENDORS ({getVendors().length})
-          </TabsTrigger>
-          <TabsTrigger value='AGENTS'>
-            <FiUsers className='w-4 h-4 mr-2' />
-            AGENTS ({getAgents().length})
-          </TabsTrigger>
-          <TabsTrigger value='LOGISTICS'>
-            <FiTruck className='w-4 h-4 mr-2' />
-            LOGISTICS ({getLogisticsParties().length})
-          </TabsTrigger>
-          <TabsTrigger value='STATISTICS'>
-            <FiFilePlus className='w-4 h-4 mr-2' />
-            STATISTICS
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Tab Contents */}
-        {[
-          "ALL_PARTIES",
-          "ACTIVE",
-          "CUSTOMERS",
-          "VENDORS",
-          "AGENTS",
-          "LOGISTICS",
-        ].map((tab) => (
-          <TabsContent key={tab} value={tab} className='space-y-4'>
-            <div className='flex justify-end gap-3'>
-              <Button
-                onClick={() =>
-                  downloadPDFWithData(currentTabData, tab.replace("_", " "))
-                }
-                className='flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white shadow-sm'
-                disabled={!currentTabData || currentTabData.length === 0}
-              >
-                <FiFilePlus />
-                Export PDF
-              </Button>
-              <Button
-                onClick={() =>
-                  downloadExcelWithData(currentTabData, tab.replace("_", " "))
-                }
-                className='flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white shadow-sm'
-                disabled={!currentTabData || currentTabData.length === 0}
-              >
-                <FiDownload />
-                Export Excel
-              </Button>
+        {/* Search and Actions Bar */}
+        <div className='bg-white rounded-lg shadow-sm border p-3 mb-4'>
+          <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-3'>
+            <div className='flex items-center gap-2 flex-1 w-full md:w-auto'>
+              <div className='relative flex-1 max-w-md'>
+                <FiSearch className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
+                <Input
+                  type='text'
+                  placeholder='Search by code, name, email, phone...'
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  className='pl-9 pr-9 py-1.5 text-sm h-9'
+                />
+                {searchText && (
+                  <button
+                    onClick={() => setSearchText("")}
+                    className='absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600'
+                  >
+                    <FiX className='h-4 w-4' />
+                  </button>
+                )}
+              </div>
             </div>
-            {["CUSTOMERS", "VENDORS", "AGENTS", "LOGISTICS"].includes(tab)
-              ? renderCategorizedView()
-              : renderTableView()}
-          </TabsContent>
-        ))}
+            <div className='flex gap-2 items-center'>
+              <Button
+                onClick={downloadSampleExcel}
+                size='sm'
+                className='flex items-center gap-1.5 text-xs'
+                variant='outline'
+              >
+                <FiDownload className='h-3.5 w-3.5' />
+                Sample File
+              </Button>
+              <div className='flex items-center gap-2'>
+                <label
+                  htmlFor='file-upload'
+                  className='cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors'
+                >
+                  <FiUpload className='h-3.5 w-3.5' />
+                  Import Excel
+                </label>
+                <Input
+                  id='file-upload'
+                  type='file'
+                  accept='.xlsx'
+                  onChange={handleFileUpload}
+                  className='hidden'
+                />
+              </div>
+            </div>
+          </div>
+        </div>
 
-        <TabsContent value='STATISTICS' className='space-y-4'>
-          <PartiesStatsPage />
-        </TabsContent>
-      </Tabs>
+        {/* Tabs Section */}
+        <Tabs
+          defaultValue='ALL_PARTIES'
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className='space-y-3'
+        >
+          <div className='bg-white rounded-lg shadow-sm border p-1'>
+            <TabsList className='grid w-full grid-cols-7 gap-1 bg-transparent h-auto p-0'>
+              <TabsTrigger
+                value='ALL_PARTIES'
+                className='text-xs py-2 px-3 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none rounded-md'
+              >
+                <FiUsers className='w-3.5 h-3.5 mr-1.5' />
+                All ({getAllParties().length})
+              </TabsTrigger>
+              <TabsTrigger
+                value='ACTIVE'
+                className='text-xs py-2 px-3 data-[state=active]:bg-green-50 data-[state=active]:text-green-700 data-[state=active]:shadow-none rounded-md'
+              >
+                <FiBriefcase className='w-3.5 h-3.5 mr-1.5' />
+                Active ({getActiveParties().length})
+              </TabsTrigger>
+              <TabsTrigger
+                value='CUSTOMERS'
+                className='text-xs py-2 px-3 data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 data-[state=active]:shadow-none rounded-md'
+              >
+                <FiUsers className='w-3.5 h-3.5 mr-1.5' />
+                Customers ({getCustomers().length})
+              </TabsTrigger>
+              <TabsTrigger
+                value='VENDORS'
+                className='text-xs py-2 px-3 data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 data-[state=active]:shadow-none rounded-md'
+              >
+                <FiBriefcase className='w-3.5 h-3.5 mr-1.5' />
+                Vendors ({getVendors().length})
+              </TabsTrigger>
+              <TabsTrigger
+                value='AGENTS'
+                className='text-xs py-2 px-3 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 data-[state=active]:shadow-none rounded-md'
+              >
+                <FiUsers className='w-3.5 h-3.5 mr-1.5' />
+                Agents ({getAgents().length})
+              </TabsTrigger>
+              <TabsTrigger
+                value='LOGISTICS'
+                className='text-xs py-2 px-3 data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700 data-[state=active]:shadow-none rounded-md'
+              >
+                <FiTruck className='w-3.5 h-3.5 mr-1.5' />
+                Logistics ({getLogisticsParties().length})
+              </TabsTrigger>
+              <TabsTrigger
+                value='STATISTICS'
+                className='text-xs py-2 px-3 data-[state=active]:bg-pink-50 data-[state=active]:text-pink-700 data-[state=active]:shadow-none rounded-md'
+              >
+                <FiFilePlus className='w-3.5 h-3.5 mr-1.5' />
+                Stats
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          {/* Tab Contents */}
+          {[
+            "ALL_PARTIES",
+            "ACTIVE",
+            "CUSTOMERS",
+            "VENDORS",
+            "AGENTS",
+            "LOGISTICS",
+          ].map((tab) => (
+            <TabsContent key={tab} value={tab} className='space-y-3 mt-3'>
+              <div className='flex justify-end gap-2'>
+                <Button
+                  onClick={() =>
+                    downloadPDFWithData(currentTabData, tab.replace("_", " "))
+                  }
+                  size='sm'
+                  className='flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs'
+                  disabled={!currentTabData || currentTabData.length === 0}
+                >
+                  <FiFilePlus className='h-3.5 w-3.5' />
+                  Export PDF
+                </Button>
+                <Button
+                  onClick={() =>
+                    downloadExcelWithData(currentTabData, tab.replace("_", " "))
+                  }
+                  size='sm'
+                  className='flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs'
+                  disabled={!currentTabData || currentTabData.length === 0}
+                >
+                  <FiDownload className='h-3.5 w-3.5' />
+                  Export Excel
+                </Button>
+              </div>
+              <div className='bg-white rounded-lg shadow-sm border'>
+                {["CUSTOMERS", "VENDORS", "AGENTS", "LOGISTICS"].includes(tab)
+                  ? renderCategorizedView()
+                  : renderTableView()}
+              </div>
+            </TabsContent>
+          ))}
+
+          <TabsContent value='STATISTICS' className='space-y-3 mt-3'>
+            <div className='bg-white rounded-lg shadow-sm border p-4'>
+              <PartiesStatsPage />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
 
       {isLoading && <AppLoader />}
     </div>
