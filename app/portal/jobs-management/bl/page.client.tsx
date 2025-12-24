@@ -13,20 +13,11 @@ import {
   FiDownload,
   FiEdit,
   FiArrowLeft,
-  FiChevronDown,
-  FiChevronRight,
   FiFilePlus,
   FiRefreshCw,
-  FiUpload,
   FiSearch,
   FiX,
-  FiFilter,
   FiPackage,
-  FiTruck,
-  FiCalendar,
-  FiUser,
-  FiHash,
-  //FiScale,
   FiBox,
   FiPrinter,
   FiEye,
@@ -36,7 +27,6 @@ import {
   FiClock,
 } from "react-icons/fi";
 import { useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
@@ -45,11 +35,6 @@ import {
 } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -65,18 +50,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import moment from "moment";
 import { useToast } from "@/hooks/use-toast";
-import BlForm from "@/views/forms/job-order-forms/bl-form";
+import BlForm from "@/views/forms/job-order-forms/bl-form-stepwise";
 
 type BlMasterPageProps = {
   initialData?: any[];
 };
 
+// Updated BlMaster type with ALL new fields
 type BlMaster = {
   blMasterId: number;
   companyId: number;
@@ -91,34 +75,61 @@ type BlMaster = {
   grossWeight: number;
   netWeight: number;
   volumeCbm: number;
+  polId?: number;
+  podId?: number;
+  vesselName?: string;
+  voyage?: string;
+  forwardingAgentId?: number;
+  freightType?: string;
+  movement?: string;
+  blCurrencyId?: number;
+  placeOfIssueId?: number;
+  dateOfIssue?: string;
+  marksAndContainersNo?: string;
+  blNotes?: string;
   status: string;
   createdAt: string;
   updatedAt: string;
   version: number;
+  // Display names
   shipperName?: string;
   consigneeName?: string;
   notifyName?: string;
   jobNumber?: string;
+  polName?: string;
+  podName?: string;
+  forwardingAgentName?: string;
+  currencyName?: string;
+  placeOfIssueName?: string;
   equipments?: BlEquipment[];
 };
 
+// Updated BlEquipment type with ALL new fields
 type BlEquipment = {
   blEquipmentId: number;
   blMasterId: number;
   containerNo: string;
+  volumeCbm: number;
   containerTypeId: number;
   containerSizeId: number;
   sealNo: string;
   grossWeight: number;
   tareWeight: number;
   netWeight: number;
+  descriptionOfGoods?: string;
+  hsCodes?: string;
+  freeDays: number;
+  afterFreeDaysTarrifAmount: number;
+  afterFreeDaysTarrifAmountLC: number;
+  tarrifCurrencyId?: number;
   createdAt: string;
   version: number;
   containerTypeName?: string;
   containerSizeName?: string;
+  tarrifCurrencyName?: string;
 };
 
-// Field configuration for Bill of Lading
+// Updated field configuration for Bill of Lading
 const blFieldConfig = [
   {
     fieldName: "blMasterId",
@@ -135,7 +146,7 @@ const blFieldConfig = [
   {
     fieldName: "jobId",
     displayName: "Job ID",
-    isdisplayed: true,
+    isdisplayed: false,
     isselected: true,
   },
   {
@@ -199,6 +210,96 @@ const blFieldConfig = [
     isselected: true,
   },
   {
+    fieldName: "polId",
+    displayName: "POL ID",
+    isdisplayed: false,
+    isselected: true,
+  },
+  {
+    fieldName: "polName",
+    displayName: "Port of Loading",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "podId",
+    displayName: "POD ID",
+    isdisplayed: false,
+    isselected: true,
+  },
+  {
+    fieldName: "podName",
+    displayName: "Port of Discharge",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "vesselName",
+    displayName: "Vessel Name",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "voyage",
+    displayName: "Voyage",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "forwardingAgentId",
+    displayName: "Agent ID",
+    isdisplayed: false,
+    isselected: true,
+  },
+  {
+    fieldName: "forwardingAgentName",
+    displayName: "Forwarding Agent",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "freightType",
+    displayName: "Freight Type",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "movement",
+    displayName: "Movement",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "blCurrencyId",
+    displayName: "Currency ID",
+    isdisplayed: false,
+    isselected: true,
+  },
+  {
+    fieldName: "currencyName",
+    displayName: "BL Currency",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "placeOfIssueId",
+    displayName: "Place of Issue ID",
+    isdisplayed: false,
+    isselected: true,
+  },
+  {
+    fieldName: "placeOfIssueName",
+    displayName: "Place of Issue",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "dateOfIssue",
+    displayName: "Date of Issue",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
     fieldName: "noOfPackages",
     displayName: "No. of Packages",
     isdisplayed: true,
@@ -220,6 +321,18 @@ const blFieldConfig = [
     fieldName: "volumeCbm",
     displayName: "Volume (CBM)",
     isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "marksAndContainersNo",
+    displayName: "Marks & Container No",
+    isdisplayed: false,
+    isselected: true,
+  },
+  {
+    fieldName: "blNotes",
+    displayName: "BL Notes",
+    isdisplayed: false,
     isselected: true,
   },
   {
@@ -248,7 +361,7 @@ const blFieldConfig = [
   },
 ];
 
-// Field configuration for Equipment
+// Updated equipment field configuration
 const equipmentFieldConfig = [
   {
     fieldName: "blEquipmentId",
@@ -265,6 +378,12 @@ const equipmentFieldConfig = [
   {
     fieldName: "containerNo",
     displayName: "Container No",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "volumeCbm",
+    displayName: "Volume (CBM)",
     isdisplayed: true,
     isselected: true,
   },
@@ -317,6 +436,48 @@ const equipmentFieldConfig = [
     isselected: true,
   },
   {
+    fieldName: "descriptionOfGoods",
+    displayName: "Description of Goods",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "hsCodes",
+    displayName: "HS Codes",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "freeDays",
+    displayName: "Free Days",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "afterFreeDaysTarrifAmount",
+    displayName: "Tarrif Amount",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "afterFreeDaysTarrifAmountLC",
+    displayName: "Tarrif Amount LC",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "tarrifCurrencyId",
+    displayName: "Tarrif Currency ID",
+    isdisplayed: false,
+    isselected: true,
+  },
+  {
+    fieldName: "tarrifCurrencyName",
+    displayName: "Tarrif Currency",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
     fieldName: "createdAt",
     displayName: "Created At",
     isdisplayed: false,
@@ -337,9 +498,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
   const [showForm, setShowForm] = useState(false);
   const [selectedBl, setSelectedBl] = useState<BlMaster | null>(null);
   const [activeTab, setActiveTab] = useState("ALL_BL");
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
-    {}
-  );
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedBlDetails, setSelectedBlDetails] = useState<BlMaster | null>(
     null
@@ -348,7 +506,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
   const router = useRouter();
   const { toast } = useToast();
 
-  // Status options
   const statusOptions = [
     { value: "ALL", label: "All Status" },
     { value: "DRAFT", label: "Draft" },
@@ -358,19 +515,17 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     { value: "CANCELLED", label: "Cancelled" },
   ];
 
-  // Fetch B/L data
+  // Fetch B/L data with ALL new fields
   const fetchBillOfLadings = async () => {
     setIsLoading(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       const response = await fetch(`${baseUrl}Bl/GetList`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           select:
-            "BlMasterId,JobId,MblNumber,HblNumber,BlDate,ShipperPartyId,ConsigneePartyId,NotifyPartyId,NoOfPackages,GrossWeight,NetWeight,VolumeCbm,Status,CreatedAt",
+            "BlMasterId,CompanyId,JobId,MblNumber,HblNumber,BlDate,ShipperPartyId,ConsigneePartyId,NotifyPartyId,NoOfPackages,GrossWeight,NetWeight,VolumeCbm,POLId,PODId,VesselName,Voyage,ForwardingAgentId,FreightType,Movement,BLCurrencyId,PlaceOfIssueId,DateOfIssue,MarksAndContainersNo,BLNotes,Status,CreatedAt,UpdatedAt,Version",
           where: "",
           sortOn: "BlDate DESC",
           page: "1",
@@ -381,44 +536,196 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       if (response.ok) {
         const blData = await response.json();
 
-        // Fetch additional details for each B/L
         const enrichedData = await Promise.all(
           blData.map(async (bl: BlMaster) => {
             try {
               // Fetch job details
-              const jobResponse = await fetch(`${baseUrl}Job/${bl.jobId}`);
-              const jobData = await jobResponse.json();
+              let jobNumber = `JOB-${bl.jobId}`;
+              if (bl.jobId) {
+                try {
+                  const jobResponse = await fetch(`${baseUrl}Job/${bl.jobId}`);
+                  if (jobResponse.ok) {
+                    const jobData = await jobResponse.json();
+                    jobNumber = jobData.jobNumber || jobNumber;
+                  }
+                } catch (err) {
+                  console.error(`Error fetching job ${bl.jobId}:`, err);
+                }
+              }
 
               // Fetch party details
-              const [shipperRes, consigneeRes, notifyRes] = await Promise.all([
-                fetch(`${baseUrl}Party/${bl.shipperPartyId}`),
-                fetch(`${baseUrl}Party/${bl.consigneePartyId}`),
-                fetch(`${baseUrl}Party/${bl.notifyPartyId}`),
+              const fetchParty = async (partyId: number) => {
+                if (!partyId) return null;
+                try {
+                  const response = await fetch(`${baseUrl}Party/${partyId}`);
+                  return response.ok ? await response.json() : null;
+                } catch (err) {
+                  console.error(`Error fetching party ${partyId}:`, err);
+                  return null;
+                }
+              };
+
+              const [
+                shipperData,
+                consigneeData,
+                notifyData,
+                forwardingAgentData,
+              ] = await Promise.all([
+                fetchParty(bl.shipperPartyId),
+                fetchParty(bl.consigneePartyId),
+                fetchParty(bl.notifyPartyId),
+                bl.forwardingAgentId
+                  ? fetchParty(bl.forwardingAgentId)
+                  : Promise.resolve(null),
               ]);
 
-              const shipperData = await shipperRes.json();
-              const consigneeData = await consigneeRes.json();
-              const notifyData = await notifyRes.json();
+              // Fetch location details
+              const fetchLocation = async (locationId: number) => {
+                if (!locationId) return null;
+                try {
+                  const response = await fetch(
+                    `${baseUrl}UnLocation/${locationId}`
+                  );
+                  return response.ok ? await response.json() : null;
+                } catch (err) {
+                  console.error(`Error fetching location ${locationId}:`, err);
+                  return null;
+                }
+              };
 
-              // Fetch equipment details
-              const equipResponse = await fetch(
-                `${baseUrl}Bl/${bl.blMasterId}/equipments`
-              );
-              const equipData = await equipResponse.json();
+              const [polData, podData, placeOfIssueData] = await Promise.all([
+                bl.polId ? fetchLocation(bl.polId) : Promise.resolve(null),
+                bl.podId ? fetchLocation(bl.podId) : Promise.resolve(null),
+                bl.placeOfIssueId
+                  ? fetchLocation(bl.placeOfIssueId)
+                  : Promise.resolve(null),
+              ]);
+
+              // Fetch currency details
+              let currencyName = null;
+              if (bl.blCurrencyId) {
+                try {
+                  const currencyResponse = await fetch(
+                    `${baseUrl}Currency/${bl.blCurrencyId}`
+                  );
+                  if (currencyResponse.ok) {
+                    const currencyData = await currencyResponse.json();
+                    currencyName =
+                      currencyData.currencyCode || currencyData.currencyName;
+                  }
+                } catch (err) {
+                  console.error(
+                    `Error fetching currency ${bl.blCurrencyId}:`,
+                    err
+                  );
+                }
+              }
+
+              // Fetch equipment details with new fields
+              let equipments: BlEquipment[] = [];
+              try {
+                const equipResponse = await fetch(
+                  `${baseUrl}BlEquipment/GetList`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      select:
+                        "BlEquipmentId,BlMasterId,ContainerNo,VolumeCbm,ContainerTypeId,ContainerSizeId,SealNo,GrossWeight,TareWeight,NetWeight,DescriptionOfGoods,HsCodes,FreeDays,AfterFreeDaysTarrifAmount,AfterFreeDaysTarrifAmountLC,TarrifCurrencyId,CreatedAt,Version",
+                      where: `BlMasterId == ${bl.blMasterId}`,
+                      sortOn: "ContainerNo",
+                      page: "1",
+                      pageSize: "100",
+                    }),
+                  }
+                );
+
+                if (equipResponse.ok) {
+                  const equipData = await equipResponse.json();
+
+                  // Enrich equipment with type/size/currency names
+                  equipments = await Promise.all(
+                    equipData.map(async (eq: BlEquipment) => {
+                      let containerTypeName = "N/A";
+                      let containerSizeName = "N/A";
+                      let tarrifCurrencyName = null;
+
+                      if (eq.containerTypeId) {
+                        try {
+                          const typeResponse = await fetch(
+                            `${baseUrl}SetupContainerType/${eq.containerTypeId}`
+                          );
+                          if (typeResponse.ok) {
+                            const typeData = await typeResponse.json();
+                            containerTypeName =
+                              typeData.typeName || typeData.typeCode || "N/A";
+                          }
+                        } catch (err) {}
+                      }
+
+                      if (eq.containerSizeId) {
+                        try {
+                          const sizeResponse = await fetch(
+                            `${baseUrl}SetupContainerSize/${eq.containerSizeId}`
+                          );
+                          if (sizeResponse.ok) {
+                            const sizeData = await sizeResponse.json();
+                            containerSizeName =
+                              sizeData.sizeCode || sizeData.sizeName || "N/A";
+                          }
+                        } catch (err) {}
+                      }
+
+                      if (eq.tarrifCurrencyId) {
+                        try {
+                          const currResponse = await fetch(
+                            `${baseUrl}Currency/${eq.tarrifCurrencyId}`
+                          );
+                          if (currResponse.ok) {
+                            const currData = await currResponse.json();
+                            tarrifCurrencyName =
+                              currData.currencyCode || currData.currencyName;
+                          }
+                        } catch (err) {}
+                      }
+
+                      return {
+                        ...eq,
+                        containerTypeName,
+                        containerSizeName,
+                        tarrifCurrencyName,
+                      };
+                    })
+                  );
+                }
+              } catch (err) {
+                console.error(
+                  `Error fetching equipment for BL ${bl.blMasterId}:`,
+                  err
+                );
+              }
 
               return {
                 ...bl,
-                jobNumber: jobData.jobNumber || `JOB-${bl.jobId}`,
-                shipperName: shipperData.partyName || "N/A",
-                consigneeName: consigneeData.partyName || "N/A",
-                notifyName: notifyData.partyName || "N/A",
-                equipments: equipData || [],
+                jobNumber,
+                shipperName: shipperData?.partyName || "N/A",
+                consigneeName: consigneeData?.partyName || "N/A",
+                notifyName: notifyData?.partyName || "N/A",
+                forwardingAgentName: forwardingAgentData?.partyName || null,
+                polName: polData
+                  ? `${polData.uncode} - ${polData.locationName}`
+                  : null,
+                podName: podData
+                  ? `${podData.uncode} - ${podData.locationName}`
+                  : null,
+                placeOfIssueName: placeOfIssueData
+                  ? `${placeOfIssueData.uncode} - ${placeOfIssueData.locationName}`
+                  : null,
+                currencyName,
+                equipments,
               };
             } catch (error) {
-              console.error(
-                `Error fetching details for BL ${bl.blMasterId}:`,
-                error
-              );
+              console.error(`Error enriching BL ${bl.blMasterId}:`, error);
               return bl;
             }
           })
@@ -444,15 +751,12 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     }
   };
 
-  // Fetch data on component mount
   useEffect(() => {
     fetchBillOfLadings();
   }, []);
 
-  // Search function
   const searchInItem = (item: BlMaster, searchTerm: string) => {
     if (!searchTerm) return true;
-
     const searchLower = searchTerm.toLowerCase();
     const searchableFields = [
       item.mblNumber?.toString(),
@@ -461,25 +765,23 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       item.shipperName?.toString(),
       item.consigneeName?.toString(),
       item.notifyName?.toString(),
+      item.vesselName?.toString(),
+      item.voyage?.toString(),
       item.status?.toString(),
     ];
-
     return searchableFields.some(
       (field) => field && field.toLowerCase().includes(searchLower)
     );
   };
 
-  // Filter data by status
   const filterByStatus = (bl: BlMaster) => {
     if (statusFilter === "ALL") return true;
     return bl.status === statusFilter;
   };
 
-  // Get filtered data for current tab
   const getCurrentTabData = () => {
     let tabData = data;
 
-    // Apply tab filters
     switch (activeTab) {
       case "DRAFT":
         tabData = data.filter((item) => item.status === "DRAFT");
@@ -498,10 +800,8 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
         break;
     }
 
-    // Apply search filter
     tabData = tabData.filter((item) => searchInItem(item, searchText));
 
-    // Apply status filter if not in ALL_BL tab
     if (activeTab === "ALL_BL") {
       tabData = tabData.filter(filterByStatus);
     }
@@ -509,10 +809,8 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     return tabData;
   };
 
-  // Calculate statistics
   const getBlStats = () => {
     const allBls = data;
-
     return {
       totalBls: allBls.length,
       draftBls: allBls.filter((item) => item.status === "DRAFT").length,
@@ -533,14 +831,12 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     };
   };
 
-  // Handle add/edit completion
   const handleAddEditComplete = (updatedItem: any) => {
     setShowForm(false);
     setSelectedBl(null);
     fetchBillOfLadings();
   };
 
-  // Handle delete
   const handleDelete = async (item: BlMaster) => {
     if (
       confirm(
@@ -577,13 +873,11 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     }
   };
 
-  // View BL details
   const handleViewDetails = (bl: BlMaster) => {
     setSelectedBlDetails(bl);
     setViewDialogOpen(true);
   };
 
-  // Duplicate BL
   const handleDuplicate = (bl: BlMaster) => {
     const duplicateBl = {
       ...bl,
@@ -598,7 +892,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     setShowForm(true);
   };
 
-  // Export to Excel
   const downloadExcelWithData = (dataToExport: BlMaster[], tabName: string) => {
     if (!dataToExport || dataToExport.length === 0) {
       toast({
@@ -613,28 +906,25 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet(tabName);
 
-      // Add headers
       const headers = blFieldConfig
         .filter((field) => field.isdisplayed && field.isselected)
         .map((field) => field.displayName);
       worksheet.addRow(headers);
 
-      // Add data rows
       dataToExport.forEach((bl) => {
         const row = blFieldConfig
           .filter((field) => field.isdisplayed && field.isselected)
           .map((field) => {
             const value = (bl as any)[field.fieldName];
 
-            // Format dates
             if (
               field.fieldName === "blDate" ||
-              field.fieldName === "createdAt"
+              field.fieldName === "createdAt" ||
+              field.fieldName === "dateOfIssue"
             ) {
               return value ? new Date(value).toLocaleDateString() : "";
             }
 
-            // Format numbers
             if (
               field.fieldName.includes("Weight") ||
               field.fieldName === "volumeCbm"
@@ -647,7 +937,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
         worksheet.addRow(row);
       });
 
-      // Auto-fit columns
       worksheet.columns = worksheet.columns.map((column) => ({
         ...column,
         width: 15,
@@ -674,7 +963,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     }
   };
 
-  // Export to PDF
   const downloadPDFWithData = (dataToExport: BlMaster[], tabName: string) => {
     if (!dataToExport || dataToExport.length === 0) {
       toast({
@@ -688,7 +976,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     try {
       const doc = new jsPDF();
 
-      // Header
       doc.setFontSize(16);
       doc.setTextColor(40, 116, 166);
       doc.text(`${tabName} - Bill of Lading Report`, 20, 20);
@@ -698,34 +985,29 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       doc.text(`Export Date: ${new Date().toLocaleDateString()}`, 20, 30);
       doc.text(`Total Records: ${dataToExport.length}`, 20, 37);
 
-      // Prepare table data
       const tableHeaders = [
         "MBL No",
         "HBL No",
         "Job No",
         "BL Date",
-        "Shipper",
-        "Consignee",
-        "Packages",
-        "Gross Weight",
-        "Volume",
+        "Vessel",
+        "Voyage",
+        "POL",
+        "POD",
         "Status",
       ];
-
       const tableData = dataToExport.map((item) => [
         item.mblNumber?.toString() || "N/A",
         item.hblNumber?.toString() || "N/A",
         item.jobNumber?.toString() || "N/A",
         item.blDate ? new Date(item.blDate).toLocaleDateString() : "N/A",
-        (item.shipperName?.toString() || "N/A").substring(0, 20),
-        (item.consigneeName?.toString() || "N/A").substring(0, 20),
-        item.noOfPackages?.toString() || "0",
-        item.grossWeight ? `${item.grossWeight.toFixed(2)} kg` : "0 kg",
-        item.volumeCbm ? `${item.volumeCbm.toFixed(2)} CBM` : "0 CBM",
+        (item.vesselName?.toString() || "N/A").substring(0, 15),
+        (item.voyage?.toString() || "N/A").substring(0, 10),
+        (item.polName?.toString() || "N/A").substring(0, 15),
+        (item.podName?.toString() || "N/A").substring(0, 15),
         item.status || "N/A",
       ]);
 
-      // Use autoTable function
       autoTable(doc, {
         head: [tableHeaders],
         body: tableData,
@@ -736,23 +1018,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           textColor: [255, 255, 255],
           fontStyle: "bold",
         },
-        styles: {
-          fontSize: 8,
-          cellPadding: 2,
-          overflow: "linebreak",
-        },
-        columnStyles: {
-          0: { cellWidth: 25 },
-          1: { cellWidth: 25 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 15 },
-          4: { cellWidth: 25 },
-          5: { cellWidth: 25 },
-          6: { cellWidth: 15 },
-          7: { cellWidth: 20 },
-          8: { cellWidth: 15 },
-          9: { cellWidth: 15 },
-        },
+        styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" },
       });
 
       doc.save(`${tabName}_BillOfLading_${moment().format("YYYY-MM-DD")}.pdf`);
@@ -770,11 +1036,9 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     }
   };
 
-  // Generate BL PDF (Individual)
   const generateBLPDF = (bl: BlMaster) => {
     const doc = new jsPDF();
 
-    // Header
     doc.setFontSize(20);
     doc.setTextColor(40, 116, 166);
     doc.text("BILL OF LADING", 105, 20, { align: "center" });
@@ -790,7 +1054,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       35
     );
 
-    // Shipper Information
+    // Shipper
     doc.setFontSize(12);
     doc.setTextColor(40, 116, 166);
     doc.text("SHIPPER", 20, 50);
@@ -798,7 +1062,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     doc.setTextColor(0, 0, 0);
     doc.text(bl.shipperName || "N/A", 20, 57);
 
-    // Consignee Information
+    // Consignee
     doc.setFontSize(12);
     doc.setTextColor(40, 116, 166);
     doc.text("CONSIGNEE", 20, 70);
@@ -814,20 +1078,33 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     doc.setTextColor(0, 0, 0);
     doc.text(bl.notifyName || "N/A", 20, 97);
 
-    // BL Numbers
+    // BL Numbers & Vessel Info
     doc.setFontSize(12);
     doc.setTextColor(40, 116, 166);
-    doc.text("BL NUMBERS", 110, 50);
+    doc.text("BL INFORMATION", 110, 50);
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
     doc.text(`MBL: ${bl.mblNumber || "N/A"}`, 110, 57);
     doc.text(`HBL: ${bl.hblNumber || "N/A"}`, 110, 64);
     doc.text(`Job: ${bl.jobNumber || "N/A"}`, 110, 71);
+    doc.text(`Vessel: ${bl.vesselName || "N/A"}`, 110, 78);
+    doc.text(`Voyage: ${bl.voyage || "N/A"}`, 110, 85);
+
+    // Routing
+    doc.setFontSize(12);
+    doc.setTextColor(40, 116, 166);
+    doc.text("ROUTING", 20, 110);
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`POL: ${bl.polName || "N/A"}`, 20, 117);
+    doc.text(`POD: ${bl.podName || "N/A"}`, 20, 124);
+    doc.text(`Freight: ${bl.freightType || "N/A"}`, 20, 131);
+    doc.text(`Movement: ${bl.movement || "N/A"}`, 20, 138);
 
     // Cargo Details
     doc.setFontSize(12);
     doc.setTextColor(40, 116, 166);
-    doc.text("CARGO DETAILS", 20, 110);
+    doc.text("CARGO DETAILS", 20, 151);
 
     const cargoData = [
       ["Description", "Value"],
@@ -840,26 +1117,20 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     autoTable(doc, {
       head: [cargoData[0]],
       body: cargoData.slice(1),
-      startY: 117,
+      startY: 158,
       theme: "grid",
       headStyles: {
         fillColor: [240, 240, 240],
         textColor: [0, 0, 0],
         fontStyle: "bold",
       },
-      styles: {
-        fontSize: 9,
-        cellPadding: 3,
-      },
-      columnStyles: {
-        0: { cellWidth: 50 },
-        1: { cellWidth: 40 },
-      },
+      styles: { fontSize: 9, cellPadding: 3 },
+      columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 40 } },
     });
 
-    // Equipment Details
+    // Equipment Details with new fields
     if (bl.equipments && bl.equipments.length > 0) {
-      const finalY = (doc as any).lastAutoTable?.finalY || 130;
+      const finalY = (doc as any).lastAutoTable?.finalY || 170;
 
       doc.setFontSize(12);
       doc.setTextColor(40, 116, 166);
@@ -870,18 +1141,18 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
         "Type",
         "Size",
         "Seal No",
-        "Gross Wt",
-        "Tare Wt",
-        "Net Wt",
+        "Volume",
+        "Free Days",
+        "Tarrif",
       ];
       const equipData = bl.equipments.map((eq) => [
         eq.containerNo || "N/A",
         eq.containerTypeName || "N/A",
         eq.containerSizeName || "N/A",
         eq.sealNo || "N/A",
-        `${eq.grossWeight?.toFixed(2) || "0"} kg`,
-        `${eq.tareWeight?.toFixed(2) || "0"} kg`,
-        `${eq.netWeight?.toFixed(2) || "0"} kg`,
+        `${eq.volumeCbm?.toFixed(2) || "0"} CBM`,
+        eq.freeDays?.toString() || "0",
+        `${eq.afterFreeDaysTarrifAmount?.toFixed(2) || "0"}`,
       ]);
 
       autoTable(doc, {
@@ -894,15 +1165,12 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           textColor: [0, 0, 0],
           fontStyle: "bold",
         },
-        styles: {
-          fontSize: 8,
-          cellPadding: 2,
-        },
+        styles: { fontSize: 7, cellPadding: 2 },
       });
     }
 
     // Footer
-    const finalY = (doc as any).lastAutoTable?.finalY || 180;
+    const finalY = (doc as any).lastAutoTable?.finalY || 200;
     doc.setFontSize(8);
     doc.setTextColor(100, 100, 100);
     doc.text(
@@ -921,7 +1189,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     });
   };
 
-  // Get status badge color
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "DRAFT":
@@ -939,7 +1206,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     }
   };
 
-  // Columns definition
   const columns: ColumnDef<BlMaster>[] = [
     {
       accessorKey: "actions",
@@ -1069,15 +1335,27 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       ),
     },
     {
-      accessorKey: "shipperName",
-      header: "Shipper",
+      accessorKey: "vesselVoyage",
+      header: "Vessel / Voyage",
       cell: ({ row }) => (
         <div className='text-sm text-gray-700'>
-          <div className='font-medium'>
-            {row.getValue("shipperName") || "-"}
-          </div>
-          <div className='text-xs text-gray-500 mt-0.5'>
-            Consignee: {row.original.consigneeName || "-"}
+          <div className='font-medium'>{row.original.vesselName || "-"}</div>
+          {row.original.voyage && (
+            <div className='text-xs text-gray-500 mt-0.5'>
+              V: {row.original.voyage}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "routing",
+      header: "Routing",
+      cell: ({ row }) => (
+        <div className='text-xs text-gray-700'>
+          <div>POL: {row.original.polName?.split(" - ")[0] || "-"}</div>
+          <div className='mt-0.5'>
+            POD: {row.original.podName?.split(" - ")[0] || "-"}
           </div>
         </div>
       ),
@@ -1089,17 +1367,11 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
         <div className='text-sm text-gray-700'>
           <div className='flex items-center gap-1'>
             <FiPackage className='h-3 w-3 text-gray-400' />
-            <span>Packages: {row.original.noOfPackages || 0}</span>
-          </div>
-          <div className='flex items-center gap-1 mt-0.5'>
-            <FiEye className='h-3 w-3 text-gray-400' />
-            <span>
-              Weight: {row.original.grossWeight?.toFixed(2) || "0"} kg
-            </span>
+            <span>Pkgs: {row.original.noOfPackages || 0}</span>
           </div>
           <div className='flex items-center gap-1 mt-0.5'>
             <FiBox className='h-3 w-3 text-gray-400' />
-            <span>Volume: {row.original.volumeCbm?.toFixed(2) || "0"} CBM</span>
+            <span>{row.original.grossWeight?.toFixed(2) || "0"} kg</span>
           </div>
         </div>
       ),
@@ -1136,23 +1408,12 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
         );
       },
     },
-    {
-      accessorKey: "createdAt",
-      header: "Created",
-      cell: ({ row }) => (
-        <span className='text-xs text-gray-500'>
-          {row.getValue("createdAt")
-            ? new Date(row.getValue("createdAt")).toLocaleDateString()
-            : "-"}
-        </span>
-      ),
-    },
   ];
 
-  // View BL Details Dialog
+  // View BL Details Dialog with ALL new fields
   const ViewBLDialog = () => (
     <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-      <DialogContent className='max-w-4xl max-h-[90vh] overflow-y-auto'>
+      <DialogContent className='max-w-5xl max-h-[90vh] overflow-y-auto'>
         <DialogHeader>
           <DialogTitle className='flex items-center gap-2'>
             <FiEye className='h-5 w-5' />
@@ -1166,7 +1427,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
 
         {selectedBlDetails && (
           <div className='space-y-4'>
-            {/* Header Info */}
+            {/* Basic BL Information */}
             <div className='grid grid-cols-2 gap-4'>
               <Card>
                 <CardHeader className='py-3 px-4'>
@@ -1175,33 +1436,39 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className='pt-0 px-4 pb-3'>
-                  <div className='space-y-1.5'>
+                  <div className='space-y-1.5 text-xs'>
                     <div className='flex justify-between'>
-                      <span className='text-sm text-gray-600'>MBL Number:</span>
-                      <span className='text-sm font-medium'>
+                      <span className='text-gray-600'>MBL Number:</span>
+                      <span className='font-medium'>
                         {selectedBlDetails.mblNumber || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-sm text-gray-600'>HBL Number:</span>
-                      <span className='text-sm font-medium'>
+                      <span className='text-gray-600'>HBL Number:</span>
+                      <span className='font-medium'>
                         {selectedBlDetails.hblNumber || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-sm text-gray-600'>Job Number:</span>
-                      <span className='text-sm font-medium'>
+                      <span className='text-gray-600'>Job Number:</span>
+                      <span className='font-medium'>
                         {selectedBlDetails.jobNumber || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-sm text-gray-600'>BL Date:</span>
-                      <span className='text-sm font-medium'>
+                      <span className='text-gray-600'>BL Date:</span>
+                      <span className='font-medium'>
                         {selectedBlDetails.blDate
                           ? new Date(
                               selectedBlDetails.blDate
                             ).toLocaleDateString()
                           : "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Currency:</span>
+                      <span className='font-medium'>
+                        {selectedBlDetails.currencyName || "-"}
                       </span>
                     </div>
                   </div>
@@ -1211,45 +1478,45 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
               <Card>
                 <CardHeader className='py-3 px-4'>
                   <CardTitle className='text-sm font-medium'>
-                    Status Information
+                    Vessel & Routing
                   </CardTitle>
                 </CardHeader>
                 <CardContent className='pt-0 px-4 pb-3'>
-                  <div className='space-y-1.5'>
+                  <div className='space-y-1.5 text-xs'>
                     <div className='flex justify-between'>
-                      <span className='text-sm text-gray-600'>Status:</span>
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getStatusBadge(
-                          selectedBlDetails.status
-                        )}`}
-                      >
-                        {selectedBlDetails.status}
+                      <span className='text-gray-600'>Vessel:</span>
+                      <span className='font-medium'>
+                        {selectedBlDetails.vesselName || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-sm text-gray-600'>Created:</span>
-                      <span className='text-sm font-medium'>
-                        {selectedBlDetails.createdAt
-                          ? new Date(
-                              selectedBlDetails.createdAt
-                            ).toLocaleString()
-                          : "-"}
+                      <span className='text-gray-600'>Voyage:</span>
+                      <span className='font-medium'>
+                        {selectedBlDetails.voyage || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-sm text-gray-600'>Updated:</span>
-                      <span className='text-sm font-medium'>
-                        {selectedBlDetails.updatedAt
-                          ? new Date(
-                              selectedBlDetails.updatedAt
-                            ).toLocaleString()
-                          : "-"}
+                      <span className='text-gray-600'>POL:</span>
+                      <span className='font-medium'>
+                        {selectedBlDetails.polName || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-sm text-gray-600'>Version:</span>
-                      <span className='text-sm font-medium'>
-                        {selectedBlDetails.version || "1"}
+                      <span className='text-gray-600'>POD:</span>
+                      <span className='font-medium'>
+                        {selectedBlDetails.podName || "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Freight Type:</span>
+                      <span className='font-medium'>
+                        {selectedBlDetails.freightType || "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Movement:</span>
+                      <span className='font-medium'>
+                        {selectedBlDetails.movement || "-"}
                       </span>
                     </div>
                   </div>
@@ -1265,16 +1532,13 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent className='pt-0 px-4 pb-3'>
-                <div className='grid grid-cols-3 gap-4'>
+                <div className='grid grid-cols-4 gap-4'>
                   <div>
                     <h4 className='text-xs font-semibold text-gray-700 mb-2'>
                       Shipper
                     </h4>
                     <p className='text-sm'>
                       {selectedBlDetails.shipperName || "-"}
-                    </p>
-                    <p className='text-xs text-gray-500 mt-1'>
-                      ID: {selectedBlDetails.shipperPartyId}
                     </p>
                   </div>
                   <div>
@@ -1284,9 +1548,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                     <p className='text-sm'>
                       {selectedBlDetails.consigneeName || "-"}
                     </p>
-                    <p className='text-xs text-gray-500 mt-1'>
-                      ID: {selectedBlDetails.consigneePartyId}
-                    </p>
                   </div>
                   <div>
                     <h4 className='text-xs font-semibold text-gray-700 mb-2'>
@@ -1295,9 +1556,43 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                     <p className='text-sm'>
                       {selectedBlDetails.notifyName || "-"}
                     </p>
-                    <p className='text-xs text-gray-500 mt-1'>
-                      ID: {selectedBlDetails.notifyPartyId}
+                  </div>
+                  <div>
+                    <h4 className='text-xs font-semibold text-gray-700 mb-2'>
+                      Forwarding Agent
+                    </h4>
+                    <p className='text-sm'>
+                      {selectedBlDetails.forwardingAgentName || "-"}
                     </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Issue Information */}
+            <Card>
+              <CardHeader className='py-3 px-4'>
+                <CardTitle className='text-sm font-medium'>
+                  Issue Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className='pt-0 px-4 pb-3'>
+                <div className='grid grid-cols-2 gap-4'>
+                  <div className='text-xs'>
+                    <span className='text-gray-600'>Place of Issue: </span>
+                    <span className='font-medium'>
+                      {selectedBlDetails.placeOfIssueName || "-"}
+                    </span>
+                  </div>
+                  <div className='text-xs'>
+                    <span className='text-gray-600'>Date of Issue: </span>
+                    <span className='font-medium'>
+                      {selectedBlDetails.dateOfIssue
+                        ? new Date(
+                            selectedBlDetails.dateOfIssue
+                          ).toLocaleDateString()
+                        : "-"}
+                    </span>
                   </div>
                 </div>
               </CardContent>
@@ -1346,29 +1641,65 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
               </CardContent>
             </Card>
 
-            {/* Equipment Information */}
+            {/* Marks and Notes */}
+            {(selectedBlDetails.marksAndContainersNo ||
+              selectedBlDetails.blNotes) && (
+              <Card>
+                <CardHeader className='py-3 px-4'>
+                  <CardTitle className='text-sm font-medium'>
+                    Additional Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className='pt-0 px-4 pb-3 space-y-2'>
+                  {selectedBlDetails.marksAndContainersNo && (
+                    <div>
+                      <h4 className='text-xs font-semibold text-gray-700 mb-1'>
+                        Marks & Container Numbers
+                      </h4>
+                      <p className='text-xs text-gray-600 whitespace-pre-wrap'>
+                        {selectedBlDetails.marksAndContainersNo}
+                      </p>
+                    </div>
+                  )}
+                  {selectedBlDetails.blNotes && (
+                    <div>
+                      <h4 className='text-xs font-semibold text-gray-700 mb-1'>
+                        BL Notes
+                      </h4>
+                      <p className='text-xs text-gray-600 whitespace-pre-wrap'>
+                        {selectedBlDetails.blNotes}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Equipment Information with NEW fields */}
             {selectedBlDetails.equipments &&
               selectedBlDetails.equipments.length > 0 && (
                 <Card>
                   <CardHeader className='py-3 px-4'>
                     <CardTitle className='text-sm font-medium'>
-                      Equipment Details
+                      Equipment Details ({selectedBlDetails.equipments.length}{" "}
+                      containers)
                     </CardTitle>
                   </CardHeader>
                   <CardContent className='pt-0 px-4 pb-3'>
                     <div className='overflow-x-auto'>
-                      <table className='w-full text-sm'>
+                      <table className='w-full text-xs'>
                         <thead>
-                          <tr className='border-b'>
+                          <tr className='border-b bg-gray-50'>
                             <th className='text-left py-2 px-2'>
                               Container No
                             </th>
                             <th className='text-left py-2 px-2'>Type</th>
                             <th className='text-left py-2 px-2'>Size</th>
-                            <th className='text-left py-2 px-2'>Seal No</th>
+                            <th className='text-left py-2 px-2'>Vol (CBM)</th>
                             <th className='text-left py-2 px-2'>Gross Wt</th>
-                            <th className='text-left py-2 px-2'>Tare Wt</th>
                             <th className='text-left py-2 px-2'>Net Wt</th>
+                            <th className='text-left py-2 px-2'>Free Days</th>
+                            <th className='text-left py-2 px-2'>Tarrif</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1384,15 +1715,19 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                               <td className='py-2 px-2'>
                                 {eq.containerSizeName || "N/A"}
                               </td>
-                              <td className='py-2 px-2'>{eq.sealNo}</td>
+                              <td className='py-2 px-2'>
+                                {eq.volumeCbm?.toFixed(2) || "0.00"}
+                              </td>
                               <td className='py-2 px-2'>
                                 {eq.grossWeight?.toFixed(2)} kg
                               </td>
                               <td className='py-2 px-2'>
-                                {eq.tareWeight?.toFixed(2)} kg
-                              </td>
-                              <td className='py-2 px-2'>
                                 {eq.netWeight?.toFixed(2)} kg
+                              </td>
+                              <td className='py-2 px-2'>{eq.freeDays || 0}</td>
+                              <td className='py-2 px-2'>
+                                {eq.afterFreeDaysTarrifAmount?.toFixed(2) ||
+                                  "0.00"}
                               </td>
                             </tr>
                           ))}
@@ -1402,6 +1737,55 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                   </CardContent>
                 </Card>
               )}
+
+            {/* Status Information */}
+            <Card>
+              <CardHeader className='py-3 px-4'>
+                <CardTitle className='text-sm font-medium'>
+                  Status & Tracking
+                </CardTitle>
+              </CardHeader>
+              <CardContent className='pt-0 px-4 pb-3'>
+                <div className='grid grid-cols-4 gap-4 text-xs'>
+                  <div>
+                    <span className='text-gray-600'>Status: </span>
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded font-medium border ${getStatusBadge(
+                        selectedBlDetails.status
+                      )}`}
+                    >
+                      {selectedBlDetails.status}
+                    </span>
+                  </div>
+                  <div>
+                    <span className='text-gray-600'>Created: </span>
+                    <span className='font-medium'>
+                      {selectedBlDetails.createdAt
+                        ? new Date(
+                            selectedBlDetails.createdAt
+                          ).toLocaleDateString()
+                        : "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className='text-gray-600'>Updated: </span>
+                    <span className='font-medium'>
+                      {selectedBlDetails.updatedAt
+                        ? new Date(
+                            selectedBlDetails.updatedAt
+                          ).toLocaleDateString()
+                        : "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className='text-gray-600'>Version: </span>
+                    <span className='font-medium'>
+                      {selectedBlDetails.version || "1"}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -1421,7 +1805,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     </Dialog>
   );
 
-  // Statistics Component
   const BlStatsPage = () => {
     const stats = getBlStats();
 
@@ -1439,7 +1822,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           </Button>
         </div>
 
-        {/* Summary Cards */}
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3'>
           <Card className='border border-blue-200 shadow-sm'>
             <CardHeader className='pb-2 pt-3 px-4'>
@@ -1500,7 +1882,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           </Card>
         </div>
 
-        {/* Status Distribution */}
         <Card className='border shadow-sm'>
           <CardHeader className='pb-3 pt-4 px-4'>
             <CardTitle className='text-sm font-semibold text-gray-900'>
@@ -1570,7 +1951,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
             <FiArrowLeft className='h-3.5 w-3.5' />
             Back to B/L List
           </Button>
-
           <div className='bg-white rounded-lg shadow-sm border p-4'>
             <BlForm
               type={selectedBl ? "edit" : "add"}
@@ -1588,7 +1968,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
   return (
     <div className='p-4 bg-gray-50 min-h-screen'>
       <div className='max-w-7xl mx-auto'>
-        {/* Header Section */}
         <div className='flex items-center justify-between mb-4'>
           <div>
             <h1 className='text-xl font-bold text-gray-900'>
@@ -1626,7 +2005,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           </div>
         </div>
 
-        {/* Search and Filters Bar */}
         <div className='bg-white rounded-lg shadow-sm border p-3 mb-4'>
           <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-3'>
             <div className='flex items-center gap-2 flex-1 w-full md:w-auto'>
@@ -1634,7 +2012,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 <FiSearch className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
                 <Input
                   type='text'
-                  placeholder='Search by MBL, HBL, Job, Shipper...'
+                  placeholder='Search by MBL, HBL, Job, Vessel...'
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   className='pl-9 pr-9 py-1.5 text-sm h-9'
@@ -1686,7 +2064,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           </div>
         </div>
 
-        {/* Tabs Section */}
         <Tabs
           defaultValue='ALL_BL'
           value={activeTab}
@@ -1747,7 +2124,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
             </TabsList>
           </div>
 
-          {/* Tab Contents */}
           {[
             "ALL_BL",
             "DRAFT",

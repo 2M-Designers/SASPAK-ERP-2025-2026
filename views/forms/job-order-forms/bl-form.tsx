@@ -26,6 +26,12 @@ import {
   Weight,
   Box,
   Container,
+  Anchor,
+  MapPin,
+  DollarSign,
+  FileText,
+  Plane,
+  Globe,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -50,8 +56,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 
-// Define validation schema for BL Master
 // Define validation schema for BL Master
 const blMasterSchema = z.object({
   blMasterId: z.number().optional(),
@@ -73,13 +79,19 @@ const blMasterSchema = z.object({
     .default(0),
   netWeight: z.number().min(0, "Net weight must be 0 or greater").default(0),
   volumeCbm: z.number().min(0, "Volume must be 0 or greater").default(0),
-  status: z.string().default("Active"),
-  // Add these fields for edit functionality
-  version: z.number().optional(),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional(),
-  createLog: z.string().optional(),
-  updateLog: z.string().optional(),
+  polId: z.number().optional(),
+  podId: z.number().optional(),
+  vesselName: z.string().optional(),
+  voyage: z.string().optional(),
+  forwardingAgentId: z.number().optional(),
+  freightType: z.string().optional(),
+  movement: z.string().optional(),
+  blCurrencyId: z.number().optional(),
+  placeOfIssueId: z.number().optional(),
+  dateOfIssue: z.string().optional(),
+  marksAndContainersNo: z.string().optional(),
+  blNotes: z.string().optional(),
+  status: z.string().default("DRAFT"),
 });
 
 // Define validation schema for BL Equipment
@@ -116,12 +128,18 @@ export default function BlForm({
   const [parties, setParties] = useState<any[]>([]);
   const [containerTypes, setContainerTypes] = useState<any[]>([]);
   const [containerSizes, setContainerSizes] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [currencies, setCurrencies] = useState<any[]>([]);
+  const [forwardingAgents, setForwardingAgents] = useState<any[]>([]);
 
   // Loading states
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [loadingParties, setLoadingParties] = useState(false);
   const [loadingContainerTypes, setLoadingContainerTypes] = useState(false);
   const [loadingContainerSizes, setLoadingContainerSizes] = useState(false);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+  const [loadingCurrencies, setLoadingCurrencies] = useState(false);
+  const [loadingForwardingAgents, setLoadingForwardingAgents] = useState(false);
 
   // Equipment management
   const [equipments, setEquipments] = useState<BlEquipmentFormValues[]>(
@@ -134,16 +152,18 @@ export default function BlForm({
     resolver: zodResolver(blMasterSchema),
     defaultValues: {
       companyId: 1,
-      status: "Active",
+      status: "DRAFT",
       noOfPackages: 0,
       grossWeight: 0,
       netWeight: 0,
       volumeCbm: 0,
-      version: 0,
       ...defaultState,
       blDate: defaultState?.blDate
         ? new Date(defaultState.blDate).toISOString().split("T")[0]
         : new Date().toISOString().split("T")[0],
+      dateOfIssue: defaultState?.dateOfIssue
+        ? new Date(defaultState.dateOfIssue).toISOString().split("T")[0]
+        : "",
     },
   });
 
@@ -201,7 +221,7 @@ export default function BlForm({
     setLoadingParties(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Party/GetList`, {
+      const response = await fetch(`${baseUrl}Parties/GetList`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -240,7 +260,7 @@ export default function BlForm({
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       // Adjust this endpoint based on your actual API
-      const response = await fetch(`${baseUrl}SetupContainerType/GetList`, {
+      const response = await fetch(`${baseUrl}ContainerType/GetList`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -280,13 +300,13 @@ export default function BlForm({
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       // Adjust this endpoint based on your actual API
-      const response = await fetch(`${baseUrl}SetupContainerSize/GetList`, {
+      const response = await fetch(`${baseUrl}ContainerSize/GetList`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          select: "ContainerSizeId,SizeCode,Description",
+          select: "ContainerSizeId,SizeName,SizeCode",
           where: "IsActive == true",
-          sortOn: "SizeCode",
+          sortOn: "SizeName",
           page: "1",
           pageSize: "100",
         }),
@@ -314,11 +334,131 @@ export default function BlForm({
     }
   };
 
+  // Fetch Locations (for POL, POD, Place of Issue)
+  const fetchLocations = async () => {
+    setLoadingLocations(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(`${baseUrl}UnLocation/GetList`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          select: "UnlocationId,LocationName,Uncode,CountryCode",
+          where: "IsActive == true",
+          sortOn: "LocationName",
+          page: "1",
+          pageSize: "1000",
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setLocations(
+          data.map((loc: any) => ({
+            value: loc.unlocationId,
+            label: `${loc.uncode} - ${loc.locationName}${
+              loc.countryCode ? ` (${loc.countryCode})` : ""
+            }`,
+          }))
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching locations:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load locations list",
+      });
+    } finally {
+      setLoadingLocations(false);
+    }
+  };
+
+  // Fetch Currencies
+  const fetchCurrencies = async () => {
+    setLoadingCurrencies(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(`${baseUrl}Currency/GetList`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          select: "CurrencyId,CurrencyCode,CurrencyName",
+          where: "IsActive == true",
+          sortOn: "CurrencyCode",
+          page: "1",
+          pageSize: "200",
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCurrencies(
+          data.map((curr: any) => ({
+            value: curr.currencyId,
+            label: `${curr.currencyCode} - ${curr.currencyName}`,
+          }))
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching currencies:", error);
+      // Set default currencies
+      setCurrencies([
+        { value: 1, label: "USD - US Dollar" },
+        { value: 2, label: "EUR - Euro" },
+        { value: 3, label: "PKR - Pakistani Rupee" },
+      ]);
+    } finally {
+      setLoadingCurrencies(false);
+    }
+  };
+
+  // Fetch Forwarding Agents
+  const fetchForwardingAgents = async () => {
+    setLoadingForwardingAgents(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(`${baseUrl}Party/GetList`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          select: "PartyId,PartyCode,PartyName",
+          where: "IsActive == true && IsAgent == true",
+          sortOn: "PartyName",
+          page: "1",
+          pageSize: "1000",
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setForwardingAgents(
+          data.map((agent: any) => ({
+            value: agent.partyId,
+            label: `${agent.partyCode} - ${agent.partyName}`,
+          }))
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching forwarding agents:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load forwarding agents list",
+      });
+    } finally {
+      setLoadingForwardingAgents(false);
+    }
+  };
+
   useEffect(() => {
     fetchJobs();
     fetchParties();
     fetchContainerTypes();
     fetchContainerSizes();
+    fetchLocations();
+    fetchCurrencies();
+    fetchForwardingAgents();
   }, []);
 
   // Calculate net weight when gross and tare weights change
@@ -391,86 +531,35 @@ export default function BlForm({
 
     setIsSubmitting(true);
     try {
-      const user = localStorage.getItem("user");
-      let userID = 0;
-      let companyId = 1;
-      let userName = "";
-
-      if (user) {
-        try {
-          const u = JSON.parse(user);
-          userID = u?.userID || 0;
-          companyId = u?.companyId || 1;
-          userName = u?.userName || u?.email || "";
-        } catch (error) {
-          console.error("Error parsing user JSON:", error);
-        }
-      }
-
-      const now = new Date().toISOString();
-
-      // Prepare blEquipments array according to API structure
-      const blEquipments = equipments.map((equipment) => ({
-        blEquipmentId: equipment.blEquipmentId || 0,
-        blMasterId: equipment.blMasterId || 0,
-        containerNo: equipment.containerNo,
-        containerTypeId: equipment.containerTypeId,
-        containerSizeId: equipment.containerSizeId,
-        sealNo: equipment.sealNo || "",
-        grossWeight: equipment.grossWeight || 0,
-        tareWeight: equipment.tareWeight || 0,
-        netWeight: equipment.netWeight || 0,
-        version: 0,
-        createdAt: now,
-        updatedAt: now,
-        createLog: `Created by ${userName} at ${new Date().toLocaleString()}`,
-        updateLog: `Updated by ${userName} at ${new Date().toLocaleString()}`,
-        // You can optionally include containerSize and containerType objects if needed
-        // containerSize: {},
-        // containerType: {},
-      }));
-
-      // Prepare the complete payload
-      const payload = {
-        blMasterId: values.blMasterId || 0,
-        companyId: companyId,
-        jobId: values.jobId || 0,
-        mblNumber: values.mblNumber,
-        hblNumber: values.hblNumber || "",
-        blDate: values.blDate,
-        shipperPartyId: values.shipperPartyId,
-        consigneePartyId: values.consigneePartyId,
-        notifyPartyId: values.notifyPartyId || 0,
-        noOfPackages: values.noOfPackages || 0,
-        grossWeight: values.grossWeight || 0,
-        netWeight: values.netWeight || 0,
-        volumeCbm: values.volumeCbm || 0,
-        status: values.status || "Active",
-        version: 0,
-        createdAt: now,
-        updatedAt: now,
-        createLog: `Created by ${userName} at ${new Date().toLocaleString()}`,
-        updateLog: `Updated by ${userName} at ${new Date().toLocaleString()}`,
-        blEquipments: blEquipments,
-      };
-
-      console.log("BL Payload:", JSON.stringify(payload, null, 2));
-
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}bl`, {
-        method: "POST",
+
+      // Submit BL Master
+      const blMasterResponse = await fetch(`${baseUrl}Bl`, {
+        method: type === "edit" ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(values),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          errorData.message || errorData[0] || `HTTP Error: ${response.status}`
-        );
+      if (!blMasterResponse.ok) {
+        throw new Error("Failed to save BL Master");
       }
 
-      const responseData = await response.json();
+      const blMasterResult = await blMasterResponse.json();
+      const blMasterId = blMasterResult.blMasterId || values.blMasterId;
+
+      // Submit BL Equipments
+      for (const equipment of equipments) {
+        const equipmentData = {
+          ...equipment,
+          blMasterId: blMasterId,
+        };
+
+        await fetch(`${baseUrl}BlEquipment`, {
+          method: equipment.blEquipmentId ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(equipmentData),
+        });
+      }
 
       toast({
         title: "Success!",
@@ -479,12 +568,7 @@ export default function BlForm({
         } successfully`,
       });
 
-      handleAddEdit(responseData);
-
-      // If you want to redirect after success
-      if (type === "add") {
-        router.push("/bl"); // or wherever your BL list page is
-      }
+      handleAddEdit(blMasterResult);
     } catch (error: any) {
       console.error("Submission error:", error);
       toast({
@@ -545,355 +629,822 @@ export default function BlForm({
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className='grid grid-cols-1 md:grid-cols-3 gap-5 pt-5 pb-4 px-5'>
-                <FormField
-                  control={form.control}
-                  name='mblNumber'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                        MBL Number
-                        <span className='text-red-500 text-base'>*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='Enter MBL number'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+              <CardContent className='pt-5 pb-4 px-5 space-y-6'>
+                {/* Basic BL Information */}
+                <div>
+                  <h3 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                    Basic BL Information
+                  </h3>
+                  <div className='grid grid-cols-1 md:grid-cols-3 gap-5'>
+                    <FormField
+                      control={form.control}
+                      name='mblNumber'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                            MBL Number
+                            <span className='text-red-500 text-base'>*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder='Enter MBL number'
+                              {...field}
+                              className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name='hblNumber'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        HBL Number
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='Enter HBL number'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name='hblNumber'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            HBL Number
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder='Enter HBL number'
+                              {...field}
+                              className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name='blDate'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                        BL Date
-                        <span className='text-red-500 text-base'>*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type='date'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name='blDate'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                            BL Date
+                            <span className='text-red-500 text-base'>*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type='date'
+                              {...field}
+                              className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name='jobId'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Job Reference
-                      </FormLabel>
-                      <FormControl>
-                        <Select
-                          options={jobs}
-                          value={jobs.find(
-                            (option) => option.value === field.value
-                          )}
-                          onChange={(val) => field.onChange(val?.value)}
-                          placeholder={
-                            loadingJobs ? "Loading..." : "Select Job"
-                          }
-                          className='react-select-container'
-                          classNamePrefix='react-select'
-                          isLoading={loadingJobs}
-                          isDisabled={loadingJobs}
-                          isClearable
-                          styles={{
-                            control: (base) => ({
-                              ...base,
-                              minHeight: "40px",
-                              fontSize: "14px",
-                              borderColor: "#d1d5db",
-                            }),
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name='jobId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Job Reference
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={jobs}
+                              value={jobs.find(
+                                (option) => option.value === field.value
+                              )}
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder={
+                                loadingJobs ? "Loading..." : "Select Job"
+                              }
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isLoading={loadingJobs}
+                              isDisabled={loadingJobs}
+                              isClearable
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name='shipperPartyId'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                        Shipper
-                        <span className='text-red-500 text-base'>*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Select
-                          options={parties}
-                          value={parties.find(
-                            (option) => option.value === field.value
-                          )}
-                          onChange={(val) => field.onChange(val?.value)}
-                          placeholder={
-                            loadingParties ? "Loading..." : "Select Shipper"
-                          }
-                          className='react-select-container'
-                          classNamePrefix='react-select'
-                          isLoading={loadingParties}
-                          isDisabled={loadingParties}
-                          styles={{
-                            control: (base) => ({
-                              ...base,
-                              minHeight: "40px",
-                              fontSize: "14px",
-                              borderColor: "#d1d5db",
-                            }),
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name='status'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Status
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={[
+                                { value: "DRAFT", label: "Draft" },
+                                { value: "ISSUED", label: "Issued" },
+                                { value: "SURRENDERED", label: "Surrendered" },
+                                { value: "AMENDED", label: "Amended" },
+                                { value: "CANCELLED", label: "Cancelled" },
+                              ]}
+                              value={{ value: field.value, label: field.value }}
+                              onChange={(val) => field.onChange(val?.value)}
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name='consigneePartyId'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                        Consignee
-                        <span className='text-red-500 text-base'>*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Select
-                          options={parties}
-                          value={parties.find(
-                            (option) => option.value === field.value
-                          )}
-                          onChange={(val) => field.onChange(val?.value)}
-                          placeholder={
-                            loadingParties ? "Loading..." : "Select Consignee"
-                          }
-                          className='react-select-container'
-                          classNamePrefix='react-select'
-                          isLoading={loadingParties}
-                          isDisabled={loadingParties}
-                          styles={{
-                            control: (base) => ({
-                              ...base,
-                              minHeight: "40px",
-                              fontSize: "14px",
-                              borderColor: "#d1d5db",
-                            }),
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name='blCurrencyId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            BL Currency
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={currencies}
+                              value={currencies.find(
+                                (option) => option.value === field.value
+                              )}
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder={
+                                loadingCurrencies
+                                  ? "Loading..."
+                                  : "Select Currency"
+                              }
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isLoading={loadingCurrencies}
+                              isDisabled={loadingCurrencies}
+                              isClearable
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
 
-                <FormField
-                  control={form.control}
-                  name='notifyPartyId'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Notify Party
-                      </FormLabel>
-                      <FormControl>
-                        <Select
-                          options={parties}
-                          value={parties.find(
-                            (option) => option.value === field.value
-                          )}
-                          onChange={(val) => field.onChange(val?.value)}
-                          placeholder={
-                            loadingParties
-                              ? "Loading..."
-                              : "Select Notify Party"
-                          }
-                          className='react-select-container'
-                          classNamePrefix='react-select'
-                          isLoading={loadingParties}
-                          isDisabled={loadingParties}
-                          isClearable
-                          styles={{
-                            control: (base) => ({
-                              ...base,
-                              minHeight: "40px",
-                              fontSize: "14px",
-                              borderColor: "#d1d5db",
-                            }),
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                <Separator />
 
-                <FormField
-                  control={form.control}
-                  name='noOfPackages'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Number of Packages
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type='number'
-                          placeholder='0'
-                          {...field}
-                          onChange={(e) =>
-                            field.onChange(Number(e.target.value))
-                          }
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                {/* Party Information */}
+                <div>
+                  <h3 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                    Party Information
+                  </h3>
+                  <div className='grid grid-cols-1 md:grid-cols-3 gap-5'>
+                    <FormField
+                      control={form.control}
+                      name='shipperPartyId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                            Shipper
+                            <span className='text-red-500 text-base'>*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={parties}
+                              value={parties.find(
+                                (option) => option.value === field.value
+                              )}
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder={
+                                loadingParties ? "Loading..." : "Select Shipper"
+                              }
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isLoading={loadingParties}
+                              isDisabled={loadingParties}
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name='grossWeight'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Gross Weight (kg)
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type='number'
-                          step='0.01'
-                          placeholder='0.00'
-                          {...field}
-                          onChange={(e) =>
-                            field.onChange(Number(e.target.value))
-                          }
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name='consigneePartyId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                            Consignee
+                            <span className='text-red-500 text-base'>*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={parties}
+                              value={parties.find(
+                                (option) => option.value === field.value
+                              )}
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder={
+                                loadingParties
+                                  ? "Loading..."
+                                  : "Select Consignee"
+                              }
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isLoading={loadingParties}
+                              isDisabled={loadingParties}
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name='netWeight'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Net Weight (kg)
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type='number'
-                          step='0.01'
-                          placeholder='0.00'
-                          {...field}
-                          onChange={(e) =>
-                            field.onChange(Number(e.target.value))
-                          }
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name='notifyPartyId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Notify Party
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={parties}
+                              value={parties.find(
+                                (option) => option.value === field.value
+                              )}
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder={
+                                loadingParties
+                                  ? "Loading..."
+                                  : "Select Notify Party"
+                              }
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isLoading={loadingParties}
+                              isDisabled={loadingParties}
+                              isClearable
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name='volumeCbm'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Volume (CBM)
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type='number'
-                          step='0.01'
-                          placeholder='0.00'
-                          {...field}
-                          onChange={(e) =>
-                            field.onChange(Number(e.target.value))
-                          }
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name='forwardingAgentId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Forwarding Agent
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={forwardingAgents}
+                              value={forwardingAgents.find(
+                                (option) => option.value === field.value
+                              )}
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder={
+                                loadingForwardingAgents
+                                  ? "Loading..."
+                                  : "Select Agent"
+                              }
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isLoading={loadingForwardingAgents}
+                              isDisabled={loadingForwardingAgents}
+                              isClearable
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
 
-                <FormField
-                  control={form.control}
-                  name='status'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Status
-                      </FormLabel>
-                      <FormControl>
-                        <Select
-                          options={[
-                            { value: "Active", label: "Active" },
-                            { value: "Inactive", label: "Inactive" },
-                            { value: "Completed", label: "Completed" },
-                          ]}
-                          value={{ value: field.value, label: field.value }}
-                          onChange={(val) => field.onChange(val?.value)}
-                          className='react-select-container'
-                          classNamePrefix='react-select'
-                          styles={{
-                            control: (base) => ({
-                              ...base,
-                              minHeight: "40px",
-                              fontSize: "14px",
-                              borderColor: "#d1d5db",
-                            }),
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                <Separator />
+
+                {/* Shipment Details */}
+                <div>
+                  <h3 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                    Shipment Details
+                  </h3>
+                  <div className='grid grid-cols-1 md:grid-cols-3 gap-5'>
+                    <FormField
+                      control={form.control}
+                      name='polId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Port of Loading (POL)
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={locations}
+                              value={locations.find(
+                                (option) => option.value === field.value
+                              )}
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder={
+                                loadingLocations ? "Loading..." : "Select POL"
+                              }
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isLoading={loadingLocations}
+                              isDisabled={loadingLocations}
+                              isClearable
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='podId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Port of Discharge (POD)
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={locations}
+                              value={locations.find(
+                                (option) => option.value === field.value
+                              )}
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder={
+                                loadingLocations ? "Loading..." : "Select POD"
+                              }
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isLoading={loadingLocations}
+                              isDisabled={loadingLocations}
+                              isClearable
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='vesselName'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Vessel Name
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder='Enter vessel name'
+                              {...field}
+                              className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='voyage'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Voyage Number
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder='Enter voyage number'
+                              {...field}
+                              className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='freightType'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Freight Type
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={[
+                                { value: "PREPAID", label: "Prepaid" },
+                                { value: "COLLECT", label: "Collect" },
+                                { value: "THIRD_PARTY", label: "Third Party" },
+                              ]}
+                              value={
+                                field.value
+                                  ? { value: field.value, label: field.value }
+                                  : null
+                              }
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder='Select Freight Type'
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isClearable
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='movement'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Movement Type
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={[
+                                {
+                                  value: "PORT_TO_PORT",
+                                  label: "Port to Port",
+                                },
+                                {
+                                  value: "DOOR_TO_DOOR",
+                                  label: "Door to Door",
+                                },
+                                {
+                                  value: "DOOR_TO_PORT",
+                                  label: "Door to Port",
+                                },
+                                {
+                                  value: "PORT_TO_DOOR",
+                                  label: "Port to Door",
+                                },
+                              ]}
+                              value={
+                                field.value
+                                  ? {
+                                      value: field.value,
+                                      label: field.value.replace(/_/g, " "),
+                                    }
+                                  : null
+                              }
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder='Select Movement'
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isClearable
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Issue Information */}
+                <div>
+                  <h3 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                    Issue Information
+                  </h3>
+                  <div className='grid grid-cols-1 md:grid-cols-2 gap-5'>
+                    <FormField
+                      control={form.control}
+                      name='placeOfIssueId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Place of Issue
+                          </FormLabel>
+                          <FormControl>
+                            <Select
+                              options={locations}
+                              value={locations.find(
+                                (option) => option.value === field.value
+                              )}
+                              onChange={(val) => field.onChange(val?.value)}
+                              placeholder={
+                                loadingLocations
+                                  ? "Loading..."
+                                  : "Select Place of Issue"
+                              }
+                              className='react-select-container'
+                              classNamePrefix='react-select'
+                              isLoading={loadingLocations}
+                              isDisabled={loadingLocations}
+                              isClearable
+                              styles={{
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: "40px",
+                                  fontSize: "14px",
+                                  borderColor: "#d1d5db",
+                                }),
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='dateOfIssue'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Date of Issue
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type='date'
+                              {...field}
+                              value={field.value || ""}
+                              className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Cargo Information */}
+                <div>
+                  <h3 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                    Cargo Information
+                  </h3>
+                  <div className='grid grid-cols-1 md:grid-cols-4 gap-5'>
+                    <FormField
+                      control={form.control}
+                      name='noOfPackages'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Number of Packages
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type='number'
+                              placeholder='0'
+                              {...field}
+                              onChange={(e) =>
+                                field.onChange(Number(e.target.value))
+                              }
+                              className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='grossWeight'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Gross Weight (kg)
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type='number'
+                              step='0.01'
+                              placeholder='0.00'
+                              {...field}
+                              onChange={(e) =>
+                                field.onChange(Number(e.target.value))
+                              }
+                              className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='netWeight'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Net Weight (kg)
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type='number'
+                              step='0.01'
+                              placeholder='0.00'
+                              {...field}
+                              onChange={(e) =>
+                                field.onChange(Number(e.target.value))
+                              }
+                              className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='volumeCbm'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Volume (CBM)
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type='number'
+                              step='0.01'
+                              placeholder='0.00'
+                              {...field}
+                              onChange={(e) =>
+                                field.onChange(Number(e.target.value))
+                              }
+                              className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            />
+                          </FormControl>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Additional Information */}
+                <div>
+                  <h3 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                    Additional Information
+                  </h3>
+                  <div className='grid grid-cols-1 gap-5'>
+                    <FormField
+                      control={form.control}
+                      name='marksAndContainersNo'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            Marks & Container Numbers
+                          </FormLabel>
+                          <FormControl>
+                            <Textarea
+                              placeholder='Enter marks and container numbers...'
+                              className='min-h-[80px] text-sm border-gray-300 focus:border-blue-500'
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormDescription className='text-xs text-gray-500'>
+                            Shipping marks and container identification
+                          </FormDescription>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='blNotes'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className='text-sm font-medium'>
+                            BL Notes
+                          </FormLabel>
+                          <FormControl>
+                            <Textarea
+                              placeholder='Enter any additional notes or remarks...'
+                              className='min-h-[80px] text-sm border-gray-300 focus:border-blue-500'
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormDescription className='text-xs text-gray-500'>
+                            Additional remarks or special instructions
+                          </FormDescription>
+                          <FormMessage className='text-xs' />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
