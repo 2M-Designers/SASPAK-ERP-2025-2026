@@ -25,6 +25,7 @@ import {
   FiCheckCircle,
   FiAlertCircle,
   FiClock,
+  FiTruck,
 } from "react-icons/fi";
 import { useRouter } from "next/navigation";
 import {
@@ -54,20 +55,22 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import moment from "moment";
 import { useToast } from "@/hooks/use-toast";
-import BlForm from "@/views/forms/job-order-forms/bl-form-stepwise";
+import AwbForm from "@/views/forms/job-order-forms/awb-form-stepwise";
 
-type BlMasterPageProps = {
+type AwbMasterPageProps = {
   initialData?: any[];
 };
 
-// Updated BlMaster type with ALL new fields
-type BlMaster = {
-  blMasterId: number;
+// AWB Master type with ALL fields
+type AwbMaster = {
+  awbId: number;
   companyId: number;
   jobId: number;
-  mblNumber: string;
-  hblNumber: string;
-  blDate: string;
+  mawbNumber: string;
+  hawbNumber: string;
+  awbType: string;
+  awbDate: string;
+  airlinePartyId: number;
   shipperPartyId: number;
   consigneePartyId: number;
   notifyPartyId: number;
@@ -75,65 +78,59 @@ type BlMaster = {
   grossWeight: number;
   netWeight: number;
   volumeCbm: number;
-  polId?: number;
-  podId?: number;
-  vesselName?: string;
-  voyage?: string;
+  originAirportId?: number;
+  destinationAirportId?: number;
+  flightNumber?: string;
   forwardingAgentId?: number;
   freightType?: string;
   movement?: string;
-  blCurrencyId?: number;
+  awbCurrencyId?: number;
   placeOfIssueId?: number;
   dateOfIssue?: string;
-  marksAndContainersNo?: string;
-  blNotes?: string;
+  marksAndCargoNo?: string;
+  awbNotes?: string;
   status: string;
   createdAt: string;
   updatedAt: string;
   version: number;
   // Display names
+  airlineName?: string;
   shipperName?: string;
   consigneeName?: string;
   notifyName?: string;
   jobNumber?: string;
-  polName?: string;
-  podName?: string;
+  originAirportName?: string;
+  destinationAirportName?: string;
   forwardingAgentName?: string;
   currencyName?: string;
   placeOfIssueName?: string;
-  equipments?: BlEquipment[];
+  equipments?: AwbEquipment[];
 };
 
-// Updated BlEquipment type with ALL new fields
-type BlEquipment = {
-  blEquipmentId: number;
-  blMasterId: number;
-  containerNo: string;
-  volumeCbm: number;
-  containerTypeId: number;
-  containerSizeId: number;
-  sealNo: string;
+// AWB Equipment type with ALL fields
+type AwbEquipment = {
+  awbEquipmentId: number;
+  awbId: number;
+  uldNumber: string;
+  packageCount: number;
   grossWeight: number;
-  tareWeight: number;
   netWeight: number;
+  volumeCbm: number;
+  dimensions?: string;
+  remarks?: string;
   descriptionOfGoods?: string;
-  hsCodes?: string;
   freeDays: number;
-  afterFreeDaysTarrifAmount: number;
-  afterFreeDaysTarrifAmountLC: number;
-  tarrifCurrencyId?: number;
+  hsCodes?: string;
   createdAt: string;
+  updatedAt: string;
   version: number;
-  containerTypeName?: string;
-  containerSizeName?: string;
-  tarrifCurrencyName?: string;
 };
 
-// Updated field configuration for Bill of Lading
-const blFieldConfig = [
+// Field configuration for Air Waybill
+const awbFieldConfig = [
   {
-    fieldName: "blMasterId",
-    displayName: "BL ID",
+    fieldName: "awbId",
+    displayName: "AWB ID",
     isdisplayed: false,
     isselected: true,
   },
@@ -156,20 +153,38 @@ const blFieldConfig = [
     isselected: true,
   },
   {
-    fieldName: "mblNumber",
-    displayName: "MBL Number",
+    fieldName: "mawbNumber",
+    displayName: "MAWB Number",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "hblNumber",
-    displayName: "HBL Number",
+    fieldName: "hawbNumber",
+    displayName: "HAWB Number",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "blDate",
-    displayName: "BL Date",
+    fieldName: "awbType",
+    displayName: "AWB Type",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "awbDate",
+    displayName: "AWB Date",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "airlinePartyId",
+    displayName: "Airline ID",
+    isdisplayed: false,
+    isselected: true,
+  },
+  {
+    fieldName: "airlineName",
+    displayName: "Airline",
     isdisplayed: true,
     isselected: true,
   },
@@ -210,38 +225,32 @@ const blFieldConfig = [
     isselected: true,
   },
   {
-    fieldName: "polId",
-    displayName: "POL ID",
+    fieldName: "originAirportId",
+    displayName: "Origin Airport ID",
     isdisplayed: false,
     isselected: true,
   },
   {
-    fieldName: "polName",
-    displayName: "Port of Loading",
+    fieldName: "originAirportName",
+    displayName: "Origin Airport",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "podId",
-    displayName: "POD ID",
+    fieldName: "destinationAirportId",
+    displayName: "Destination Airport ID",
     isdisplayed: false,
     isselected: true,
   },
   {
-    fieldName: "podName",
-    displayName: "Port of Discharge",
+    fieldName: "destinationAirportName",
+    displayName: "Destination Airport",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "vesselName",
-    displayName: "Vessel Name",
-    isdisplayed: true,
-    isselected: true,
-  },
-  {
-    fieldName: "voyage",
-    displayName: "Voyage",
+    fieldName: "flightNumber",
+    displayName: "Flight Number",
     isdisplayed: true,
     isselected: true,
   },
@@ -270,14 +279,14 @@ const blFieldConfig = [
     isselected: true,
   },
   {
-    fieldName: "blCurrencyId",
+    fieldName: "awbCurrencyId",
     displayName: "Currency ID",
     isdisplayed: false,
     isselected: true,
   },
   {
     fieldName: "currencyName",
-    displayName: "BL Currency",
+    displayName: "AWB Currency",
     isdisplayed: true,
     isselected: true,
   },
@@ -324,14 +333,14 @@ const blFieldConfig = [
     isselected: true,
   },
   {
-    fieldName: "marksAndContainersNo",
-    displayName: "Marks & Container No",
+    fieldName: "marksAndCargoNo",
+    displayName: "Marks & Cargo No",
     isdisplayed: false,
     isselected: true,
   },
   {
-    fieldName: "blNotes",
-    displayName: "BL Notes",
+    fieldName: "awbNotes",
+    displayName: "AWB Notes",
     isdisplayed: false,
     isselected: true,
   },
@@ -361,59 +370,29 @@ const blFieldConfig = [
   },
 ];
 
-// Updated equipment field configuration
+// Equipment field configuration
 const equipmentFieldConfig = [
   {
-    fieldName: "blEquipmentId",
+    fieldName: "awbEquipmentId",
     displayName: "Equipment ID",
     isdisplayed: false,
     isselected: true,
   },
   {
-    fieldName: "blMasterId",
-    displayName: "BL ID",
+    fieldName: "awbId",
+    displayName: "AWB ID",
     isdisplayed: false,
     isselected: true,
   },
   {
-    fieldName: "containerNo",
-    displayName: "Container No",
+    fieldName: "uldNumber",
+    displayName: "ULD Number",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "volumeCbm",
-    displayName: "Volume (CBM)",
-    isdisplayed: true,
-    isselected: true,
-  },
-  {
-    fieldName: "containerTypeId",
-    displayName: "Type ID",
-    isdisplayed: false,
-    isselected: true,
-  },
-  {
-    fieldName: "containerTypeName",
-    displayName: "Container Type",
-    isdisplayed: true,
-    isselected: true,
-  },
-  {
-    fieldName: "containerSizeId",
-    displayName: "Size ID",
-    isdisplayed: false,
-    isselected: true,
-  },
-  {
-    fieldName: "containerSizeName",
-    displayName: "Container Size",
-    isdisplayed: true,
-    isselected: true,
-  },
-  {
-    fieldName: "sealNo",
-    displayName: "Seal No",
+    fieldName: "packageCount",
+    displayName: "Package Count",
     isdisplayed: true,
     isselected: true,
   },
@@ -424,14 +403,20 @@ const equipmentFieldConfig = [
     isselected: true,
   },
   {
-    fieldName: "tareWeight",
-    displayName: "Tare Weight",
+    fieldName: "netWeight",
+    displayName: "Net Weight",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "netWeight",
-    displayName: "Net Weight",
+    fieldName: "volumeCbm",
+    displayName: "Volume (CBM)",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "dimensions",
+    displayName: "Dimensions",
     isdisplayed: true,
     isselected: true,
   },
@@ -454,32 +439,20 @@ const equipmentFieldConfig = [
     isselected: true,
   },
   {
-    fieldName: "afterFreeDaysTarrifAmount",
-    displayName: "Tarrif Amount",
-    isdisplayed: true,
-    isselected: true,
-  },
-  {
-    fieldName: "afterFreeDaysTarrifAmountLC",
-    displayName: "Tarrif Amount LC",
-    isdisplayed: true,
-    isselected: true,
-  },
-  {
-    fieldName: "tarrifCurrencyId",
-    displayName: "Tarrif Currency ID",
-    isdisplayed: false,
-    isselected: true,
-  },
-  {
-    fieldName: "tarrifCurrencyName",
-    displayName: "Tarrif Currency",
+    fieldName: "remarks",
+    displayName: "Remarks",
     isdisplayed: true,
     isselected: true,
   },
   {
     fieldName: "createdAt",
     displayName: "Created At",
+    isdisplayed: false,
+    isselected: true,
+  },
+  {
+    fieldName: "updatedAt",
+    displayName: "Updated At",
     isdisplayed: false,
     isselected: true,
   },
@@ -491,17 +464,16 @@ const equipmentFieldConfig = [
   },
 ];
 
-export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
-  const [data, setData] = useState<BlMaster[]>([]);
+export default function AirWaybillPage({ initialData }: AwbMasterPageProps) {
+  const [data, setData] = useState<AwbMaster[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [selectedBl, setSelectedBl] = useState<BlMaster | null>(null);
-  const [activeTab, setActiveTab] = useState("ALL_BL");
+  const [selectedAwb, setSelectedAwb] = useState<AwbMaster | null>(null);
+  const [activeTab, setActiveTab] = useState("ALL_AWB");
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [selectedBlDetails, setSelectedBlDetails] = useState<BlMaster | null>(
-    null
-  );
+  const [selectedAwbDetails, setSelectedAwbDetails] =
+    useState<AwbMaster | null>(null);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const router = useRouter();
   const { toast } = useToast();
@@ -510,46 +482,48 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     { value: "ALL", label: "All Status" },
     { value: "DRAFT", label: "Draft" },
     { value: "ISSUED", label: "Issued" },
-    { value: "SURRENDERED", label: "Surrendered" },
-    { value: "AMENDED", label: "Amended" },
+    { value: "MANIFESTED", label: "Manifested" },
+    { value: "DEPARTED", label: "Departed" },
+    { value: "ARRIVED", label: "Arrived" },
+    { value: "DELIVERED", label: "Delivered" },
     { value: "CANCELLED", label: "Cancelled" },
   ];
 
-  // Fetch B/L data with ALL new fields
-  const fetchBillOfLadings = async () => {
+  // Fetch AWB data with ALL new fields
+  const fetchAirWaybills = async () => {
     setIsLoading(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Bl/GetList`, {
+      const response = await fetch(`${baseUrl}Awb/GetList`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           select:
-            "BlMasterId,CompanyId,JobId,MblNumber,HblNumber,BlDate,ShipperPartyId,ConsigneePartyId,NotifyPartyId,NoOfPackages,GrossWeight,NetWeight,VolumeCbm,POLId,PODId,VesselName,Voyage,ForwardingAgentId,FreightType,Movement,BLCurrencyId,PlaceOfIssueId,DateOfIssue,MarksAndContainersNo,BLNotes,Status,CreatedAt,UpdatedAt,Version",
+            "AwbId,CompanyId,JobId,MawbNumber,HawbNumber,AwbType,AwbDate,AirlinePartyId,ShipperPartyId,ConsigneePartyId,NotifyPartyId,NoOfPackages,GrossWeight,NetWeight,VolumeCbm,OriginAirportId,DestinationAirportId,FlightNumber,ForwardingAgentId,FreightType,Movement,AwbCurrencyId,PlaceOfIssueId,DateOfIssue,MarksAndCargoNo,AwbNotes,Status,CreatedAt,UpdatedAt,Version",
           where: "",
-          sortOn: "BlDate DESC",
+          sortOn: "AwbDate DESC",
           page: "1",
           pageSize: "1000",
         }),
       });
 
       if (response.ok) {
-        const blData = await response.json();
+        const awbData = await response.json();
 
         const enrichedData = await Promise.all(
-          blData.map(async (bl: BlMaster) => {
+          awbData.map(async (awb: AwbMaster) => {
             try {
               // Fetch job details
-              let jobNumber = `JOB-${bl.jobId}`;
-              if (bl.jobId) {
+              let jobNumber = `JOB-${awb.jobId}`;
+              if (awb.jobId) {
                 try {
-                  const jobResponse = await fetch(`${baseUrl}Job/${bl.jobId}`);
+                  const jobResponse = await fetch(`${baseUrl}Job/${awb.jobId}`);
                   if (jobResponse.ok) {
                     const jobData = await jobResponse.json();
                     jobNumber = jobData.jobNumber || jobNumber;
                   }
                 } catch (err) {
-                  console.error(`Error fetching job ${bl.jobId}:`, err);
+                  console.error(`Error fetching job ${awb.jobId}:`, err);
                 }
               }
 
@@ -566,47 +540,57 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
               };
 
               const [
+                airlineData,
                 shipperData,
                 consigneeData,
                 notifyData,
                 forwardingAgentData,
               ] = await Promise.all([
-                fetchParty(bl.shipperPartyId),
-                fetchParty(bl.consigneePartyId),
-                fetchParty(bl.notifyPartyId),
-                bl.forwardingAgentId
-                  ? fetchParty(bl.forwardingAgentId)
+                fetchParty(awb.airlinePartyId),
+                fetchParty(awb.shipperPartyId),
+                fetchParty(awb.consigneePartyId),
+                fetchParty(awb.notifyPartyId),
+                awb.forwardingAgentId
+                  ? fetchParty(awb.forwardingAgentId)
                   : Promise.resolve(null),
               ]);
 
-              // Fetch location details
-              const fetchLocation = async (locationId: number) => {
-                if (!locationId) return null;
+              // Fetch airport details
+              const fetchAirport = async (airportId: number) => {
+                if (!airportId) return null;
                 try {
                   const response = await fetch(
-                    `${baseUrl}UnLocation/${locationId}`
+                    `${baseUrl}UnLocation/${airportId}`
                   );
                   return response.ok ? await response.json() : null;
                 } catch (err) {
-                  console.error(`Error fetching location ${locationId}:`, err);
+                  console.error(`Error fetching airport ${airportId}:`, err);
                   return null;
                 }
               };
 
-              const [polData, podData, placeOfIssueData] = await Promise.all([
-                bl.polId ? fetchLocation(bl.polId) : Promise.resolve(null),
-                bl.podId ? fetchLocation(bl.podId) : Promise.resolve(null),
-                bl.placeOfIssueId
-                  ? fetchLocation(bl.placeOfIssueId)
+              const [
+                originAirportData,
+                destinationAirportData,
+                placeOfIssueData,
+              ] = await Promise.all([
+                awb.originAirportId
+                  ? fetchAirport(awb.originAirportId)
+                  : Promise.resolve(null),
+                awb.destinationAirportId
+                  ? fetchAirport(awb.destinationAirportId)
+                  : Promise.resolve(null),
+                awb.placeOfIssueId
+                  ? fetchAirport(awb.placeOfIssueId)
                   : Promise.resolve(null),
               ]);
 
               // Fetch currency details
               let currencyName = null;
-              if (bl.blCurrencyId) {
+              if (awb.awbCurrencyId) {
                 try {
                   const currencyResponse = await fetch(
-                    `${baseUrl}Currency/${bl.blCurrencyId}`
+                    `${baseUrl}Currency/${awb.awbCurrencyId}`
                   );
                   if (currencyResponse.ok) {
                     const currencyData = await currencyResponse.json();
@@ -615,27 +599,28 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                   }
                 } catch (err) {
                   console.error(
-                    `Error fetching currency ${bl.blCurrencyId}:`,
+                    `Error fetching currency ${awb.awbCurrencyId}:`,
                     err
                   );
                 }
               }
 
               // Equipment will be loaded on-demand when viewing details
-              let equipments: BlEquipment[] = [];
+              let equipments: AwbEquipment[] = [];
 
               return {
-                ...bl,
+                ...awb,
                 jobNumber,
+                airlineName: airlineData?.partyName || "N/A",
                 shipperName: shipperData?.partyName || "N/A",
                 consigneeName: consigneeData?.partyName || "N/A",
                 notifyName: notifyData?.partyName || "N/A",
                 forwardingAgentName: forwardingAgentData?.partyName || null,
-                polName: polData
-                  ? `${polData.uncode} - ${polData.locationName}`
+                originAirportName: originAirportData
+                  ? `${originAirportData.uncode} - ${originAirportData.locationName}`
                   : null,
-                podName: podData
-                  ? `${podData.uncode} - ${podData.locationName}`
+                destinationAirportName: destinationAirportData
+                  ? `${destinationAirportData.uncode} - ${destinationAirportData.locationName}`
                   : null,
                 placeOfIssueName: placeOfIssueData
                   ? `${placeOfIssueData.uncode} - ${placeOfIssueData.locationName}`
@@ -644,8 +629,8 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 equipments,
               };
             } catch (error) {
-              console.error(`Error enriching BL ${bl.blMasterId}:`, error);
-              return bl;
+              console.error(`Error enriching AWB ${awb.awbId}:`, error);
+              return awb;
             }
           })
         );
@@ -653,17 +638,17 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
         setData(enrichedData);
         toast({
           title: "Success",
-          description: "Bill of Ladings loaded successfully",
+          description: "Air Waybills loaded successfully",
         });
       } else {
-        throw new Error("Failed to fetch bill of ladings");
+        throw new Error("Failed to fetch air waybills");
       }
     } catch (error) {
-      console.error("Error fetching bill of ladings:", error);
+      console.error("Error fetching air waybills:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to load bill of ladings list",
+        description: "Failed to load air waybills list",
       });
     } finally {
       setIsLoading(false);
@@ -671,21 +656,21 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
   };
 
   useEffect(() => {
-    fetchBillOfLadings();
+    fetchAirWaybills();
   }, []);
 
-  const searchInItem = (item: BlMaster, searchTerm: string) => {
+  const searchInItem = (item: AwbMaster, searchTerm: string) => {
     if (!searchTerm) return true;
     const searchLower = searchTerm.toLowerCase();
     const searchableFields = [
-      item.mblNumber?.toString(),
-      item.hblNumber?.toString(),
+      item.mawbNumber?.toString(),
+      item.hawbNumber?.toString(),
       item.jobNumber?.toString(),
+      item.airlineName?.toString(),
       item.shipperName?.toString(),
       item.consigneeName?.toString(),
       item.notifyName?.toString(),
-      item.vesselName?.toString(),
-      item.voyage?.toString(),
+      item.flightNumber?.toString(),
       item.status?.toString(),
     ];
     return searchableFields.some(
@@ -693,9 +678,9 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     );
   };
 
-  const filterByStatus = (bl: BlMaster) => {
+  const filterByStatus = (awb: AwbMaster) => {
     if (statusFilter === "ALL") return true;
-    return bl.status === statusFilter;
+    return awb.status === statusFilter;
   };
 
   const getCurrentTabData = () => {
@@ -708,11 +693,17 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       case "ISSUED":
         tabData = data.filter((item) => item.status === "ISSUED");
         break;
-      case "SURRENDERED":
-        tabData = data.filter((item) => item.status === "SURRENDERED");
+      case "MANIFESTED":
+        tabData = data.filter((item) => item.status === "MANIFESTED");
         break;
-      case "AMENDED":
-        tabData = data.filter((item) => item.status === "AMENDED");
+      case "DEPARTED":
+        tabData = data.filter((item) => item.status === "DEPARTED");
+        break;
+      case "ARRIVED":
+        tabData = data.filter((item) => item.status === "ARRIVED");
+        break;
+      case "DELIVERED":
+        tabData = data.filter((item) => item.status === "DELIVERED");
         break;
       case "CANCELLED":
         tabData = data.filter((item) => item.status === "CANCELLED");
@@ -721,97 +712,107 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
 
     tabData = tabData.filter((item) => searchInItem(item, searchText));
 
-    if (activeTab === "ALL_BL") {
+    if (activeTab === "ALL_AWB") {
       tabData = tabData.filter(filterByStatus);
     }
 
     return tabData;
   };
 
-  const getBlStats = () => {
-    const allBls = data;
+  const getAwbStats = () => {
+    const allAwbs = data;
     return {
-      totalBls: allBls.length,
-      draftBls: allBls.filter((item) => item.status === "DRAFT").length,
-      issuedBls: allBls.filter((item) => item.status === "ISSUED").length,
-      surrenderedBls: allBls.filter((item) => item.status === "SURRENDERED")
+      totalAwbs: allAwbs.length,
+      draftAwbs: allAwbs.filter((item) => item.status === "DRAFT").length,
+      issuedAwbs: allAwbs.filter((item) => item.status === "ISSUED").length,
+      manifestedAwbs: allAwbs.filter((item) => item.status === "MANIFESTED")
         .length,
-      amendedBls: allBls.filter((item) => item.status === "AMENDED").length,
-      cancelledBls: allBls.filter((item) => item.status === "CANCELLED").length,
-      totalPackages: allBls.reduce(
+      departedAwbs: allAwbs.filter((item) => item.status === "DEPARTED").length,
+      arrivedAwbs: allAwbs.filter((item) => item.status === "ARRIVED").length,
+      deliveredAwbs: allAwbs.filter((item) => item.status === "DELIVERED")
+        .length,
+      cancelledAwbs: allAwbs.filter((item) => item.status === "CANCELLED")
+        .length,
+      totalPackages: allAwbs.reduce(
         (sum, item) => sum + (item.noOfPackages || 0),
         0
       ),
-      totalWeight: allBls.reduce(
+      totalWeight: allAwbs.reduce(
         (sum, item) => sum + (item.grossWeight || 0),
         0
       ),
-      totalVolume: allBls.reduce((sum, item) => sum + (item.volumeCbm || 0), 0),
+      totalVolume: allAwbs.reduce(
+        (sum, item) => sum + (item.volumeCbm || 0),
+        0
+      ),
     };
   };
 
   const handleAddEditComplete = (updatedItem: any) => {
     setShowForm(false);
-    setSelectedBl(null);
-    fetchBillOfLadings();
+    setSelectedAwb(null);
+    fetchAirWaybills();
   };
 
-  const handleDelete = async (item: BlMaster) => {
+  const handleDelete = async (item: AwbMaster) => {
     if (
       confirm(
-        `Are you sure you want to delete BL "${
-          item.mblNumber || item.hblNumber
+        `Are you sure you want to delete AWB "${
+          item.mawbNumber || item.hawbNumber
         }"?`
       )
     ) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        const response = await fetch(`${baseUrl}Bl/${item.blMasterId}`, {
+        const response = await fetch(`${baseUrl}Awb/${item.awbId}`, {
           method: "DELETE",
         });
 
         if (response.ok) {
           setData((prev) =>
-            prev.filter((record) => record.blMasterId !== item.blMasterId)
+            prev.filter((record) => record.awbId !== item.awbId)
           );
           toast({
             title: "Success",
-            description: "Bill of Lading deleted successfully",
+            description: "Air Waybill deleted successfully",
           });
         } else {
-          throw new Error("Failed to delete Bill of Lading");
+          throw new Error("Failed to delete Air Waybill");
         }
       } catch (error) {
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to delete Bill of Lading",
+          description: "Failed to delete Air Waybill",
         });
-        console.error("Error deleting Bill of Lading:", error);
+        console.error("Error deleting Air Waybill:", error);
       }
     }
   };
 
-  const handleViewDetails = (bl: BlMaster) => {
-    setSelectedBlDetails(bl);
+  const handleViewDetails = (awb: AwbMaster) => {
+    setSelectedAwbDetails(awb);
     setViewDialogOpen(true);
   };
 
-  const handleDuplicate = (bl: BlMaster) => {
-    const duplicateBl = {
-      ...bl,
-      blMasterId: 0,
-      mblNumber: `${bl.mblNumber}-COPY`,
-      hblNumber: bl.hblNumber ? `${bl.hblNumber}-COPY` : "",
+  const handleDuplicate = (awb: AwbMaster) => {
+    const duplicateAwb = {
+      ...awb,
+      awbId: 0,
+      mawbNumber: `${awb.mawbNumber}-COPY`,
+      hawbNumber: awb.hawbNumber ? `${awb.hawbNumber}-COPY` : "",
       status: "DRAFT",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setSelectedBl(duplicateBl);
+    setSelectedAwb(duplicateAwb);
     setShowForm(true);
   };
 
-  const downloadExcelWithData = (dataToExport: BlMaster[], tabName: string) => {
+  const downloadExcelWithData = (
+    dataToExport: AwbMaster[],
+    tabName: string
+  ) => {
     if (!dataToExport || dataToExport.length === 0) {
       toast({
         variant: "destructive",
@@ -825,19 +826,19 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet(tabName);
 
-      const headers = blFieldConfig
+      const headers = awbFieldConfig
         .filter((field) => field.isdisplayed && field.isselected)
         .map((field) => field.displayName);
       worksheet.addRow(headers);
 
-      dataToExport.forEach((bl) => {
-        const row = blFieldConfig
+      dataToExport.forEach((awb) => {
+        const row = awbFieldConfig
           .filter((field) => field.isdisplayed && field.isselected)
           .map((field) => {
-            const value = (bl as any)[field.fieldName];
+            const value = (awb as any)[field.fieldName];
 
             if (
-              field.fieldName === "blDate" ||
+              field.fieldName === "awbDate" ||
               field.fieldName === "createdAt" ||
               field.fieldName === "dateOfIssue"
             ) {
@@ -864,7 +865,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       workbook.xlsx.writeBuffer().then((buffer) => {
         saveAs(
           new Blob([buffer]),
-          `${tabName}_BillOfLading_${moment().format("YYYY-MM-DD")}.xlsx`
+          `${tabName}_AirWaybill_${moment().format("YYYY-MM-DD")}.xlsx`
         );
       });
 
@@ -882,7 +883,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     }
   };
 
-  const downloadPDFWithData = (dataToExport: BlMaster[], tabName: string) => {
+  const downloadPDFWithData = (dataToExport: AwbMaster[], tabName: string) => {
     if (!dataToExport || dataToExport.length === 0) {
       toast({
         variant: "destructive",
@@ -897,7 +898,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
 
       doc.setFontSize(16);
       doc.setTextColor(40, 116, 166);
-      doc.text(`${tabName} - Bill of Lading Report`, 20, 20);
+      doc.text(`${tabName} - Air Waybill Report`, 20, 20);
 
       doc.setFontSize(10);
       doc.setTextColor(0, 0, 0);
@@ -905,25 +906,25 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       doc.text(`Total Records: ${dataToExport.length}`, 20, 37);
 
       const tableHeaders = [
-        "MBL No",
-        "HBL No",
+        "MAWB No",
+        "HAWB No",
         "Job No",
-        "BL Date",
-        "Vessel",
-        "Voyage",
-        "POL",
-        "POD",
+        "AWB Date",
+        "Airline",
+        "Flight",
+        "Origin",
+        "Destination",
         "Status",
       ];
       const tableData = dataToExport.map((item) => [
-        item.mblNumber?.toString() || "N/A",
-        item.hblNumber?.toString() || "N/A",
+        item.mawbNumber?.toString() || "N/A",
+        item.hawbNumber?.toString() || "N/A",
         item.jobNumber?.toString() || "N/A",
-        item.blDate ? new Date(item.blDate).toLocaleDateString() : "N/A",
-        (item.vesselName?.toString() || "N/A").substring(0, 15),
-        (item.voyage?.toString() || "N/A").substring(0, 10),
-        (item.polName?.toString() || "N/A").substring(0, 15),
-        (item.podName?.toString() || "N/A").substring(0, 15),
+        item.awbDate ? new Date(item.awbDate).toLocaleDateString() : "N/A",
+        (item.airlineName?.toString() || "N/A").substring(0, 15),
+        (item.flightNumber?.toString() || "N/A").substring(0, 10),
+        (item.originAirportName?.toString() || "N/A").substring(0, 15),
+        (item.destinationAirportName?.toString() || "N/A").substring(0, 15),
         item.status || "N/A",
       ]);
 
@@ -940,7 +941,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
         styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" },
       });
 
-      doc.save(`${tabName}_BillOfLading_${moment().format("YYYY-MM-DD")}.pdf`);
+      doc.save(`${tabName}_AirWaybill_${moment().format("YYYY-MM-DD")}.pdf`);
       toast({
         title: "Success",
         description: "PDF file downloaded successfully",
@@ -955,19 +956,19 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     }
   };
 
-  const generateBLPDF = (bl: BlMaster) => {
+  const generateAWBPDF = (awb: AwbMaster) => {
     const doc = new jsPDF();
 
     doc.setFontSize(20);
     doc.setTextColor(40, 116, 166);
-    doc.text("BILL OF LADING", 105, 20, { align: "center" });
+    doc.text("AIR WAYBILL", 105, 20, { align: "center" });
 
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
     doc.text(`Original`, 20, 35);
     doc.text(
-      `BL Date: ${
-        bl.blDate ? new Date(bl.blDate).toLocaleDateString() : "N/A"
+      `AWB Date: ${
+        awb.awbDate ? new Date(awb.awbDate).toLocaleDateString() : "N/A"
       }`,
       160,
       35
@@ -979,7 +980,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     doc.text("SHIPPER", 20, 50);
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
-    doc.text(bl.shipperName || "N/A", 20, 57);
+    doc.text(awb.shipperName || "N/A", 20, 57);
 
     // Consignee
     doc.setFontSize(12);
@@ -987,7 +988,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     doc.text("CONSIGNEE", 20, 70);
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
-    doc.text(bl.consigneeName || "N/A", 20, 77);
+    doc.text(awb.consigneeName || "N/A", 20, 77);
 
     // Notify Party
     doc.setFontSize(12);
@@ -995,19 +996,20 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     doc.text("NOTIFY PARTY", 20, 90);
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
-    doc.text(bl.notifyName || "N/A", 20, 97);
+    doc.text(awb.notifyName || "N/A", 20, 97);
 
-    // BL Numbers & Vessel Info
+    // AWB Numbers & Flight Info
     doc.setFontSize(12);
     doc.setTextColor(40, 116, 166);
-    doc.text("BL INFORMATION", 110, 50);
+    doc.text("AWB INFORMATION", 110, 50);
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
-    doc.text(`MBL: ${bl.mblNumber || "N/A"}`, 110, 57);
-    doc.text(`HBL: ${bl.hblNumber || "N/A"}`, 110, 64);
-    doc.text(`Job: ${bl.jobNumber || "N/A"}`, 110, 71);
-    doc.text(`Vessel: ${bl.vesselName || "N/A"}`, 110, 78);
-    doc.text(`Voyage: ${bl.voyage || "N/A"}`, 110, 85);
+    doc.text(`MAWB: ${awb.mawbNumber || "N/A"}`, 110, 57);
+    doc.text(`HAWB: ${awb.hawbNumber || "N/A"}`, 110, 64);
+    doc.text(`Job: ${awb.jobNumber || "N/A"}`, 110, 71);
+    doc.text(`Airline: ${awb.airlineName || "N/A"}`, 110, 78);
+    doc.text(`Flight: ${awb.flightNumber || "N/A"}`, 110, 85);
+    doc.text(`Type: ${awb.awbType || "N/A"}`, 110, 92);
 
     // Routing
     doc.setFontSize(12);
@@ -1015,10 +1017,10 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     doc.text("ROUTING", 20, 110);
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
-    doc.text(`POL: ${bl.polName || "N/A"}`, 20, 117);
-    doc.text(`POD: ${bl.podName || "N/A"}`, 20, 124);
-    doc.text(`Freight: ${bl.freightType || "N/A"}`, 20, 131);
-    doc.text(`Movement: ${bl.movement || "N/A"}`, 20, 138);
+    doc.text(`Origin: ${awb.originAirportName || "N/A"}`, 20, 117);
+    doc.text(`Destination: ${awb.destinationAirportName || "N/A"}`, 20, 124);
+    doc.text(`Freight: ${awb.freightType || "N/A"}`, 20, 131);
+    doc.text(`Movement: ${awb.movement || "N/A"}`, 20, 138);
 
     // Cargo Details
     doc.setFontSize(12);
@@ -1027,10 +1029,10 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
 
     const cargoData = [
       ["Description", "Value"],
-      ["No. of Packages", bl.noOfPackages?.toString() || "0"],
-      ["Gross Weight", `${bl.grossWeight?.toFixed(2) || "0"} kg`],
-      ["Net Weight", `${bl.netWeight?.toFixed(2) || "0"} kg`],
-      ["Volume", `${bl.volumeCbm?.toFixed(2) || "0"} CBM`],
+      ["No. of Packages", awb.noOfPackages?.toString() || "0"],
+      ["Gross Weight", `${awb.grossWeight?.toFixed(2) || "0"} kg`],
+      ["Net Weight", `${awb.netWeight?.toFixed(2) || "0"} kg`],
+      ["Volume", `${awb.volumeCbm?.toFixed(2) || "0"} CBM`],
     ];
 
     autoTable(doc, {
@@ -1048,30 +1050,28 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     });
 
     // Equipment Details with new fields
-    if (bl.equipments && bl.equipments.length > 0) {
+    if (awb.equipments && awb.equipments.length > 0) {
       const finalY = (doc as any).lastAutoTable?.finalY || 170;
 
       doc.setFontSize(12);
       doc.setTextColor(40, 116, 166);
-      doc.text("EQUIPMENT DETAILS", 20, finalY + 10);
+      doc.text("ULD DETAILS", 20, finalY + 10);
 
       const equipHeaders = [
-        "Container No",
-        "Type",
-        "Size",
-        "Seal No",
+        "ULD Number",
+        "Packages",
+        "Gross Wt",
         "Volume",
+        "Dimensions",
         "Free Days",
-        "Tarrif",
       ];
-      const equipData = bl.equipments.map((eq) => [
-        eq.containerNo || "N/A",
-        eq.containerTypeName || "N/A",
-        eq.containerSizeName || "N/A",
-        eq.sealNo || "N/A",
+      const equipData = awb.equipments.map((eq) => [
+        eq.uldNumber || "N/A",
+        eq.packageCount?.toString() || "0",
+        `${eq.grossWeight?.toFixed(2) || "0"} kg`,
         `${eq.volumeCbm?.toFixed(2) || "0"} CBM`,
+        eq.dimensions || "N/A",
         eq.freeDays?.toString() || "0",
-        `${eq.afterFreeDaysTarrifAmount?.toFixed(2) || "0"}`,
       ]);
 
       autoTable(doc, {
@@ -1097,14 +1097,14 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       20,
       finalY + 10
     );
-    doc.text(`Status: ${bl.status}`, 160, finalY + 10);
+    doc.text(`Status: ${awb.status}`, 160, finalY + 10);
 
     doc.save(
-      `BL_${bl.mblNumber || bl.blMasterId}_${moment().format("YYYY-MM-DD")}.pdf`
+      `AWB_${awb.mawbNumber || awb.awbId}_${moment().format("YYYY-MM-DD")}.pdf`
     );
     toast({
       title: "Success",
-      description: "BL document generated successfully",
+      description: "AWB document generated successfully",
     });
   };
 
@@ -1114,10 +1114,14 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
         return "bg-gray-100 text-gray-800 border-gray-200";
       case "ISSUED":
         return "bg-blue-50 text-blue-700 border-blue-200";
-      case "SURRENDERED":
+      case "MANIFESTED":
+        return "bg-purple-50 text-purple-700 border-purple-200";
+      case "DEPARTED":
+        return "bg-orange-50 text-orange-700 border-orange-200";
+      case "ARRIVED":
         return "bg-green-50 text-green-700 border-green-200";
-      case "AMENDED":
-        return "bg-yellow-50 text-yellow-700 border-yellow-200";
+      case "DELIVERED":
+        return "bg-teal-50 text-teal-700 border-teal-200";
       case "CANCELLED":
         return "bg-red-50 text-red-700 border-red-200";
       default:
@@ -1125,7 +1129,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     }
   };
 
-  const columns: ColumnDef<BlMaster>[] = [
+  const columns: ColumnDef<AwbMaster>[] = [
     {
       accessorKey: "actions",
       header: "Actions",
@@ -1152,7 +1156,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 <button
                   className='p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors'
                   onClick={() => {
-                    setSelectedBl(row.original);
+                    setSelectedAwb(row.original);
                     setShowForm(true);
                   }}
                 >
@@ -1160,7 +1164,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className='text-xs'>Edit BL</p>
+                <p className='text-xs'>Edit AWB</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -1175,7 +1179,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className='text-xs'>Duplicate BL</p>
+                <p className='text-xs'>Duplicate AWB</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -1190,7 +1194,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className='text-xs'>Delete BL</p>
+                <p className='text-xs'>Delete AWB</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -1199,13 +1203,13 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
               <TooltipTrigger asChild>
                 <button
                   className='p-1.5 text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-md transition-colors'
-                  onClick={() => generateBLPDF(row.original)}
+                  onClick={() => generateAWBPDF(row.original)}
                 >
                   <FiPrinter size={14} />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className='text-xs'>Print BL</p>
+                <p className='text-xs'>Print AWB</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -1220,14 +1224,14 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       ),
     },
     {
-      accessorKey: "mblNumber",
-      header: "MBL Number",
+      accessorKey: "mawbNumber",
+      header: "MAWB Number",
       cell: ({ row }) => (
         <div className='font-semibold text-sm text-gray-900'>
-          <div>{row.getValue("mblNumber") || "-"}</div>
-          {row.original.hblNumber && (
+          <div>{row.getValue("mawbNumber") || "-"}</div>
+          {row.original.hawbNumber && (
             <div className='text-xs text-gray-500 mt-0.5'>
-              HBL: {row.original.hblNumber}
+              HAWB: {row.original.hawbNumber}
             </div>
           )}
         </div>
@@ -1243,25 +1247,28 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       ),
     },
     {
-      accessorKey: "blDate",
-      header: "BL Date",
+      accessorKey: "awbDate",
+      header: "AWB Date",
       cell: ({ row }) => (
         <span className='text-sm text-gray-700'>
-          {row.getValue("blDate")
-            ? new Date(row.getValue("blDate")).toLocaleDateString()
+          {row.getValue("awbDate")
+            ? new Date(row.getValue("awbDate")).toLocaleDateString()
             : "-"}
         </span>
       ),
     },
     {
-      accessorKey: "vesselVoyage",
-      header: "Vessel / Voyage",
+      accessorKey: "airlineFlight",
+      header: "Airline / Flight",
       cell: ({ row }) => (
         <div className='text-sm text-gray-700'>
-          <div className='font-medium'>{row.original.vesselName || "-"}</div>
-          {row.original.voyage && (
+          <div className='font-medium flex items-center gap-1'>
+            <FiTruck className='h-3 w-3 text-gray-400' />
+            {row.original.airlineName || "-"}
+          </div>
+          {row.original.flightNumber && (
             <div className='text-xs text-gray-500 mt-0.5'>
-              V: {row.original.voyage}
+              FL: {row.original.flightNumber}
             </div>
           )}
         </div>
@@ -1272,9 +1279,11 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       header: "Routing",
       cell: ({ row }) => (
         <div className='text-xs text-gray-700'>
-          <div>POL: {row.original.polName?.split(" - ")[0] || "-"}</div>
+          <div>
+            Origin: {row.original.originAirportName?.split(" - ")[0] || "-"}
+          </div>
           <div className='mt-0.5'>
-            POD: {row.original.podName?.split(" - ")[0] || "-"}
+            Dest: {row.original.destinationAirportName?.split(" - ")[0] || "-"}
           </div>
         </div>
       ),
@@ -1297,7 +1306,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     },
     {
       accessorKey: "equipmentCount",
-      header: "Containers",
+      header: "ULDs",
       cell: ({ row }) => (
         <div className='text-center'>
           <span className='inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-800 text-xs font-medium'>
@@ -1319,6 +1328,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           >
             {status === "DRAFT" && <FiClock className='mr-1 h-3 w-3' />}
             {status === "ISSUED" && <FiCheckCircle className='mr-1 h-3 w-3' />}
+            {status === "DEPARTED" && <FiTruck className='mr-1 h-3 w-3' />}
             {status === "CANCELLED" && (
               <FiAlertCircle className='mr-1 h-3 w-3' />
             )}
@@ -1329,57 +1339,63 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     },
   ];
 
-  // View BL Details Dialog with ALL new fields
-  const ViewBLDialog = () => (
+  // View AWB Details Dialog with ALL new fields
+  const ViewAWBDialog = () => (
     <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
       <DialogContent className='max-w-5xl max-h-[90vh] overflow-y-auto'>
         <DialogHeader>
           <DialogTitle className='flex items-center gap-2'>
             <FiEye className='h-5 w-5' />
-            Bill of Lading Details
+            Air Waybill Details
           </DialogTitle>
           <DialogDescription>
-            Complete details for BL{" "}
-            {selectedBlDetails?.mblNumber || selectedBlDetails?.hblNumber}
+            Complete details for AWB{" "}
+            {selectedAwbDetails?.mawbNumber || selectedAwbDetails?.hawbNumber}
           </DialogDescription>
         </DialogHeader>
 
-        {selectedBlDetails && (
+        {selectedAwbDetails && (
           <div className='space-y-4'>
-            {/* Basic BL Information */}
+            {/* Basic AWB Information */}
             <div className='grid grid-cols-2 gap-4'>
               <Card>
                 <CardHeader className='py-3 px-4'>
                   <CardTitle className='text-sm font-medium'>
-                    BL Information
+                    AWB Information
                   </CardTitle>
                 </CardHeader>
                 <CardContent className='pt-0 px-4 pb-3'>
                   <div className='space-y-1.5 text-xs'>
                     <div className='flex justify-between'>
-                      <span className='text-gray-600'>MBL Number:</span>
+                      <span className='text-gray-600'>MAWB Number:</span>
                       <span className='font-medium'>
-                        {selectedBlDetails.mblNumber || "-"}
+                        {selectedAwbDetails.mawbNumber || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-gray-600'>HBL Number:</span>
+                      <span className='text-gray-600'>HAWB Number:</span>
                       <span className='font-medium'>
-                        {selectedBlDetails.hblNumber || "-"}
+                        {selectedAwbDetails.hawbNumber || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
                       <span className='text-gray-600'>Job Number:</span>
                       <span className='font-medium'>
-                        {selectedBlDetails.jobNumber || "-"}
+                        {selectedAwbDetails.jobNumber || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-gray-600'>BL Date:</span>
+                      <span className='text-gray-600'>AWB Type:</span>
                       <span className='font-medium'>
-                        {selectedBlDetails.blDate
+                        {selectedAwbDetails.awbType || "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>AWB Date:</span>
+                      <span className='font-medium'>
+                        {selectedAwbDetails.awbDate
                           ? new Date(
-                              selectedBlDetails.blDate
+                              selectedAwbDetails.awbDate
                             ).toLocaleDateString()
                           : "-"}
                       </span>
@@ -1387,7 +1403,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                     <div className='flex justify-between'>
                       <span className='text-gray-600'>Currency:</span>
                       <span className='font-medium'>
-                        {selectedBlDetails.currencyName || "-"}
+                        {selectedAwbDetails.currencyName || "-"}
                       </span>
                     </div>
                   </div>
@@ -1397,45 +1413,45 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
               <Card>
                 <CardHeader className='py-3 px-4'>
                   <CardTitle className='text-sm font-medium'>
-                    Vessel & Routing
+                    Flight & Routing
                   </CardTitle>
                 </CardHeader>
                 <CardContent className='pt-0 px-4 pb-3'>
                   <div className='space-y-1.5 text-xs'>
                     <div className='flex justify-between'>
-                      <span className='text-gray-600'>Vessel:</span>
+                      <span className='text-gray-600'>Airline:</span>
                       <span className='font-medium'>
-                        {selectedBlDetails.vesselName || "-"}
+                        {selectedAwbDetails.airlineName || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-gray-600'>Voyage:</span>
+                      <span className='text-gray-600'>Flight Number:</span>
                       <span className='font-medium'>
-                        {selectedBlDetails.voyage || "-"}
+                        {selectedAwbDetails.flightNumber || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-gray-600'>POL:</span>
+                      <span className='text-gray-600'>Origin:</span>
                       <span className='font-medium'>
-                        {selectedBlDetails.polName || "-"}
+                        {selectedAwbDetails.originAirportName || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-gray-600'>POD:</span>
+                      <span className='text-gray-600'>Destination:</span>
                       <span className='font-medium'>
-                        {selectedBlDetails.podName || "-"}
+                        {selectedAwbDetails.destinationAirportName || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
                       <span className='text-gray-600'>Freight Type:</span>
                       <span className='font-medium'>
-                        {selectedBlDetails.freightType || "-"}
+                        {selectedAwbDetails.freightType || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
                       <span className='text-gray-600'>Movement:</span>
                       <span className='font-medium'>
-                        {selectedBlDetails.movement || "-"}
+                        {selectedAwbDetails.movement || "-"}
                       </span>
                     </div>
                   </div>
@@ -1457,7 +1473,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                       Shipper
                     </h4>
                     <p className='text-sm'>
-                      {selectedBlDetails.shipperName || "-"}
+                      {selectedAwbDetails.shipperName || "-"}
                     </p>
                   </div>
                   <div>
@@ -1465,7 +1481,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                       Consignee
                     </h4>
                     <p className='text-sm'>
-                      {selectedBlDetails.consigneeName || "-"}
+                      {selectedAwbDetails.consigneeName || "-"}
                     </p>
                   </div>
                   <div>
@@ -1473,7 +1489,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                       Notify Party
                     </h4>
                     <p className='text-sm'>
-                      {selectedBlDetails.notifyName || "-"}
+                      {selectedAwbDetails.notifyName || "-"}
                     </p>
                   </div>
                   <div>
@@ -1481,7 +1497,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                       Forwarding Agent
                     </h4>
                     <p className='text-sm'>
-                      {selectedBlDetails.forwardingAgentName || "-"}
+                      {selectedAwbDetails.forwardingAgentName || "-"}
                     </p>
                   </div>
                 </div>
@@ -1500,15 +1516,15 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                   <div className='text-xs'>
                     <span className='text-gray-600'>Place of Issue: </span>
                     <span className='font-medium'>
-                      {selectedBlDetails.placeOfIssueName || "-"}
+                      {selectedAwbDetails.placeOfIssueName || "-"}
                     </span>
                   </div>
                   <div className='text-xs'>
                     <span className='text-gray-600'>Date of Issue: </span>
                     <span className='font-medium'>
-                      {selectedBlDetails.dateOfIssue
+                      {selectedAwbDetails.dateOfIssue
                         ? new Date(
-                            selectedBlDetails.dateOfIssue
+                            selectedAwbDetails.dateOfIssue
                           ).toLocaleDateString()
                         : "-"}
                     </span>
@@ -1528,13 +1544,13 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 <div className='grid grid-cols-4 gap-4'>
                   <div className='text-center'>
                     <div className='text-2xl font-bold text-blue-600'>
-                      {selectedBlDetails.noOfPackages || 0}
+                      {selectedAwbDetails.noOfPackages || 0}
                     </div>
                     <div className='text-xs text-gray-500 mt-1'>Packages</div>
                   </div>
                   <div className='text-center'>
                     <div className='text-2xl font-bold text-green-600'>
-                      {selectedBlDetails.grossWeight?.toFixed(2) || "0.00"}
+                      {selectedAwbDetails.grossWeight?.toFixed(2) || "0.00"}
                     </div>
                     <div className='text-xs text-gray-500 mt-1'>
                       Gross Weight (kg)
@@ -1542,7 +1558,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                   </div>
                   <div className='text-center'>
                     <div className='text-2xl font-bold text-orange-600'>
-                      {selectedBlDetails.netWeight?.toFixed(2) || "0.00"}
+                      {selectedAwbDetails.netWeight?.toFixed(2) || "0.00"}
                     </div>
                     <div className='text-xs text-gray-500 mt-1'>
                       Net Weight (kg)
@@ -1550,7 +1566,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                   </div>
                   <div className='text-center'>
                     <div className='text-2xl font-bold text-purple-600'>
-                      {selectedBlDetails.volumeCbm?.toFixed(2) || "0.00"}
+                      {selectedAwbDetails.volumeCbm?.toFixed(2) || "0.00"}
                     </div>
                     <div className='text-xs text-gray-500 mt-1'>
                       Volume (CBM)
@@ -1561,8 +1577,8 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
             </Card>
 
             {/* Marks and Notes */}
-            {(selectedBlDetails.marksAndContainersNo ||
-              selectedBlDetails.blNotes) && (
+            {(selectedAwbDetails.marksAndCargoNo ||
+              selectedAwbDetails.awbNotes) && (
               <Card>
                 <CardHeader className='py-3 px-4'>
                   <CardTitle className='text-sm font-medium'>
@@ -1570,23 +1586,23 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className='pt-0 px-4 pb-3 space-y-2'>
-                  {selectedBlDetails.marksAndContainersNo && (
+                  {selectedAwbDetails.marksAndCargoNo && (
                     <div>
                       <h4 className='text-xs font-semibold text-gray-700 mb-1'>
-                        Marks & Container Numbers
+                        Marks & Cargo Numbers
                       </h4>
                       <p className='text-xs text-gray-600 whitespace-pre-wrap'>
-                        {selectedBlDetails.marksAndContainersNo}
+                        {selectedAwbDetails.marksAndCargoNo}
                       </p>
                     </div>
                   )}
-                  {selectedBlDetails.blNotes && (
+                  {selectedAwbDetails.awbNotes && (
                     <div>
                       <h4 className='text-xs font-semibold text-gray-700 mb-1'>
-                        BL Notes
+                        AWB Notes
                       </h4>
                       <p className='text-xs text-gray-600 whitespace-pre-wrap'>
-                        {selectedBlDetails.blNotes}
+                        {selectedAwbDetails.awbNotes}
                       </p>
                     </div>
                   )}
@@ -1594,14 +1610,13 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
               </Card>
             )}
 
-            {/* Equipment Information with NEW fields */}
-            {selectedBlDetails.equipments &&
-              selectedBlDetails.equipments.length > 0 && (
+            {/* ULD/Equipment Information with NEW fields */}
+            {selectedAwbDetails.equipments &&
+              selectedAwbDetails.equipments.length > 0 && (
                 <Card>
                   <CardHeader className='py-3 px-4'>
                     <CardTitle className='text-sm font-medium'>
-                      Equipment Details ({selectedBlDetails.equipments.length}{" "}
-                      containers)
+                      ULD Details ({selectedAwbDetails.equipments.length} units)
                     </CardTitle>
                   </CardHeader>
                   <CardContent className='pt-0 px-4 pb-3'>
@@ -1609,33 +1624,24 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                       <table className='w-full text-xs'>
                         <thead>
                           <tr className='border-b bg-gray-50'>
-                            <th className='text-left py-2 px-2'>
-                              Container No
-                            </th>
-                            <th className='text-left py-2 px-2'>Type</th>
-                            <th className='text-left py-2 px-2'>Size</th>
-                            <th className='text-left py-2 px-2'>Vol (CBM)</th>
+                            <th className='text-left py-2 px-2'>ULD Number</th>
+                            <th className='text-left py-2 px-2'>Packages</th>
                             <th className='text-left py-2 px-2'>Gross Wt</th>
                             <th className='text-left py-2 px-2'>Net Wt</th>
+                            <th className='text-left py-2 px-2'>Vol (CBM)</th>
+                            <th className='text-left py-2 px-2'>Dimensions</th>
                             <th className='text-left py-2 px-2'>Free Days</th>
-                            <th className='text-left py-2 px-2'>Tarrif</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedBlDetails.equipments.map((eq, index) => (
+                          {selectedAwbDetails.equipments.map((eq, index) => (
                             <tr
-                              key={eq.blEquipmentId}
+                              key={eq.awbEquipmentId}
                               className='border-b hover:bg-gray-50'
                             >
-                              <td className='py-2 px-2'>{eq.containerNo}</td>
+                              <td className='py-2 px-2'>{eq.uldNumber}</td>
                               <td className='py-2 px-2'>
-                                {eq.containerTypeName || "N/A"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {eq.containerSizeName || "N/A"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {eq.volumeCbm?.toFixed(2) || "0.00"}
+                                {eq.packageCount || 0}
                               </td>
                               <td className='py-2 px-2'>
                                 {eq.grossWeight?.toFixed(2)} kg
@@ -1643,11 +1649,13 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                               <td className='py-2 px-2'>
                                 {eq.netWeight?.toFixed(2)} kg
                               </td>
-                              <td className='py-2 px-2'>{eq.freeDays || 0}</td>
                               <td className='py-2 px-2'>
-                                {eq.afterFreeDaysTarrifAmount?.toFixed(2) ||
-                                  "0.00"}
+                                {eq.volumeCbm?.toFixed(2) || "0.00"}
                               </td>
+                              <td className='py-2 px-2'>
+                                {eq.dimensions || "N/A"}
+                              </td>
+                              <td className='py-2 px-2'>{eq.freeDays || 0}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1670,18 +1678,18 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                     <span className='text-gray-600'>Status: </span>
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded font-medium border ${getStatusBadge(
-                        selectedBlDetails.status
+                        selectedAwbDetails.status
                       )}`}
                     >
-                      {selectedBlDetails.status}
+                      {selectedAwbDetails.status}
                     </span>
                   </div>
                   <div>
                     <span className='text-gray-600'>Created: </span>
                     <span className='font-medium'>
-                      {selectedBlDetails.createdAt
+                      {selectedAwbDetails.createdAt
                         ? new Date(
-                            selectedBlDetails.createdAt
+                            selectedAwbDetails.createdAt
                           ).toLocaleDateString()
                         : "-"}
                     </span>
@@ -1689,9 +1697,9 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                   <div>
                     <span className='text-gray-600'>Updated: </span>
                     <span className='font-medium'>
-                      {selectedBlDetails.updatedAt
+                      {selectedAwbDetails.updatedAt
                         ? new Date(
-                            selectedBlDetails.updatedAt
+                            selectedAwbDetails.updatedAt
                           ).toLocaleDateString()
                         : "-"}
                     </span>
@@ -1699,7 +1707,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                   <div>
                     <span className='text-gray-600'>Version: </span>
                     <span className='font-medium'>
-                      {selectedBlDetails.version || "1"}
+                      {selectedAwbDetails.version || "1"}
                     </span>
                   </div>
                 </div>
@@ -1710,11 +1718,11 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
 
         <DialogFooter>
           <Button
-            onClick={() => generateBLPDF(selectedBlDetails!)}
+            onClick={() => generateAWBPDF(selectedAwbDetails!)}
             className='flex items-center gap-2'
           >
             <FiPrinter className='h-4 w-4' />
-            Print BL
+            Print AWB
           </Button>
           <Button variant='outline' onClick={() => setViewDialogOpen(false)}>
             Close
@@ -1724,13 +1732,15 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     </Dialog>
   );
 
-  const BlStatsPage = () => {
-    const stats = getBlStats();
+  const AwbStatsPage = () => {
+    const stats = getAwbStats();
 
     return (
       <div className='space-y-4'>
         <div className='flex justify-between items-center'>
-          <h2 className='text-xl font-semibold text-gray-900'>BL Statistics</h2>
+          <h2 className='text-xl font-semibold text-gray-900'>
+            AWB Statistics
+          </h2>
           <Button
             onClick={() => downloadPDFWithData(data, "Statistics")}
             size='sm'
@@ -1745,15 +1755,15 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           <Card className='border border-blue-200 shadow-sm'>
             <CardHeader className='pb-2 pt-3 px-4'>
               <CardTitle className='text-xs font-medium text-blue-700 uppercase tracking-wide'>
-                Total B/Ls
+                Total AWBs
               </CardTitle>
               <div className='text-2xl font-bold text-blue-900 mt-1'>
-                {stats.totalBls}
+                {stats.totalAwbs}
               </div>
             </CardHeader>
             <CardContent className='pt-0 pb-3 px-4'>
               <div className='text-xs text-gray-600'>
-                {stats.issuedBls} issued • {stats.draftBls} draft
+                {stats.issuedAwbs} issued • {stats.draftAwbs} draft
               </div>
             </CardContent>
           </Card>
@@ -1768,7 +1778,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
               </div>
             </CardHeader>
             <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>Across all B/Ls</div>
+              <div className='text-xs text-gray-600'>Across all AWBs</div>
             </CardContent>
           </Card>
 
@@ -1808,31 +1818,41 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className='pt-0 pb-4 px-4'>
-            <div className='grid grid-cols-5 gap-2'>
+            <div className='grid grid-cols-4 gap-2'>
               {[
                 {
                   status: "DRAFT",
-                  count: stats.draftBls,
+                  count: stats.draftAwbs,
                   color: "bg-gray-100 text-gray-800",
                 },
                 {
                   status: "ISSUED",
-                  count: stats.issuedBls,
+                  count: stats.issuedAwbs,
                   color: "bg-blue-100 text-blue-800",
                 },
                 {
-                  status: "SURRENDERED",
-                  count: stats.surrenderedBls,
+                  status: "MANIFESTED",
+                  count: stats.manifestedAwbs,
+                  color: "bg-purple-100 text-purple-800",
+                },
+                {
+                  status: "DEPARTED",
+                  count: stats.departedAwbs,
+                  color: "bg-orange-100 text-orange-800",
+                },
+                {
+                  status: "ARRIVED",
+                  count: stats.arrivedAwbs,
                   color: "bg-green-100 text-green-800",
                 },
                 {
-                  status: "AMENDED",
-                  count: stats.amendedBls,
-                  color: "bg-yellow-100 text-yellow-800",
+                  status: "DELIVERED",
+                  count: stats.deliveredAwbs,
+                  color: "bg-teal-100 text-teal-800",
                 },
                 {
                   status: "CANCELLED",
-                  count: stats.cancelledBls,
+                  count: stats.cancelledAwbs,
                   color: "bg-red-100 text-red-800",
                 },
               ].map((item) => (
@@ -1863,17 +1883,17 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
             size='sm'
             onClick={() => {
               setShowForm(false);
-              setSelectedBl(null);
+              setSelectedAwb(null);
             }}
             className='mb-3 gap-1.5'
           >
             <FiArrowLeft className='h-3.5 w-3.5' />
-            Back to B/L List
+            Back to AWB List
           </Button>
           <div className='bg-white rounded-lg shadow-sm border p-4'>
-            <BlForm
-              type={selectedBl ? "edit" : "add"}
-              defaultState={selectedBl || {}}
+            <AwbForm
+              type={selectedAwb ? "edit" : "add"}
+              defaultState={selectedAwb || {}}
               handleAddEdit={handleAddEditComplete}
             />
           </div>
@@ -1890,16 +1910,15 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
         <div className='flex items-center justify-between mb-4'>
           <div>
             <h1 className='text-xl font-bold text-gray-900'>
-              Bill of Lading Management
+              Air Waybill Management
             </h1>
             <p className='text-xs text-gray-600 mt-0.5'>
-              Manage Master Bills of Lading (MBL) and House Bills of Lading
-              (HBL)
+              Manage Master Air Waybills (MAWB) and House Air Waybills (HAWB)
             </p>
           </div>
           <div className='flex gap-2'>
             <Button
-              onClick={fetchBillOfLadings}
+              onClick={fetchAirWaybills}
               variant='outline'
               size='sm'
               className='flex items-center gap-1.5'
@@ -1912,14 +1931,14 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
             </Button>
             <Button
               onClick={() => {
-                setSelectedBl(null);
+                setSelectedAwb(null);
                 setShowForm(true);
               }}
               size='sm'
               className='bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5'
             >
               <FiFilePlus className='h-3.5 w-3.5' />
-              Add New B/L
+              Add New AWB
             </Button>
           </div>
         </div>
@@ -1931,7 +1950,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 <FiSearch className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
                 <Input
                   type='text'
-                  placeholder='Search by MBL, HBL, Job, Vessel...'
+                  placeholder='Search by MAWB, HAWB, Job, Airline, Flight...'
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   className='pl-9 pr-9 py-1.5 text-sm h-9'
@@ -1945,7 +1964,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                   </button>
                 )}
               </div>
-              {activeTab === "ALL_BL" && (
+              {activeTab === "ALL_AWB" && (
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className='w-[180px] h-9 text-sm'>
                     <SelectValue placeholder='Filter by status' />
@@ -1984,15 +2003,15 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
         </div>
 
         <Tabs
-          defaultValue='ALL_BL'
+          defaultValue='ALL_AWB'
           value={activeTab}
           onValueChange={setActiveTab}
           className='space-y-3'
         >
           <div className='bg-white rounded-lg shadow-sm border p-1'>
-            <TabsList className='grid w-full grid-cols-7 gap-1 bg-transparent h-auto p-0'>
+            <TabsList className='grid w-full grid-cols-9 gap-1 bg-transparent h-auto p-0'>
               <TabsTrigger
-                value='ALL_BL'
+                value='ALL_AWB'
                 className='text-xs py-2 px-3 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none rounded-md'
               >
                 <FiPackage className='w-3.5 h-3.5 mr-1.5' />
@@ -2003,39 +2022,53 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 className='text-xs py-2 px-3 data-[state=active]:bg-gray-50 data-[state=active]:text-gray-700 data-[state=active]:shadow-none rounded-md'
               >
                 <FiClock className='w-3.5 h-3.5 mr-1.5' />
-                Draft ({getBlStats().draftBls})
+                Draft ({getAwbStats().draftAwbs})
               </TabsTrigger>
               <TabsTrigger
                 value='ISSUED'
-                className='text-xs py-2 px-3 data-[state=active]:bg-green-50 data-[state=active]:text-green-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiCheckCircle className='w-3.5 h-3.5 mr-1.5' />
-                Issued ({getBlStats().issuedBls})
-              </TabsTrigger>
-              <TabsTrigger
-                value='SURRENDERED'
                 className='text-xs py-2 px-3 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none rounded-md'
               >
                 <FiCheckCircle className='w-3.5 h-3.5 mr-1.5' />
-                Surrendered ({getBlStats().surrenderedBls})
+                Issued ({getAwbStats().issuedAwbs})
               </TabsTrigger>
               <TabsTrigger
-                value='AMENDED'
-                className='text-xs py-2 px-3 data-[state=active]:bg-yellow-50 data-[state=active]:text-yellow-700 data-[state=active]:shadow-none rounded-md'
+                value='MANIFESTED'
+                className='text-xs py-2 px-3 data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiEdit className='w-3.5 h-3.5 mr-1.5' />
-                Amended ({getBlStats().amendedBls})
+                <FiBox className='w-3.5 h-3.5 mr-1.5' />
+                Manifested ({getAwbStats().manifestedAwbs})
+              </TabsTrigger>
+              <TabsTrigger
+                value='DEPARTED'
+                className='text-xs py-2 px-3 data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 data-[state=active]:shadow-none rounded-md'
+              >
+                <FiTruck className='w-3.5 h-3.5 mr-1.5' />
+                Departed ({getAwbStats().departedAwbs})
+              </TabsTrigger>
+              <TabsTrigger
+                value='ARRIVED'
+                className='text-xs py-2 px-3 data-[state=active]:bg-green-50 data-[state=active]:text-green-700 data-[state=active]:shadow-none rounded-md'
+              >
+                <FiCheckCircle className='w-3.5 h-3.5 mr-1.5' />
+                Arrived ({getAwbStats().arrivedAwbs})
+              </TabsTrigger>
+              <TabsTrigger
+                value='DELIVERED'
+                className='text-xs py-2 px-3 data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700 data-[state=active]:shadow-none rounded-md'
+              >
+                <FiCheckCircle className='w-3.5 h-3.5 mr-1.5' />
+                Delivered ({getAwbStats().deliveredAwbs})
               </TabsTrigger>
               <TabsTrigger
                 value='CANCELLED'
                 className='text-xs py-2 px-3 data-[state=active]:bg-red-50 data-[state=active]:text-red-700 data-[state=active]:shadow-none rounded-md'
               >
                 <FiAlertCircle className='w-3.5 h-3.5 mr-1.5' />
-                Cancelled ({getBlStats().cancelledBls})
+                Cancelled ({getAwbStats().cancelledAwbs})
               </TabsTrigger>
               <TabsTrigger
                 value='STATISTICS'
-                className='text-xs py-2 px-3 data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 data-[state=active]:shadow-none rounded-md'
+                className='text-xs py-2 px-3 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 data-[state=active]:shadow-none rounded-md'
               >
                 <FiFilePlus className='w-3.5 h-3.5 mr-1.5' />
                 Statistics
@@ -2044,11 +2077,13 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           </div>
 
           {[
-            "ALL_BL",
+            "ALL_AWB",
             "DRAFT",
             "ISSUED",
-            "SURRENDERED",
-            "AMENDED",
+            "MANIFESTED",
+            "DEPARTED",
+            "ARRIVED",
+            "DELIVERED",
             "CANCELLED",
           ].map((tab) => (
             <TabsContent key={tab} value={tab} className='space-y-3 mt-3'>
@@ -2056,14 +2091,14 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 {currentTabData.length === 0 ? (
                   <div className='flex flex-col items-center justify-center py-16'>
                     <div className='text-center'>
-                      <FiPackage className='mx-auto h-12 w-12 text-gray-400 mb-3' />
+                      <FiTruck className='mx-auto h-12 w-12 text-gray-400 mb-3' />
                       <h3 className='text-base font-medium text-gray-900'>
-                        No bill of ladings found
+                        No air waybills found
                       </h3>
                       <p className='mt-1 text-sm text-gray-500'>
                         {searchText || statusFilter !== "ALL"
                           ? "Try adjusting your search or filter terms"
-                          : "Add your first bill of lading using the button above"}
+                          : "Add your first air waybill using the button above"}
                       </p>
                     </div>
                   </div>
@@ -2083,14 +2118,14 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
 
           <TabsContent value='STATISTICS' className='space-y-3 mt-3'>
             <div className='bg-white rounded-lg shadow-sm border p-4'>
-              <BlStatsPage />
+              <AwbStatsPage />
             </div>
           </TabsContent>
         </Tabs>
       </div>
 
       {isLoading && <AppLoader />}
-      <ViewBLDialog />
+      <ViewAWBDialog />
     </div>
   );
 }
