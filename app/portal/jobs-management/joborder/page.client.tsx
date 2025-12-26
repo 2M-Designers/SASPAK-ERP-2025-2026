@@ -57,7 +57,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import moment from "moment";
 import { useToast } from "@/hooks/use-toast";
-import JobForm from "@/views/forms/job-order-forms/job-form-stepwise";
+import JobForm from "@/views/forms/job-order-forms/job-order-form-complete";
 
 type JobMasterPageProps = {
   initialData?: any[];
