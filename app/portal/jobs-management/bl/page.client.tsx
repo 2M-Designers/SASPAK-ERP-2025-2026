@@ -64,7 +64,7 @@ type BlMasterPageProps = {
 type BlMaster = {
   blMasterId: number;
   companyId: number;
-  jobId: number;
+  //jobId: number;
   mblNumber: string;
   hblNumber: string;
   blDate: string;
@@ -95,7 +95,7 @@ type BlMaster = {
   shipperName?: string;
   consigneeName?: string;
   notifyName?: string;
-  jobNumber?: string;
+  //jobNumber?: string;
   polName?: string;
   podName?: string;
   forwardingAgentName?: string;
@@ -143,18 +143,18 @@ const blFieldConfig = [
     isdisplayed: false,
     isselected: true,
   },
-  {
+  /*{
     fieldName: "jobId",
     displayName: "Job ID",
     isdisplayed: false,
     isselected: true,
-  },
-  {
+  },*/
+  /*{
     fieldName: "jobNumber",
     displayName: "Job Number",
     isdisplayed: true,
     isselected: true,
-  },
+  },*/
   {
     fieldName: "mblNumber",
     displayName: "MBL Number",
@@ -525,7 +525,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           select:
-            "BlMasterId,CompanyId,JobId,MblNumber,HblNumber,BlDate,ShipperPartyId,ConsigneePartyId,NotifyPartyId,NoOfPackages,GrossWeight,NetWeight,VolumeCbm,POLId,PODId,VesselName,Voyage,ForwardingAgentId,FreightType,Movement,BLCurrencyId,PlaceOfIssueId,DateOfIssue,MarksAndContainersNo,BLNotes,Status,CreatedAt,UpdatedAt,Version",
+            "BlMasterId,CompanyId,MblNumber,HblNumber,BlDate,ShipperPartyId,ConsigneePartyId,NotifyPartyId,NoOfPackages,GrossWeight,NetWeight,VolumeCbm,POLId,PODId,VesselName,Voyage,ForwardingAgentId,FreightType,Movement,BLCurrencyId,PlaceOfIssueId,DateOfIssue,MarksAndContainersNo,BLNotes,Status,CreatedAt,UpdatedAt,Version",
           where: "",
           sortOn: "BlDate DESC",
           page: "1",
@@ -540,7 +540,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           blData.map(async (bl: BlMaster) => {
             try {
               // Fetch job details
-              let jobNumber = `JOB-${bl.jobId}`;
+              /*let jobNumber = `JOB-${bl.jobId}`;
               if (bl.jobId) {
                 try {
                   const jobResponse = await fetch(`${baseUrl}Job/${bl.jobId}`);
@@ -551,7 +551,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 } catch (err) {
                   console.error(`Error fetching job ${bl.jobId}:`, err);
                 }
-              }
+              }*/
 
               // Fetch party details
               const fetchParty = async (partyId: number) => {
@@ -626,7 +626,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
 
               return {
                 ...bl,
-                jobNumber,
+                //jobNumber,
                 shipperName: shipperData?.partyName || "N/A",
                 consigneeName: consigneeData?.partyName || "N/A",
                 notifyName: notifyData?.partyName || "N/A",
@@ -680,7 +680,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     const searchableFields = [
       item.mblNumber?.toString(),
       item.hblNumber?.toString(),
-      item.jobNumber?.toString(),
+      //item.jobNumber?.toString(),
       item.shipperName?.toString(),
       item.consigneeName?.toString(),
       item.notifyName?.toString(),
@@ -792,23 +792,170 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     }
   };
 
-  const handleViewDetails = (bl: BlMaster) => {
-    setSelectedBlDetails(bl);
-    setViewDialogOpen(true);
+  // Fetch complete BL details with equipment using the detail API
+  const fetchBlDetails = async (blMasterId: number) => {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(`${baseUrl}Bl/${blMasterId}`);
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch BL details");
+      }
+
+      const blDetailData = await response.json();
+
+      // Enrich equipment data with display names
+      if (blDetailData.blEquipments && blDetailData.blEquipments.length > 0) {
+        const enrichedEquipments = await Promise.all(
+          blDetailData.blEquipments.map(async (eq: any) => {
+            try {
+              // Fetch container type name
+              let containerTypeName = null;
+              if (eq.containerTypeId) {
+                const typeResponse = await fetch(
+                  `${baseUrl}ContainerType/${eq.containerTypeId}`
+                );
+                if (typeResponse.ok) {
+                  const typeData = await typeResponse.json();
+                  containerTypeName =
+                    typeData.containerTypeName || typeData.containerType;
+                }
+              }
+
+              // Fetch container size name
+              let containerSizeName = null;
+              if (eq.containerSizeId) {
+                const sizeResponse = await fetch(
+                  `${baseUrl}ContainerSize/${eq.containerSizeId}`
+                );
+                if (sizeResponse.ok) {
+                  const sizeData = await sizeResponse.json();
+                  containerSizeName =
+                    sizeData.containerSizeName || sizeData.containerSize;
+                }
+              }
+
+              // Fetch tariff currency name
+              let tarrifCurrencyName = null;
+              if (eq.tarrifCurrencyId) {
+                const currencyResponse = await fetch(
+                  `${baseUrl}Currency/${eq.tarrifCurrencyId}`
+                );
+                if (currencyResponse.ok) {
+                  const currencyData = await currencyResponse.json();
+                  tarrifCurrencyName =
+                    currencyData.currencyCode || currencyData.currencyName;
+                }
+              }
+
+              return {
+                ...eq,
+                containerTypeName,
+                containerSizeName,
+                tarrifCurrencyName,
+              };
+            } catch (err) {
+              console.error("Error enriching equipment:", err);
+              return eq;
+            }
+          })
+        );
+        blDetailData.equipments = enrichedEquipments;
+      } else {
+        blDetailData.equipments = [];
+      }
+
+      // Get display names from the list data
+      const listItem = data.find((item) => item.blMasterId === blMasterId);
+
+      return {
+        ...blDetailData,
+        shipperName: listItem?.shipperName,
+        consigneeName: listItem?.consigneeName,
+        notifyName: listItem?.notifyName,
+        forwardingAgentName: listItem?.forwardingAgentName,
+        polName: listItem?.polName,
+        podName: listItem?.podName,
+        placeOfIssueName: listItem?.placeOfIssueName,
+        currencyName: listItem?.currencyName,
+      };
+    } catch (error) {
+      console.error("Error fetching BL details:", error);
+      throw error;
+    }
   };
 
-  const handleDuplicate = (bl: BlMaster) => {
-    const duplicateBl = {
-      ...bl,
-      blMasterId: 0,
-      mblNumber: `${bl.mblNumber}-COPY`,
-      hblNumber: bl.hblNumber ? `${bl.hblNumber}-COPY` : "",
-      status: "DRAFT",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setSelectedBl(duplicateBl);
-    setShowForm(true);
+  // Handle viewing BL details
+  const handleViewDetails = async (bl: BlMaster) => {
+    try {
+      const blDetails = await fetchBlDetails(bl.blMasterId);
+      setSelectedBlDetails(blDetails);
+      setViewDialogOpen(true);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load BL details",
+      });
+    }
+  };
+
+  // Handle edit - fetch complete data including equipment
+  const handleEdit = async (bl: BlMaster) => {
+    try {
+      setIsLoading(true);
+      const blDetails = await fetchBlDetails(bl.blMasterId);
+      setSelectedBl(blDetails);
+      setShowForm(true);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load BL for editing",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle duplicate - fetch complete data and reset IDs for new record
+  const handleDuplicate = async (bl: BlMaster) => {
+    try {
+      setIsLoading(true);
+      const blDetails = await fetchBlDetails(bl.blMasterId);
+
+      // Create duplicate with reset IDs and modified numbers
+      const duplicateBl = {
+        ...blDetails,
+        blMasterId: 0, // Reset ID for new record
+        mblNumber: `${blDetails.mblNumber}-COPY`,
+        hblNumber: blDetails.hblNumber ? `${blDetails.hblNumber}-COPY` : "",
+        status: "DRAFT",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        version: 0,
+        // Reset equipment IDs for new record
+        equipments:
+          blDetails.equipments?.map((eq: BlEquipment) => ({
+            ...eq,
+            blEquipmentId: 0,
+            blMasterId: 0,
+            createdAt: new Date().toISOString(),
+            version: 0,
+          })) || [],
+      };
+
+      setSelectedBl(duplicateBl);
+      setShowForm(true);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to duplicate BL",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const downloadExcelWithData = (dataToExport: BlMaster[], tabName: string) => {
@@ -907,7 +1054,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       const tableHeaders = [
         "MBL No",
         "HBL No",
-        "Job No",
         "BL Date",
         "Vessel",
         "Voyage",
@@ -918,7 +1064,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
       const tableData = dataToExport.map((item) => [
         item.mblNumber?.toString() || "N/A",
         item.hblNumber?.toString() || "N/A",
-        item.jobNumber?.toString() || "N/A",
         item.blDate ? new Date(item.blDate).toLocaleDateString() : "N/A",
         (item.vesselName?.toString() || "N/A").substring(0, 15),
         (item.voyage?.toString() || "N/A").substring(0, 10),
@@ -1005,9 +1150,8 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
     doc.setTextColor(0, 0, 0);
     doc.text(`MBL: ${bl.mblNumber || "N/A"}`, 110, 57);
     doc.text(`HBL: ${bl.hblNumber || "N/A"}`, 110, 64);
-    doc.text(`Job: ${bl.jobNumber || "N/A"}`, 110, 71);
-    doc.text(`Vessel: ${bl.vesselName || "N/A"}`, 110, 78);
-    doc.text(`Voyage: ${bl.voyage || "N/A"}`, 110, 85);
+    doc.text(`Vessel: ${bl.vesselName || "N/A"}`, 110, 71);
+    doc.text(`Voyage: ${bl.voyage || "N/A"}`, 110, 78);
 
     // Routing
     doc.setFontSize(12);
@@ -1151,10 +1295,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
               <TooltipTrigger asChild>
                 <button
                   className='p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors'
-                  onClick={() => {
-                    setSelectedBl(row.original);
-                    setShowForm(true);
-                  }}
+                  onClick={() => handleEdit(row.original)}
                 >
                   <FiEdit size={14} />
                 </button>
@@ -1231,15 +1372,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
             </div>
           )}
         </div>
-      ),
-    },
-    {
-      accessorKey: "jobNumber",
-      header: "Job No",
-      cell: ({ row }) => (
-        <span className='text-sm text-gray-700 font-medium'>
-          {row.getValue("jobNumber") || "-"}
-        </span>
       ),
     },
     {
@@ -1366,12 +1498,6 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                       <span className='text-gray-600'>HBL Number:</span>
                       <span className='font-medium'>
                         {selectedBlDetails.hblNumber || "-"}
-                      </span>
-                    </div>
-                    <div className='flex justify-between'>
-                      <span className='text-gray-600'>Job Number:</span>
-                      <span className='font-medium'>
-                        {selectedBlDetails.jobNumber || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
@@ -1872,7 +1998,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           </Button>
           <div className='bg-white rounded-lg shadow-sm border p-4'>
             <BlForm
-              type={selectedBl ? "edit" : "add"}
+              type={selectedBl && selectedBl.blMasterId > 0 ? "edit" : "add"}
               defaultState={selectedBl || {}}
               handleAddEdit={handleAddEditComplete}
             />
@@ -1931,7 +2057,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
                 <FiSearch className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
                 <Input
                   type='text'
-                  placeholder='Search by MBL, HBL, Job, Vessel...'
+                  placeholder='Search by MBL, HBL, Vessel...'
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   className='pl-9 pr-9 py-1.5 text-sm h-9'

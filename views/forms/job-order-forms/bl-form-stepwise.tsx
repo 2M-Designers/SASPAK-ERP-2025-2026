@@ -69,8 +69,8 @@ const blMasterSchema = z.object({
   grossWeight: z.number().min(0, "Must be 0 or greater").default(0),
   netWeight: z.number().min(0, "Must be 0 or greater").default(0),
   volumeCbm: z.number().min(0, "Must be 0 or greater").default(0),
-  polId: z.number().min(1, "Port of Loading is required"),
-  podId: z.number().min(1, "Port of Discharge is required"),
+  polid: z.number().min(1, "Port of Loading is required"),
+  podid: z.number().min(1, "Port of Discharge is required"),
   vesselName: z.string().min(1, "Vessel Name is required"),
   voyage: z.string().min(1, "Voyage Number is required"),
   forwardingAgentId: z.number().optional(),
@@ -139,8 +139,8 @@ const STEPS = [
     name: "Shipment",
     icon: MapPin,
     fields: [
-      "polId",
-      "podId",
+      "polid",
+      "podid",
       "vesselName",
       "voyage",
       "freightType",
@@ -291,8 +291,8 @@ export default function BlForm({
       grossWeight: apiData.grossWeight || 0,
       netWeight: apiData.netWeight || 0,
       volumeCbm: apiData.volumeCbm || 0,
-      polId: apiData.polId || 0,
-      podId: apiData.podId || 0,
+      polid: apiData.polid || 0,
+      podid: apiData.podid || 0,
       vesselName: apiData.vesselName || "",
       voyage: apiData.voyage || "",
       forwardingAgentId: apiData.forwardingAgentId || null,
@@ -311,7 +311,7 @@ export default function BlForm({
   };
 
   // Fetch functions with proper error handling
-  const fetchJobs = async () => {
+  /*const fetchJobs = async () => {
     setLoadingJobs(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -352,7 +352,7 @@ export default function BlForm({
     } finally {
       setLoadingJobs(false);
     }
-  };
+  };*/
 
   const fetchParties = async () => {
     setLoadingParties(true);
@@ -800,7 +800,7 @@ export default function BlForm({
   };
 
   useEffect(() => {
-    fetchJobs();
+    //fetchJobs();
     fetchParties();
     fetchContainerTypes();
     fetchContainerSizes();
@@ -926,8 +926,8 @@ export default function BlForm({
         grossWeight: values.grossWeight || 0,
         netWeight: values.netWeight || 0,
         volumeCbm: values.volumeCbm || 0,
-        polId: values.polId || 0,
-        podId: values.podId || 0,
+        polid: values.polid || 0,
+        podid: values.podid || 0,
         VesselName: values.vesselName || "",
         Voyage: values.voyage || "",
         forwardingAgentId: values.forwardingAgentId || null,
@@ -1462,7 +1462,7 @@ export default function BlForm({
                   <div className='grid grid-cols-1 md:grid-cols-2 gap-5'>
                     <FormField
                       control={form.control}
-                      name='polId'
+                      name='polid'
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
@@ -1498,7 +1498,7 @@ export default function BlForm({
 
                     <FormField
                       control={form.control}
-                      name='podId'
+                      name='podid'
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>

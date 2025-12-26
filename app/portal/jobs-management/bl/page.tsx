@@ -16,7 +16,7 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "BlMasterId, CompanyId, JobId, MblNumber, HblNumber, BlDate, ShipperPartyId, ConsigneePartyId, NotifyPartyId, NoOfPackages, GrossWeight, NetWeight, VolumeCbm, POLId, PODId, VesselName, Voyage, ForwardingAgentId, FreightType, Movement, BLCurrencyId, PlaceOfIssueId, DateOfIssue, MarksAndContainersNo, BLNotes, Status, CreatedAt, UpdatedAt, Version",
+      "BlMasterId, CompanyId, MblNumber, HblNumber, BlDate, ShipperPartyId, ConsigneePartyId, NotifyPartyId, NoOfPackages, GrossWeight, NetWeight, VolumeCbm, POLId, PODId, VesselName, Voyage, ForwardingAgentId, FreightType, Movement, BLCurrencyId, PlaceOfIssueId, DateOfIssue, MarksAndContainersNo, BLNotes, Status, CreatedAt, UpdatedAt, Version",
     where: "",
     sortOn: "",
     page: "1",
