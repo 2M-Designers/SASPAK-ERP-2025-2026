@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 
 // Compact styles for react-select
 const compactSelectStyles = {
@@ -53,11 +54,14 @@ const compactSelectStyles = {
   }),
 };
 
-// Job Master Schema
+// Job Master Schema (Updated with new fields)
 const jobMasterSchema = z.object({
   jobId: z.number().optional(),
   companyId: z.number().default(1),
-  jobNumber: z.string().min(1, "Required"),
+  jobNumber: z.string().optional(),
+  jobDate: z.string().default(new Date().toISOString().split("T")[0]),
+  customReferenceNo: z.string().optional(),
+  processOwnerId: z.number().optional(),
   scope: z.string().optional(),
   direction: z.string().optional(),
   mode: z.string().optional(),
@@ -66,7 +70,7 @@ const jobMasterSchema = z.object({
   documentType: z.string().optional(),
   shipperPartyId: z.number().optional(),
   consigneePartyId: z.number().optional(),
-  billingPartiesId: z.number().optional(),
+  billingPartiesInfo: z.string().optional(),
   houseDocumentNo: z.string().optional(),
   houseDocumentDate: z.string().optional(),
   masterDocumentNo: z.string().optional(),
@@ -75,7 +79,7 @@ const jobMasterSchema = z.object({
   originAgentId: z.number().optional(),
   localAgentId: z.number().optional(),
   freeDays: z.number().min(0).default(0),
-  till: z.string().optional(),
+  lastFreeDay: z.string().optional(),
   grossWeight: z.number().min(0).default(0),
   netWeight: z.number().min(0).default(0),
   polId: z.number().optional(),
@@ -155,10 +159,12 @@ export default function JobOrderForm({
 
   // Dropdown states
   const [parties, setParties] = useState<any[]>([]);
+  const [processOwners, setProcessOwners] = useState<any[]>([]);
   const [containerTypes, setContainerTypes] = useState<any[]>([]);
   const [containerSizes, setContainerSizes] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [currencies, setCurrencies] = useState<any[]>([]);
+  const [vessels, setVessels] = useState<any[]>([]);
 
   // Loading states
   const [loadingParties, setLoadingParties] = useState(false);
@@ -166,6 +172,7 @@ export default function JobOrderForm({
   const [loadingContainerSizes, setLoadingContainerSizes] = useState(false);
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
+  const [loadingVessels, setLoadingVessels] = useState(false);
 
   // Child records
   const [fclContainers, setFclContainers] = useState<FclContainerFormValues[]>(
@@ -189,6 +196,7 @@ export default function JobOrderForm({
       netWeight: 0,
       exchangeRate: 0,
       securityValue: 0,
+      jobDate: new Date().toISOString().split("T")[0],
       ...defaultState,
     },
   });
@@ -203,6 +211,22 @@ export default function JobOrderForm({
     defaultValues: { lcValue: 0 },
   });
 
+  // Watch for changes
+  const shippingType = form.watch("shippingType");
+  const mode = form.watch("mode");
+  const documentType = form.watch("documentType");
+  const shipperId = form.watch("shipperPartyId");
+  const consigneeId = form.watch("consigneePartyId");
+
+  // Calculate gross weight from containers
+  useEffect(() => {
+    const totalWeight = fclContainers.reduce(
+      (sum, container) => sum + (container.weight || 0),
+      0
+    );
+    form.setValue("grossWeight", parseFloat(totalWeight.toFixed(4)));
+  }, [fclContainers, form]);
+
   // Fetch functions
   const fetchParties = async () => {
     setLoadingParties(true);
@@ -212,7 +236,7 @@ export default function JobOrderForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          select: "PartyId,PartyCode,PartyName",
+          select: "PartyId,PartyCode,PartyName,IsProcessOwner",
           where: "IsActive == true",
           sortOn: "PartyName",
           page: "1",
@@ -226,7 +250,17 @@ export default function JobOrderForm({
             data.map((p: any) => ({
               value: p.partyId,
               label: `${p.partyCode} - ${p.partyName}`,
+              isProcessOwner: p.isProcessOwner,
             }))
+          );
+          // Filter process owners
+          setProcessOwners(
+            data
+              .filter((p: any) => p.isProcessOwner)
+              .map((p: any) => ({
+                value: p.partyId,
+                label: `${p.partyCode} - ${p.partyName}`,
+              }))
           );
         }
       }
@@ -369,13 +403,88 @@ export default function JobOrderForm({
     }
   };
 
+  const fetchVessels = async () => {
+    setLoadingVessels(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(`${baseUrl}VesselMaster/GetList`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          select: "VesselId,VesselCode,VesselName",
+          where: "IsActive == true",
+          sortOn: "VesselName",
+          page: "1",
+          pageSize: "1000",
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          setVessels(
+            data.map((v: any) => ({
+              value: v.vesselName,
+              label: `${v.vesselCode} - ${v.vesselName}`,
+            }))
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching vessels:", error);
+    } finally {
+      setLoadingVessels(false);
+    }
+  };
+
   useEffect(() => {
     fetchParties();
     fetchContainerTypes();
     fetchContainerSizes();
     fetchLocations();
     fetchCurrencies();
+    fetchVessels();
   }, []);
+
+  // Generate job number on mount for add mode
+  useEffect(() => {
+    if (type === "add") {
+      generateJobNumber();
+    }
+  }, [type]);
+
+  const generateJobNumber = async () => {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(`${baseUrl}Job/GenerateJobNumber`);
+      if (response.ok) {
+        const data = await response.text();
+        const jobNumber = data.replace(/"/g, "");
+        form.setValue("jobNumber", jobNumber);
+      }
+    } catch (error) {
+      console.error("Error generating job number:", error);
+      // Fallback to timestamp based number
+      const timestamp = Date.now();
+      const randomNum = Math.floor(Math.random() * 1000);
+      form.setValue("jobNumber", `JOB-${timestamp}-${randomNum}`);
+    }
+  };
+
+  // Set billing parties info when shipper/consignee changes
+  useEffect(() => {
+    if (shipperId && consigneeId) {
+      const shipper = parties.find((p) => p.value === shipperId);
+      const consignee = parties.find((p) => p.value === consigneeId);
+      if (shipper && consignee) {
+        form.setValue(
+          "billingPartiesInfo",
+          `Shipper: ${shipper.label} | Consignee: ${consignee.label}`
+        );
+      }
+    } else {
+      form.setValue("billingPartiesInfo", "");
+    }
+  }, [shipperId, consigneeId, parties, form]);
 
   // Handlers for child records
   const handleAddFcl = (data: FclContainerFormValues) => {
@@ -420,24 +529,61 @@ export default function JobOrderForm({
     setIsSubmitting(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const user = localStorage.getItem("user");
+      let userId = 0;
 
+      if (user) {
+        try {
+          const u = JSON.parse(user);
+          userId = u?.userID || 0;
+        } catch (error) {
+          console.error("Error parsing user JSON:", error);
+        }
+      }
+
+      // Prepare payload according to new API structure
       const payload: any = {
         companyId: values.companyId || 1,
-        jobNumber: values.jobNumber,
+        jobNumber: values.jobNumber || "",
+        jobDate: values.jobDate
+          ? new Date(values.jobDate).toISOString()
+          : new Date().toISOString(),
         operationType: values.direction || null,
-        jobSubType: values.mode || null,
-        fclLclType: values.shippingType || null,
-        partyId: values.billingPartiesId || null,
+        operationMode: values.mode || null,
+        jobDocumentType: values.documentType || null,
+        houseDocumentNumber: values.houseDocumentNo || null,
+        houseDocumentDate: values.houseDocumentDate
+          ? new Date(values.houseDocumentDate).toISOString()
+          : null,
+        masterDocumentNumber: values.masterDocumentNo || null,
+        masterDocumentDate: values.masterDocumentDate
+          ? new Date(values.masterDocumentDate).toISOString()
+          : null,
+        jobSubType: values.shippingType || null,
+        jobLoadType: values.load || null,
+        freightType: values.freightType || null,
         shipperPartyId: values.shipperPartyId || null,
         consigneePartyId: values.consigneePartyId || null,
+        principalId: values.processOwnerId || null,
+        overseasAgentId: values.originAgentId || null,
+        carrierPartyId: values.carrierPartyId || null,
+        terminalPartyId: values.terminalId || null,
         originPortId: values.polId || null,
         destinationPortId: values.podId || null,
+        placeOfDeliveryId: values.placeOfDeliveryId || null,
         vesselName: values.vesselName || null,
+        grossWeight: values.grossWeight || 0,
+        netWeight: parseFloat(values.netWeight?.toFixed(4)) || 0,
         freeDays: values.freeDays || 0,
-        igmNumber: values.igmNumber || null,
-        hblNumber: values.houseDocumentNo || null,
-        mawbNumber: values.masterDocumentNo || null,
+        lastFreeDay: values.lastFreeDay
+          ? new Date(values.lastFreeDay).toISOString()
+          : null,
         gdType: values.gdType || null,
+        igmNumber: values.igmNumber || null,
+        indexNo: values.indexNumber || null,
+        blStatus: values.blStatus || null,
+        insurance: values.insurance || null,
+        landing: values.landing || null,
         status: values.status || "DRAFT",
         remarks: values.remarks || null,
         version: values.version || 0,
@@ -449,11 +595,33 @@ export default function JobOrderForm({
           tareWeight: c.weight || 0,
           version: 0,
         })),
+        jobInvoices: invoices.map((inv) => ({
+          jobInvoiceId: inv.invoiceId || 0,
+          invoiceNumber: inv.invoiceNumber || "",
+          invoiceDate: inv.invoiceDate
+            ? new Date(inv.invoiceDate).toISOString()
+            : null,
+          issuedBy: inv.invoiceIssuedBy || "",
+          shippingTerm: inv.shippingTerm || "",
+          lcNumber: inv.lcNumber || "",
+          lcValue: inv.lcValue || 0,
+          lcDate: inv.lcDate ? new Date(inv.lcDate).toISOString() : null,
+          lcIssuedBy: inv.lcIssuedBy || "",
+          lcCurrencyid: inv.lcCurrencyId || null,
+          flNumber: inv.fiNumber || "",
+          flDate: inv.fiDate ? new Date(inv.fiDate).toISOString() : null,
+          expiryDate: inv.fiExpiryDate
+            ? new Date(inv.fiExpiryDate).toISOString()
+            : null,
+          version: 0,
+        })),
       };
 
       if (type === "edit" && values.jobId) {
         payload.jobId = values.jobId;
       }
+
+      console.log("Payload:", payload);
 
       const response = await fetch(`${baseUrl}Job`, {
         method: type === "edit" ? "PUT" : "POST",
@@ -462,6 +630,8 @@ export default function JobOrderForm({
       });
 
       if (!response.ok) {
+        const errorData = await response.text();
+        console.error("API Error:", errorData);
         throw new Error("Failed to save job");
       }
 
@@ -488,6 +658,23 @@ export default function JobOrderForm({
   return (
     <div className='min-h-screen bg-gray-50'>
       <div className='container mx-auto px-3 py-3 max-w-[1600px]'>
+        {/* Header with Job Number Display for Edit Mode */}
+        {type === "edit" && form.watch("jobNumber") && (
+          <div className='mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-center'>
+            <div className='flex flex-col items-center justify-center'>
+              <Badge
+                variant='outline'
+                className='mb-2 bg-blue-100 text-blue-800 border-blue-300'
+              >
+                Job Number
+              </Badge>
+              <h1 className='text-2xl font-bold text-blue-700'>
+                {form.watch("jobNumber")}
+              </h1>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className='flex items-center justify-between mb-3'>
           <h1 className='text-xl font-bold text-gray-900'>
@@ -511,11 +698,13 @@ export default function JobOrderForm({
               onValueChange={setActiveTab}
               className='w-full'
             >
-              <TabsList className='grid w-full grid-cols-6 mb-3'>
+              <TabsList className='grid w-full grid-cols-7 mb-3'>
                 <TabsTrigger value='main'>Job Order Main Info</TabsTrigger>
                 <TabsTrigger value='shipping'>Shipping Info</TabsTrigger>
                 <TabsTrigger value='invoice'>Invoice Details</TabsTrigger>
-                <TabsTrigger value='gd'>Dispatch & Completion</TabsTrigger>
+                <TabsTrigger value='gd'>GD Information</TabsTrigger>
+                <TabsTrigger value='dispatch'>Dispatch</TabsTrigger>
+                <TabsTrigger value='completion'>Completion</TabsTrigger>
               </TabsList>
 
               {/* Job Order Main Info Tab */}
@@ -528,10 +717,10 @@ export default function JobOrderForm({
                   </CardHeader>
                   <CardContent className='p-4'>
                     {/* Job Order Number & Date */}
-                    <div className='grid grid-cols-12 gap-2 mb-3'>
+                    <div className='grid grid-cols-12 gap-2 mb-3 items-center'>
                       <div className='col-span-2 font-semibold'>
                         <FormLabel className='text-sm'>
-                          Job Order Number #
+                          Job Order Number
                         </FormLabel>
                       </div>
                       <div className='col-span-3'>
@@ -543,8 +732,32 @@ export default function JobOrderForm({
                               <FormControl>
                                 <Input
                                   {...field}
-                                  className='h-8 text-xs'
+                                  className='h-8 text-xs bg-gray-100'
                                   placeholder='Auto-generated'
+                                  readOnly
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <div className='col-span-2 text-right'>
+                        <FormLabel className='text-sm'>
+                          Custom Reference No
+                        </FormLabel>
+                      </div>
+                      <div className='col-span-3'>
+                        <FormField
+                          control={form.control}
+                          name='customReferenceNo'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  className='h-8 text-xs'
+                                  placeholder='Enter custom reference'
                                 />
                               </FormControl>
                             </FormItem>
@@ -560,10 +773,48 @@ export default function JobOrderForm({
                         </FormLabel>
                       </div>
                       <div className='col-span-3'>
-                        <Input
-                          type='date'
-                          defaultValue={new Date().toISOString().split("T")[0]}
-                          className='h-8 text-xs'
+                        <FormField
+                          control={form.control}
+                          name='jobDate'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <Input
+                                  type='date'
+                                  {...field}
+                                  className='h-8 text-xs'
+                                  readOnly
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <div className='col-span-2 text-right'>
+                        <FormLabel className='text-xs'>Process Owner</FormLabel>
+                      </div>
+                      <div className='col-span-3'>
+                        <FormField
+                          control={form.control}
+                          name='processOwnerId'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <Select
+                                  options={processOwners}
+                                  value={processOwners.find(
+                                    (p) => p.value === field.value
+                                  )}
+                                  onChange={(val) => field.onChange(val?.value)}
+                                  styles={compactSelectStyles}
+                                  isLoading={loadingParties}
+                                  isClearable
+                                  placeholder='Select Process Owner'
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
                         />
                       </div>
                     </div>
@@ -620,7 +871,10 @@ export default function JobOrderForm({
                                     field.value
                                       ? {
                                           value: field.value,
-                                          label: field.value,
+                                          label:
+                                            field.value === "IMPORT"
+                                              ? "Import"
+                                              : "Export",
                                         }
                                       : null
                                   }
@@ -659,11 +913,25 @@ export default function JobOrderForm({
                                     field.value
                                       ? {
                                           value: field.value,
-                                          label: field.value,
+                                          label:
+                                            field.value === "SEA"
+                                              ? "Sea"
+                                              : field.value === "AIR"
+                                              ? "Air"
+                                              : field.value === "ROAD"
+                                              ? "Road"
+                                              : "Land",
                                         }
                                       : null
                                   }
-                                  onChange={(val) => field.onChange(val?.value)}
+                                  onChange={(val) => {
+                                    field.onChange(val?.value);
+                                    // Clear shipping type and load if mode is AIR
+                                    if (val?.value === "AIR") {
+                                      form.setValue("shippingType", "");
+                                      form.setValue("load", "");
+                                    }
+                                  }}
                                   styles={compactSelectStyles}
                                   isClearable
                                   placeholder='Sea / Air / Road / Land'
@@ -675,80 +943,93 @@ export default function JobOrderForm({
                       </div>
                     </div>
 
-                    {/* Shipping Type Row */}
-                    <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
-                      <div className='col-span-2'>
-                        <FormLabel className='text-xs'>Shipping Type</FormLabel>
+                    {/* Shipping Type Row - Hide for AIR mode */}
+                    {mode !== "AIR" && (
+                      <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
+                        <div className='col-span-2'>
+                          <FormLabel className='text-xs'>
+                            Shipping Type
+                          </FormLabel>
+                        </div>
+                        <div className='col-span-3'>
+                          <FormField
+                            control={form.control}
+                            name='shippingType'
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormControl>
+                                  <Select
+                                    options={[
+                                      { value: "FCL", label: "FCL" },
+                                      { value: "LCL", label: "LCL" },
+                                      { value: "BB", label: "BB" },
+                                    ]}
+                                    value={
+                                      field.value
+                                        ? {
+                                            value: field.value,
+                                            label: field.value,
+                                          }
+                                        : null
+                                    }
+                                    onChange={(val) =>
+                                      field.onChange(val?.value)
+                                    }
+                                    styles={compactSelectStyles}
+                                    isClearable
+                                    placeholder='FCL / LCL / BB'
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
                       </div>
-                      <div className='col-span-3'>
-                        <FormField
-                          control={form.control}
-                          name='shippingType'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <Select
-                                  options={[
-                                    { value: "FCL", label: "FCL" },
-                                    { value: "LCL", label: "LCL" },
-                                    { value: "BB", label: "BB" },
-                                  ]}
-                                  value={
-                                    field.value
-                                      ? {
-                                          value: field.value,
-                                          label: field.value,
-                                        }
-                                      : null
-                                  }
-                                  onChange={(val) => field.onChange(val?.value)}
-                                  styles={compactSelectStyles}
-                                  isClearable
-                                  placeholder='FCL / LCL / BB'
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    </div>
+                    )}
 
-                    {/* Load Row */}
-                    <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
-                      <div className='col-span-2'>
-                        <FormLabel className='text-xs'>Load</FormLabel>
+                    {/* Load Row - Hide for AIR mode */}
+                    {mode !== "AIR" && shippingType && (
+                      <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
+                        <div className='col-span-2'>
+                          <FormLabel className='text-xs'>Load</FormLabel>
+                        </div>
+                        <div className='col-span-3'>
+                          <FormField
+                            control={form.control}
+                            name='load'
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormControl>
+                                  <Select
+                                    options={[
+                                      { value: "FULL", label: "Full" },
+                                      { value: "PART", label: "Part" },
+                                    ]}
+                                    value={
+                                      field.value
+                                        ? {
+                                            value: field.value,
+                                            label:
+                                              field.value === "FULL"
+                                                ? "Full"
+                                                : "Part",
+                                          }
+                                        : null
+                                    }
+                                    onChange={(val) =>
+                                      field.onChange(val?.value)
+                                    }
+                                    styles={compactSelectStyles}
+                                    isClearable
+                                    placeholder='Full / Part'
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
                       </div>
-                      <div className='col-span-3'>
-                        <FormField
-                          control={form.control}
-                          name='load'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <Select
-                                  options={[
-                                    { value: "FULL", label: "Full" },
-                                    { value: "PART", label: "Part" },
-                                  ]}
-                                  value={
-                                    field.value
-                                      ? {
-                                          value: field.value,
-                                          label: field.value,
-                                        }
-                                      : null
-                                  }
-                                  onChange={(val) => field.onChange(val?.value)}
-                                  styles={compactSelectStyles}
-                                  isClearable
-                                  placeholder='Full / Part'
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    </div>
+                    )}
 
                     {/* Document Type Row */}
                     <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
@@ -764,23 +1045,24 @@ export default function JobOrderForm({
                               <FormControl>
                                 <Select
                                   options={[
-                                    { value: "MBL", label: "MBL" },
-                                    { value: "HBL", label: "HBL" },
-                                    { value: "MAWB", label: "MAWB" },
-                                    { value: "HAWB", label: "HAWB" },
+                                    { value: "MASTER", label: "Master" },
+                                    { value: "HOUSE", label: "House" },
                                   ]}
                                   value={
                                     field.value
                                       ? {
                                           value: field.value,
-                                          label: field.value,
+                                          label:
+                                            field.value === "MASTER"
+                                              ? "Master"
+                                              : "House",
                                         }
                                       : null
                                   }
                                   onChange={(val) => field.onChange(val?.value)}
                                   styles={compactSelectStyles}
                                   isClearable
-                                  placeholder='MBL / HBL or MAWB / HAWB'
+                                  placeholder='Master / House'
                                 />
                               </FormControl>
                             </FormItem>
@@ -849,37 +1131,22 @@ export default function JobOrderForm({
                       </div>
                     </div>
 
-                    {/* Billing Parties Row */}
-                    <div className='grid grid-cols-12 gap-2 mb-3 items-center'>
-                      <div className='col-span-2'>
-                        <FormLabel className='text-xs'>
-                          Billing Parties
-                        </FormLabel>
+                    {/* Billing Parties Info Row - Read Only */}
+                    {(shipperId || consigneeId) && (
+                      <div className='grid grid-cols-12 gap-2 mb-3 items-center'>
+                        <div className='col-span-2'>
+                          <FormLabel className='text-xs'>
+                            Billing Parties
+                          </FormLabel>
+                        </div>
+                        <div className='col-span-8'>
+                          <div className='p-2 bg-gray-50 border rounded text-xs'>
+                            {form.watch("billingPartiesInfo") ||
+                              "Select shipper and consignee to view billing parties"}
+                          </div>
+                        </div>
                       </div>
-                      <div className='col-span-4'>
-                        <FormField
-                          control={form.control}
-                          name='billingPartiesId'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <Select
-                                  options={parties}
-                                  value={parties.find(
-                                    (p) => p.value === field.value
-                                  )}
-                                  onChange={(val) => field.onChange(val?.value)}
-                                  styles={compactSelectStyles}
-                                  isLoading={loadingParties}
-                                  isClearable
-                                  placeholder='Fill from Parties'
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -893,78 +1160,87 @@ export default function JobOrderForm({
                     </CardTitle>
                   </CardHeader>
                   <CardContent className='p-4'>
-                    {/* House Document Row */}
-                    <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
-                      <div className='col-span-2'>
-                        <FormLabel className='text-xs'>
-                          House Document No.
-                        </FormLabel>
-                      </div>
-                      <div className='col-span-2'>
-                        <FormField
-                          control={form.control}
-                          name='houseDocumentNo'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <Input {...field} className='h-8 text-xs' />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      </div>
+                    {/* Document Type Conditional Rendering */}
+                    {documentType === "HOUSE" && (
+                      <>
+                        {/* House Document Row */}
+                        <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
+                          <div className='col-span-2'>
+                            <FormLabel className='text-xs'>
+                              House Document No.
+                            </FormLabel>
+                          </div>
+                          <div className='col-span-2'>
+                            <FormField
+                              control={form.control}
+                              name='houseDocumentNo'
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <Input {...field} className='h-8 text-xs' />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </div>
 
-                      <div className='col-span-1 text-right'>
-                        <FormLabel className='text-xs'>Date</FormLabel>
-                      </div>
-                      <div className='col-span-2'>
-                        <FormField
-                          control={form.control}
-                          name='houseDocumentDate'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <Input
-                                  type='date'
-                                  {...field}
-                                  value={field.value || ""}
-                                  className='h-8 text-xs'
-                                  placeholder='DD/MM/YYYY'
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      </div>
+                          <div className='col-span-1 text-right'>
+                            <FormLabel className='text-xs'>Date</FormLabel>
+                          </div>
+                          <div className='col-span-2'>
+                            <FormField
+                              control={form.control}
+                              name='houseDocumentDate'
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <Input
+                                      type='date'
+                                      {...field}
+                                      value={field.value || ""}
+                                      className='h-8 text-xs'
+                                      placeholder='DD/MM/YYYY'
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </div>
 
-                      <div className='col-span-2 text-right'>
-                        <FormLabel className='text-xs'>Origin Agent</FormLabel>
-                      </div>
-                      <div className='col-span-3'>
-                        <FormField
-                          control={form.control}
-                          name='originAgentId'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <Select
-                                  options={parties}
-                                  value={parties.find(
-                                    (p) => p.value === field.value
-                                  )}
-                                  onChange={(val) => field.onChange(val?.value)}
-                                  styles={compactSelectStyles}
-                                  isClearable
-                                  placeholder='Fill from Parties'
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    </div>
+                          <div className='col-span-2 text-right'>
+                            <FormLabel className='text-xs'>
+                              Origin Agent
+                            </FormLabel>
+                          </div>
+                          <div className='col-span-3'>
+                            <FormField
+                              control={form.control}
+                              name='originAgentId'
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <Select
+                                      options={parties}
+                                      value={parties.find(
+                                        (p) => p.value === field.value
+                                      )}
+                                      onChange={(val) =>
+                                        field.onChange(val?.value)
+                                      }
+                                      styles={compactSelectStyles}
+                                      isClearable
+                                      placeholder='Fill from Parties'
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
 
-                    {/* Master Document Row */}
+                    {/* Master Document Row - Always shown */}
                     <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
                       <div className='col-span-2'>
                         <FormLabel className='text-xs'>
@@ -1088,12 +1364,12 @@ export default function JobOrderForm({
                       </div>
 
                       <div className='col-span-1 text-right'>
-                        <FormLabel className='text-xs'>Till</FormLabel>
+                        <FormLabel className='text-xs'>Last Free Day</FormLabel>
                       </div>
                       <div className='col-span-2'>
                         <FormField
                           control={form.control}
-                          name='till'
+                          name='lastFreeDay'
                           render={({ field }) => (
                             <FormItem>
                               <FormControl>
@@ -1114,7 +1390,9 @@ export default function JobOrderForm({
                     {/* Weight Rows */}
                     <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
                       <div className='col-span-2'>
-                        <FormLabel className='text-xs'>Gross Weight</FormLabel>
+                        <FormLabel className='text-xs'>
+                          Gross Weight (Auto)
+                        </FormLabel>
                       </div>
                       <div className='col-span-2'>
                         <FormField
@@ -1125,17 +1403,18 @@ export default function JobOrderForm({
                               <FormControl>
                                 <Input
                                   type='number'
-                                  step='0.01'
+                                  step='0.0001'
                                   {...field}
-                                  onChange={(e) =>
-                                    field.onChange(Number(e.target.value))
-                                  }
-                                  className='h-8 text-xs'
+                                  className='h-8 text-xs bg-gray-100'
+                                  readOnly
                                 />
                               </FormControl>
                             </FormItem>
                           )}
                         />
+                      </div>
+                      <div className='col-span-1 text-xs text-gray-500'>
+                        Calculated from containers
                       </div>
                     </div>
 
@@ -1152,11 +1431,12 @@ export default function JobOrderForm({
                               <FormControl>
                                 <Input
                                   type='number'
-                                  step='0.01'
+                                  step='0.0001'
                                   {...field}
-                                  onChange={(e) =>
-                                    field.onChange(Number(e.target.value))
-                                  }
+                                  onChange={(e) => {
+                                    const value = parseFloat(e.target.value);
+                                    field.onChange(isNaN(value) ? 0 : value);
+                                  }}
                                   className='h-8 text-xs'
                                 />
                               </FormControl>
@@ -1274,10 +1554,16 @@ export default function JobOrderForm({
                           render={({ field }) => (
                             <FormItem>
                               <FormControl>
-                                <Input
-                                  {...field}
-                                  className='h-8 text-xs'
-                                  placeholder='Fill From Vessel Setup'
+                                <Select
+                                  options={vessels}
+                                  value={vessels.find(
+                                    (v) => v.value === field.value
+                                  )}
+                                  onChange={(val) => field.onChange(val?.value)}
+                                  styles={compactSelectStyles}
+                                  isLoading={loadingVessels}
+                                  isClearable
+                                  placeholder='Fill from Vessel Master'
                                 />
                               </FormControl>
                             </FormItem>
@@ -1398,7 +1684,10 @@ export default function JobOrderForm({
                                     field.value
                                       ? {
                                           value: field.value,
-                                          label: field.value,
+                                          label:
+                                            field.value === "COLLECT"
+                                              ? "Collect"
+                                              : "Prepaid",
                                         }
                                       : null
                                   }
@@ -1433,7 +1722,12 @@ export default function JobOrderForm({
                                     field.value
                                       ? {
                                           value: field.value,
-                                          label: field.value,
+                                          label:
+                                            field.value === "ORIGINAL"
+                                              ? "Original"
+                                              : field.value === "SG"
+                                              ? "SG"
+                                              : "Telex",
                                         }
                                       : null
                                   }
@@ -1452,7 +1746,7 @@ export default function JobOrderForm({
                     <div className='border-t my-4'></div>
 
                     {/* Conditional FCL Section */}
-                    {form.watch("shippingType") === "FCL" && (
+                    {shippingType === "FCL" && (
                       <div className='mb-4'>
                         <div className='flex items-center justify-between mb-3'>
                           <div className='text-sm font-semibold text-gray-700'>
@@ -1560,11 +1854,11 @@ export default function JobOrderForm({
                                       <FormControl>
                                         <Input
                                           type='number'
-                                          step='0.01'
+                                          step='0.0001'
                                           {...field}
                                           onChange={(e) =>
                                             field.onChange(
-                                              Number(e.target.value)
+                                              parseFloat(e.target.value) || 0
                                             )
                                           }
                                           className='h-8 text-xs'
@@ -1673,7 +1967,7 @@ export default function JobOrderForm({
                                     )?.label || "-"}
                                   </TableCell>
                                   <TableCell className='text-xs'>
-                                    {container.weight}
+                                    {container.weight.toFixed(4)}
                                   </TableCell>
                                   <TableCell className='text-xs'>
                                     {container.noOfPackages}
@@ -1701,8 +1995,7 @@ export default function JobOrderForm({
                     )}
 
                     {/* Conditional LCL/Air Sections */}
-                    {(form.watch("shippingType") === "LCL" ||
-                      form.watch("mode") === "AIR") && (
+                    {(shippingType === "LCL" || mode === "AIR") && (
                       <>
                         <div className='mb-3'>
                           <div className='text-sm font-semibold text-gray-700 mb-2'>
@@ -2508,7 +2801,14 @@ export default function JobOrderForm({
                                     field.value
                                       ? {
                                           value: field.value,
-                                          label: field.value,
+                                          label:
+                                            field.value === "GREEN"
+                                              ? "Green"
+                                              : field.value === "YELLOW_YELLOW"
+                                              ? "Yellow-Yellow"
+                                              : field.value === "YELLOW_RED"
+                                              ? "Yellow-Red"
+                                              : "Red",
                                         }
                                       : null
                                   }
@@ -2652,7 +2952,12 @@ export default function JobOrderForm({
                                     field.value
                                       ? {
                                           value: field.value,
-                                          label: field.value,
+                                          label:
+                                            field.value === "SUBMITTED"
+                                              ? "Submitted"
+                                              : field.value === "NOT_REQUIRED"
+                                              ? "Not Required"
+                                              : "Pending",
                                         }
                                       : null
                                   }
@@ -2664,6 +2969,363 @@ export default function JobOrderForm({
                             </FormItem>
                           )}
                         />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Dispatch Tab */}
+              <TabsContent value='dispatch' className='mt-0'>
+                <Card>
+                  <CardHeader className='py-3 px-4 bg-green-50'>
+                    <CardTitle className='text-base'>
+                      Dispatch Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className='p-4'>
+                    <div className='space-y-4'>
+                      <div className='grid grid-cols-2 gap-4'>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Dispatch Address
+                          </FormLabel>
+                          <Textarea className='text-xs min-h-[80px]' />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>Transporter</FormLabel>
+                          <Select
+                            options={parties}
+                            styles={compactSelectStyles}
+                            isClearable
+                            placeholder='Select Transporter'
+                          />
+                        </div>
+                      </div>
+
+                      <div className='grid grid-cols-3 gap-4'>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Dispatch Date
+                          </FormLabel>
+                          <Input type='date' className='h-8 text-xs' />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Gate Out Date
+                          </FormLabel>
+                          <Input type='date' className='h-8 text-xs' />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Gate In Date
+                          </FormLabel>
+                          <Input type='date' className='h-8 text-xs' />
+                        </div>
+                      </div>
+
+                      <div className='grid grid-cols-2 gap-4'>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Destination Location
+                          </FormLabel>
+                          <Select
+                            options={locations}
+                            styles={compactSelectStyles}
+                            isClearable
+                            placeholder='Select Destination'
+                          />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Buying Amount (LC)
+                          </FormLabel>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            className='h-8 text-xs'
+                          />
+                        </div>
+                      </div>
+
+                      <div className='grid grid-cols-2 gap-4'>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            To Pay Amount (LC)
+                          </FormLabel>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            className='h-8 text-xs'
+                          />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            EIR Received On
+                          </FormLabel>
+                          <Input type='date' className='h-8 text-xs' />
+                        </div>
+                      </div>
+
+                      <div className='grid grid-cols-2 gap-4'>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Container Condition
+                          </FormLabel>
+                          <Input
+                            className='h-8 text-xs'
+                            placeholder='Good/Damaged'
+                          />
+                        </div>
+                        <div className='flex items-center gap-4'>
+                          <div className='flex items-center gap-2'>
+                            <input type='checkbox' className='h-4 w-4' />
+                            <FormLabel className='text-xs'>Damage</FormLabel>
+                          </div>
+                          <div className='flex items-center gap-2'>
+                            <input type='checkbox' className='h-4 w-4' />
+                            <FormLabel className='text-xs'>Dirty</FormLabel>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className='grid grid-cols-2 gap-4'>
+                        <div>
+                          <FormLabel className='text-xs'>Rent Days</FormLabel>
+                          <Input type='number' className='h-8 text-xs' />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Rent Amount (LC)
+                          </FormLabel>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            className='h-8 text-xs'
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Completion Tab */}
+              <TabsContent value='completion' className='mt-0'>
+                <Card>
+                  <CardHeader className='py-3 px-4 bg-purple-50'>
+                    <CardTitle className='text-base'>
+                      Completion Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className='p-4'>
+                    <div className='space-y-4'>
+                      <div className='grid grid-cols-3 gap-4'>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Case Submitted to Line On
+                          </FormLabel>
+                          <Input type='date' className='h-8 text-xs' />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Rent Invoice Issued On
+                          </FormLabel>
+                          <Input type='date' className='h-8 text-xs' />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Refund Balance Received On
+                          </FormLabel>
+                          <Input type='date' className='h-8 text-xs' />
+                        </div>
+                      </div>
+
+                      <div className='grid grid-cols-3 gap-4'>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Original Docs Received On
+                          </FormLabel>
+                          <Input type='date' className='h-8 text-xs' />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Copy Docs Received On
+                          </FormLabel>
+                          <Input type='date' className='h-8 text-xs' />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            PO Received On
+                          </FormLabel>
+                          <Input type='date' className='h-8 text-xs' />
+                        </div>
+                      </div>
+
+                      <div className='border-t my-4'></div>
+
+                      <div className='grid grid-cols-2 gap-4'>
+                        <div>
+                          <h4 className='text-sm font-semibold mb-2'>
+                            PO Charges
+                          </h4>
+                          <div className='space-y-2'>
+                            <div className='grid grid-cols-2 gap-2'>
+                              <FormLabel className='text-xs'>
+                                Custom Duty
+                              </FormLabel>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-8 text-xs'
+                              />
+                            </div>
+                            <div className='grid grid-cols-2 gap-2'>
+                              <FormLabel className='text-xs'>
+                                Wharfage
+                              </FormLabel>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-8 text-xs'
+                              />
+                            </div>
+                            <div className='grid grid-cols-2 gap-2'>
+                              <FormLabel className='text-xs'>
+                                Excise Duty
+                              </FormLabel>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-8 text-xs'
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className='space-y-2'>
+                            <div className='grid grid-cols-2 gap-2'>
+                              <FormLabel className='text-xs'>
+                                Delivery Order
+                              </FormLabel>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-8 text-xs'
+                              />
+                            </div>
+                            <div className='grid grid-cols-2 gap-2'>
+                              <FormLabel className='text-xs'>
+                                Security Deposit
+                              </FormLabel>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-8 text-xs'
+                              />
+                            </div>
+                            <div className='grid grid-cols-2 gap-2'>
+                              <FormLabel className='text-xs'>
+                                SAS Advance
+                              </FormLabel>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-8 text-xs'
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className='border-t my-4'></div>
+
+                      <div>
+                        <FormLabel className='text-xs'>
+                          Job Description
+                        </FormLabel>
+                        <Textarea className='text-xs min-h-[100px]' />
+                      </div>
+
+                      <div className='grid grid-cols-2 gap-4'>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Container Rent (FC)
+                          </FormLabel>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            className='h-8 text-xs'
+                          />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Container Rent (LC)
+                          </FormLabel>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            className='h-8 text-xs'
+                          />
+                        </div>
+                      </div>
+
+                      <div className='grid grid-cols-2 gap-4'>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Damage/Dirty (FC)
+                          </FormLabel>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            className='h-8 text-xs'
+                          />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Damage/Dirty (LC)
+                          </FormLabel>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            className='h-8 text-xs'
+                          />
+                        </div>
+                      </div>
+
+                      <div className='grid grid-cols-2 gap-4'>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Refund Applied On
+                          </FormLabel>
+                          <Input type='date' className='h-8 text-xs' />
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            Refund Amount (LC)
+                          </FormLabel>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            className='h-8 text-xs'
+                          />
+                        </div>
+                      </div>
+
+                      <div className='grid grid-cols-2 gap-4'>
+                        <div className='flex items-center gap-2'>
+                          <input type='checkbox' className='h-4 w-4' />
+                          <FormLabel className='text-xs'>
+                            EIR Submitted
+                          </FormLabel>
+                        </div>
+                        <div>
+                          <FormLabel className='text-xs'>
+                            EIR Document ID
+                          </FormLabel>
+                          <Input type='number' className='h-8 text-xs' />
+                        </div>
                       </div>
                     </div>
                   </CardContent>

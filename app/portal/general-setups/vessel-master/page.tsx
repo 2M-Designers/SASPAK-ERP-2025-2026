@@ -16,15 +16,15 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "JobId, CompanyId, JobNumber, JobDate, OperationType, OperationMode, JobDocumentType, HouseDocumentNumber, HouseDocumentDate, MasterDocumentNumber, MasterDocumentDate, isFreightForwarding, isClearance, isTransporter, isOther, JobSubType, JobLoadType, FreightType, ShipperPartyId, ConsigneePartyId, NotifyParty1Id, NotifyParty2Id, PrincipalId, OverseasAgentId, TransporterPartyId, DepositorPartyId, CarrierPartyId, TerminalPartyId, OriginPortId, DestinationPortId, PlaceOfDeliveryId, VesselName, VoyageNo, GrossWeight, NetWeight, EtdDate, EtaDate, VesselArrival, DeliverDate, FreeDays, LastFreeDay, AdvanceRentPaidUpto, DispatchAddress, GdType, OriginalDocsReceivedOn, CopyDocsReceivedOn, JobDescription, IgmNumber, IndexNo, BLStatus, Insurance, Landing, CaseSubmittedToLineOn, RentInvoiceIssuedOn, RefundBalanceReceivedOn, Status, Remarks, PoReceivedOn, PoCustomDuty, PoWharfage, PoExciseDuty, PoDeliveryOrder, PoSecurityDeposite, PoSASAdvance, JobInvoiceExchRate, CreatedBy, CreatedAt, UpdatedAt, Version, ProcessOwnerId",
+      "VesselId, VesselCode, VesselName, imonumber, mmsinumber, CallSign, VesselType, FlagCountryCode, BuiltYear, DeadWeightTonnage, GrossTonnage, NetTonnage, OperatorName, OwnerName, IsActive, CreatedAt, CreatedBy, UpdatedAt, UpdatedBy, Version",
     where: "",
-    sortOn: "JobNumber",
+    sortOn: "VesselName",
     page: "1",
     pageSize: "50", // Start with a reasonable page size
   };
 
   try {
-    const response = await fetch(`${baseUrl}Job/GetList`, {
+    const response = await fetch(`${baseUrl}VesselMaster/GetList`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -44,7 +44,7 @@ export default async function HomePage() {
       //</Suspense>
     );
   } catch (error) {
-    console.error("Failed to fetch employees:", error);
+    console.error("Failed to fetch charges master:", error);
 
     // Return empty data to prevent client component from crashing
     return (

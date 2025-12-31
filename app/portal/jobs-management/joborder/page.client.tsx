@@ -356,9 +356,9 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           select:
-            "JobId,CompanyId,JobNumber,OperationType,JobSubType,FclLclType,PartyId,ShipperPartyId,ConsigneePartyId,NotifyParty1Id,NotifyParty2Id,PrincipalId,OverseasAgentId,TransporterPartyId,DepositorPartyId,OriginPortId,DestinationPortId,VesselName,VoyageNo,EtdDate,EtaDate,VesselArrival,DeliverDate,FreeDays,LastFreeDay,AdvanceRentPaidUpto,DispatchAddress,GdType,OriginalDocsReceivedOn,CopyDocsReceivedOn,JobDescription,LcNumber,IgmNumber,HblNumber,MawbNumber,HawbNumber,Status,Remarks,CreatedBy,CreatedAt,UpdatedAt,Version",
+            "JobId, CompanyId, JobNumber, JobDate, OperationType, OperationMode, JobDocumentType, HouseDocumentNumber, HouseDocumentDate, MasterDocumentNumber, MasterDocumentDate, isFreightForwarding, isClearance, isTransporter, isOther, JobSubType, JobLoadType, FreightType, ShipperPartyId, ConsigneePartyId, NotifyParty1Id, NotifyParty2Id, PrincipalId, OverseasAgentId, TransporterPartyId, DepositorPartyId, CarrierPartyId, TerminalPartyId, OriginPortId, DestinationPortId, PlaceOfDeliveryId, VesselName, VoyageNo, GrossWeight, NetWeight, EtdDate, EtaDate, VesselArrival, DeliverDate, FreeDays, LastFreeDay, AdvanceRentPaidUpto, DispatchAddress, GdType, OriginalDocsReceivedOn, CopyDocsReceivedOn, JobDescription, IgmNumber, IndexNo, BLStatus, Insurance, Landing, CaseSubmittedToLineOn, RentInvoiceIssuedOn, RefundBalanceReceivedOn, Status, Remarks, PoReceivedOn, PoCustomDuty, PoWharfage, PoExciseDuty, PoDeliveryOrder, PoSecurityDeposite, PoSASAdvance, JobInvoiceExchRate, CreatedBy, CreatedAt, UpdatedAt, Version, ProcessOwnerId",
           where: "",
-          sortOn: "CreatedAt DESC",
+          sortOn: "JobNumber",
           page: "1",
           pageSize: "1000",
         }),
