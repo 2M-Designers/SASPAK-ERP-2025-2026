@@ -1,0 +1,1114 @@
+import { TabsContent } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import Select from "react-select";
+import { Plus, Save, Edit, Trash2, Package, Upload } from "lucide-react";
+import { compactSelectStyles } from "../utils/styles";
+
+// Define types
+interface SelectOption {
+  value: number | string;
+  label: string;
+  code?: string;
+  description?: string;
+  [key: string]: any;
+}
+
+interface InvoiceItem {
+  invoiceItemId?: number;
+  hsCodeId?: number;
+  hsCode: string;
+  description: string;
+  originId?: number;
+  quantity: number;
+  dutiableValue: number;
+  assessableValue: number;
+  totalValue: number;
+}
+
+interface Invoice {
+  invoiceId?: number;
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  invoiceIssuedByPartyId?: number;
+  shippingTerm?: string;
+  lcNumber?: string;
+  lcDate?: string;
+  lcIssuedByBankId?: number;
+  lcValue: number;
+  lcCurrencyId?: number;
+  fiNumber?: string;
+  fiDate?: string;
+  fiExpiryDate?: string;
+  items: InvoiceItem[];
+}
+
+interface InvoiceTabProps {
+  form: any;
+  parties: SelectOption[];
+  banks: SelectOption[];
+  currencies: SelectOption[];
+  hsCodes: SelectOption[];
+  countries: SelectOption[];
+  loadingParties: boolean;
+  loadingBanks: boolean;
+  loadingCurrencies: boolean;
+  loadingHsCodes: boolean;
+  loadingCountries: boolean;
+  freightType?: string;
+  invoices: Invoice[];
+  setInvoices: (invoices: Invoice[]) => void;
+  invoiceForm: any;
+  showInvoiceForm: boolean;
+  setShowInvoiceForm: (show: boolean) => void;
+  currentInvoiceItems: InvoiceItem[];
+  setCurrentInvoiceItems: (items: InvoiceItem[]) => void;
+  invoiceItemForm: any;
+  showInvoiceItemForm: boolean;
+  setShowInvoiceItemForm: (show: boolean) => void;
+  editingInvoice: number | null;
+  setEditingInvoice: (index: number | null) => void;
+  editingInvoiceItem: number | null;
+  setEditingInvoiceItem: (index: number | null) => void;
+  toast: any;
+}
+
+export default function InvoiceTab(props: InvoiceTabProps) {
+  const {
+    form,
+    parties,
+    banks,
+    currencies,
+    hsCodes,
+    countries,
+    loadingParties,
+    loadingBanks,
+    loadingCurrencies,
+    loadingHsCodes,
+    loadingCountries,
+    freightType,
+    invoices,
+    setInvoices,
+    invoiceForm,
+    showInvoiceForm,
+    setShowInvoiceForm,
+    currentInvoiceItems,
+    setCurrentInvoiceItems,
+    invoiceItemForm,
+    showInvoiceItemForm,
+    setShowInvoiceItemForm,
+    editingInvoice,
+    setEditingInvoice,
+    editingInvoiceItem,
+    setEditingInvoiceItem,
+    toast,
+  } = props;
+
+  // Handler functions
+  const handleAddInvoiceItem = (data: InvoiceItem) => {
+    if (editingInvoiceItem !== null) {
+      const updated = [...currentInvoiceItems];
+      updated[editingInvoiceItem] = data;
+      setCurrentInvoiceItems(updated);
+      toast({ title: "Success", description: "Item updated" });
+    } else {
+      setCurrentInvoiceItems([...currentInvoiceItems, data]);
+      toast({ title: "Success", description: "Item added to invoice" });
+    }
+    invoiceItemForm.reset({
+      quantity: 0,
+      dutiableValue: 0,
+      assessableValue: 0,
+      totalValue: 0,
+    });
+    setShowInvoiceItemForm(false);
+    setEditingInvoiceItem(null);
+  };
+
+  const handleEditInvoiceItem = (index: number) => {
+    setEditingInvoiceItem(index);
+    invoiceItemForm.reset(currentInvoiceItems[index]);
+    setShowInvoiceItemForm(true);
+  };
+
+  const handleDeleteInvoiceItem = (index: number) => {
+    setCurrentInvoiceItems(
+      currentInvoiceItems.filter((_: InvoiceItem, i: number) => i !== index)
+    );
+    toast({ title: "Success", description: "Item removed" });
+  };
+
+  const handleAddInvoice = (data: Invoice) => {
+    if (currentInvoiceItems.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please add at least one commodity item to the invoice",
+      });
+      return;
+    }
+
+    const invoiceWithItems = { ...data, items: currentInvoiceItems };
+
+    if (editingInvoice !== null) {
+      const updated = [...invoices];
+      updated[editingInvoice] = invoiceWithItems;
+      setInvoices(updated);
+      toast({ title: "Success", description: "Invoice updated" });
+    } else {
+      setInvoices([...invoices, invoiceWithItems]);
+      toast({ title: "Success", description: "Invoice added" });
+    }
+
+    invoiceForm.reset({ lcValue: 0, items: [] });
+    setCurrentInvoiceItems([]);
+    setShowInvoiceForm(false);
+    setEditingInvoice(null);
+  };
+
+  const handleEditInvoice = (index: number) => {
+    setEditingInvoice(index);
+    const invoice = invoices[index];
+    invoiceForm.reset(invoice);
+    setCurrentInvoiceItems(invoice.items || []);
+    setShowInvoiceForm(true);
+  };
+
+  const handleDeleteInvoice = (index: number) => {
+    setInvoices(invoices.filter((_: Invoice, i: number) => i !== index));
+    toast({ title: "Success", description: "Invoice deleted" });
+  };
+
+  const handleHsCodeSelect = (selectedOption: SelectOption | null) => {
+    if (selectedOption) {
+      invoiceItemForm.setValue("hsCode", selectedOption.code || "");
+      invoiceItemForm.setValue("description", selectedOption.description || "");
+      invoiceItemForm.setValue("hsCodeId", selectedOption.value);
+    }
+  };
+
+  const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    toast({
+      title: "Coming Soon",
+      description: "Excel import functionality will be implemented.",
+    });
+  };
+
+  return (
+    <TabsContent value='invoice' className='mt-0'>
+      <Card>
+        <CardHeader className='py-3 px-4 bg-blue-50 flex flex-row items-center justify-between'>
+          <CardTitle className='text-base'>
+            Invoice & Commodity Details
+          </CardTitle>
+          <Button
+            type='button'
+            size='sm'
+            onClick={() => {
+              setShowInvoiceForm(!showInvoiceForm);
+              setEditingInvoice(null);
+              invoiceForm.reset({ lcValue: 0, items: [] });
+              setCurrentInvoiceItems([]);
+            }}
+            className='h-7 text-xs'
+          >
+            <Plus className='h-3 w-3 mr-1' />
+            Add Invoice
+          </Button>
+        </CardHeader>
+        <CardContent className='p-4'>
+          {/* Display Added Invoices FIRST - Grid on Top */}
+          {invoices.length > 0 && (
+            <div className='mb-6'>
+              <div className='text-sm font-semibold text-gray-700 mb-3'>
+                Added Invoices ({invoices.length})
+              </div>
+              <div className='space-y-4'>
+                {invoices.map((inv: Invoice, invIdx: number) => (
+                  <Card key={invIdx} className='border-blue-200'>
+                    <CardHeader className='py-2 px-3 bg-blue-50'>
+                      <div className='flex items-center justify-between'>
+                        <div className='text-sm font-semibold'>
+                          Invoice #{invIdx + 1}: {inv.invoiceNumber || "N/A"} (
+                          {inv.items.length} items)
+                        </div>
+                        <div className='flex gap-1'>
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            size='sm'
+                            onClick={() => handleEditInvoice(invIdx)}
+                            className='h-6 w-6 p-0'
+                          >
+                            <Edit className='h-3 w-3 text-blue-600' />
+                          </Button>
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            size='sm'
+                            onClick={() => handleDeleteInvoice(invIdx)}
+                            className='h-6 w-6 p-0'
+                          >
+                            <Trash2 className='h-3 w-3 text-red-600' />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className='p-3'>
+                      <div className='grid grid-cols-4 gap-2 text-xs mb-3'>
+                        <div>
+                          <span className='font-semibold'>Date:</span>{" "}
+                          {inv.invoiceDate
+                            ? new Date(inv.invoiceDate).toLocaleDateString()
+                            : "N/A"}
+                        </div>
+                        <div>
+                          <span className='font-semibold'>Term:</span>{" "}
+                          {inv.shippingTerm || "N/A"}
+                        </div>
+                        <div>
+                          <span className='font-semibold'>LC No:</span>{" "}
+                          {inv.lcNumber || "N/A"}
+                        </div>
+                        <div>
+                          <span className='font-semibold'>LC Value:</span>{" "}
+                          {inv.lcValue || 0}
+                        </div>
+                      </div>
+
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className='text-xs'>HS Code</TableHead>
+                            <TableHead className='text-xs'>
+                              Description
+                            </TableHead>
+                            <TableHead className='text-xs'>Origin</TableHead>
+                            <TableHead className='text-xs'>Qty</TableHead>
+                            <TableHead className='text-xs'>DV</TableHead>
+                            <TableHead className='text-xs'>AV</TableHead>
+                            <TableHead className='text-xs'>Total</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {inv.items.map(
+                            (item: InvoiceItem, itemIdx: number) => (
+                              <TableRow key={itemIdx}>
+                                <TableCell className='text-xs'>
+                                  {item.hsCode}
+                                </TableCell>
+                                <TableCell className='text-xs max-w-[200px] truncate'>
+                                  {item.description}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {countries.find(
+                                    (c: SelectOption) =>
+                                      c.value === item.originId
+                                  )?.label || "-"}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {item.quantity}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {item.dutiableValue.toFixed(2)}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {item.assessableValue.toFixed(2)}
+                                </TableCell>
+                                <TableCell className='text-xs font-medium'>
+                                  {item.totalValue.toFixed(2)}
+                                </TableCell>
+                              </TableRow>
+                            )
+                          )}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Invoice Form BELOW - Shows when Add Invoice clicked */}
+          {showInvoiceForm && (
+            <Card className='mb-4 border-green-200'>
+              <CardHeader className='py-2 px-3 bg-green-50'>
+                <CardTitle className='text-sm'>
+                  {editingInvoice !== null ? "Edit Invoice" : "New Invoice"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className='p-4'>
+                <div className='space-y-4'>
+                  {/* Section 1: Invoice Header - More compact */}
+                  <div className='bg-gray-50 p-3 rounded'>
+                    <div className='text-xs font-semibold text-gray-700 mb-2'>
+                      Invoice Information
+                    </div>
+                    <div className='grid grid-cols-3 gap-3'>
+                      <FormField
+                        control={invoiceForm.control}
+                        name='invoiceNumber'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>
+                              Invoice No.
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                className='h-8 text-xs'
+                                placeholder='INV-001'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={invoiceForm.control}
+                        name='invoiceDate'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>
+                              Invoice Date
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type='date'
+                                {...field}
+                                value={field.value || ""}
+                                className='h-8 text-xs'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={invoiceForm.control}
+                        name='invoiceIssuedByPartyId'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>
+                              Issued By (Party)
+                            </FormLabel>
+                            <FormControl>
+                              <Select
+                                options={parties}
+                                value={parties.find(
+                                  (p: SelectOption) => p.value === field.value
+                                )}
+                                onChange={(val) => field.onChange(val?.value)}
+                                styles={compactSelectStyles}
+                                isLoading={loadingParties}
+                                isClearable
+                                placeholder='Select Party'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className='grid grid-cols-1 gap-3 mt-3'>
+                      <FormField
+                        control={invoiceForm.control}
+                        name='shippingTerm'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>
+                              Shipping Term (Dynamic based on Freight Type)
+                            </FormLabel>
+                            <FormControl>
+                              <Select
+                                options={
+                                  freightType === "COLLECT"
+                                    ? [
+                                        { value: "FOB", label: "FOB" },
+                                        { value: "EXW", label: "EXW" },
+                                      ]
+                                    : freightType === "PREPAID"
+                                    ? [
+                                        { value: "DDP", label: "DDP" },
+                                        { value: "DDU", label: "DDU" },
+                                        { value: "CFR", label: "CFR" },
+                                      ]
+                                    : [
+                                        { value: "FOB", label: "FOB" },
+                                        { value: "EXW", label: "EXW" },
+                                        { value: "DDP", label: "DDP" },
+                                        { value: "DDU", label: "DDU" },
+                                        { value: "CFR", label: "CFR" },
+                                      ]
+                                }
+                                value={
+                                  field.value
+                                    ? { value: field.value, label: field.value }
+                                    : null
+                                }
+                                onChange={(val) => field.onChange(val?.value)}
+                                styles={compactSelectStyles}
+                                isClearable
+                                placeholder='Select Shipping Term'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Section 2: LC Details - Collapsible look */}
+                  <div className='bg-blue-50 p-3 rounded'>
+                    <div className='text-xs font-semibold text-gray-700 mb-2'>
+                      LC (Letter of Credit) Details
+                    </div>
+                    <div className='grid grid-cols-4 gap-3'>
+                      <FormField
+                        control={invoiceForm.control}
+                        name='lcNumber'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>LC Number</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                className='h-8 text-xs'
+                                placeholder='LC-123'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={invoiceForm.control}
+                        name='lcDate'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>LC Date</FormLabel>
+                            <FormControl>
+                              <Input
+                                type='date'
+                                {...field}
+                                value={field.value || ""}
+                                className='h-8 text-xs'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={invoiceForm.control}
+                        name='lcValue'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>LC Value</FormLabel>
+                            <FormControl>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                {...field}
+                                onChange={(e) =>
+                                  field.onChange(Number(e.target.value))
+                                }
+                                className='h-8 text-xs'
+                                placeholder='0.00'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={invoiceForm.control}
+                        name='lcCurrencyId'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>Currency</FormLabel>
+                            <FormControl>
+                              <Select
+                                options={currencies}
+                                value={currencies.find(
+                                  (c: SelectOption) => c.value === field.value
+                                )}
+                                onChange={(val) => field.onChange(val?.value)}
+                                styles={compactSelectStyles}
+                                isLoading={loadingCurrencies}
+                                isClearable
+                                placeholder='Currency'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className='grid grid-cols-1 gap-3 mt-3'>
+                      <FormField
+                        control={invoiceForm.control}
+                        name='lcIssuedByBankId'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>
+                              LC Issued By (Bank)
+                            </FormLabel>
+                            <FormControl>
+                              <Select
+                                options={banks}
+                                value={banks.find(
+                                  (b: SelectOption) => b.value === field.value
+                                )}
+                                onChange={(val) => field.onChange(val?.value)}
+                                styles={compactSelectStyles}
+                                isLoading={loadingBanks}
+                                isClearable
+                                placeholder='Select Bank'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Section 3: FI Details */}
+                  <div className='bg-purple-50 p-3 rounded'>
+                    <div className='text-xs font-semibold text-gray-700 mb-2'>
+                      FI (Form E) Details
+                    </div>
+                    <div className='grid grid-cols-3 gap-3'>
+                      <FormField
+                        control={invoiceForm.control}
+                        name='fiNumber'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>FI Number</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                className='h-8 text-xs'
+                                placeholder='FI-001'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={invoiceForm.control}
+                        name='fiDate'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>FI Date</FormLabel>
+                            <FormControl>
+                              <Input
+                                type='date'
+                                {...field}
+                                value={field.value || ""}
+                                className='h-8 text-xs'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={invoiceForm.control}
+                        name='fiExpiryDate'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>
+                              FI Expiry Date
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type='date'
+                                {...field}
+                                value={field.value || ""}
+                                className='h-8 text-xs'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  <div className='border-t my-4'></div>
+
+                  {/* Section 4: Commodities - Current Invoice Items Grid on Top */}
+                  <div>
+                    <div className='flex items-center justify-between mb-3'>
+                      <div className='text-sm font-semibold text-gray-700'>
+                        Invoice Commodities ({currentInvoiceItems.length} items)
+                      </div>
+                      <div className='flex gap-2'>
+                        <Button
+                          type='button'
+                          size='sm'
+                          onClick={() => {
+                            const input = document.createElement("input");
+                            input.type = "file";
+                            input.accept = ".xlsx,.xls";
+                            input.onchange = (e: any) => handleExcelImport(e);
+                            input.click();
+                          }}
+                          variant='outline'
+                          className='h-7 text-xs'
+                        >
+                          <Upload className='h-3 w-3 mr-1' />
+                          Import Excel
+                        </Button>
+                        <Button
+                          type='button'
+                          size='sm'
+                          onClick={() => {
+                            setShowInvoiceItemForm(!showInvoiceItemForm);
+                            setEditingInvoiceItem(null);
+                            invoiceItemForm.reset({
+                              quantity: 0,
+                              dutiableValue: 0,
+                              assessableValue: 0,
+                              totalValue: 0,
+                            });
+                          }}
+                          className='h-7 text-xs'
+                        >
+                          <Package className='h-3 w-3 mr-1' />
+                          Add Commodity
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Current Invoice Items Table - Shows First */}
+                    {currentInvoiceItems.length > 0 && (
+                      <Table className='mb-3'>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className='text-xs'>HS Code</TableHead>
+                            <TableHead className='text-xs'>
+                              Description
+                            </TableHead>
+                            <TableHead className='text-xs'>Origin</TableHead>
+                            <TableHead className='text-xs'>Qty</TableHead>
+                            <TableHead className='text-xs'>DV</TableHead>
+                            <TableHead className='text-xs'>AV</TableHead>
+                            <TableHead className='text-xs'>Total</TableHead>
+                            <TableHead className='text-xs'>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {currentInvoiceItems.map(
+                            (item: InvoiceItem, idx: number) => (
+                              <TableRow key={idx}>
+                                <TableCell className='text-xs'>
+                                  {item.hsCode}
+                                </TableCell>
+                                <TableCell className='text-xs max-w-[200px] truncate'>
+                                  {item.description}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {countries.find(
+                                    (c: SelectOption) =>
+                                      c.value === item.originId
+                                  )?.label || "-"}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {item.quantity}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {item.dutiableValue.toFixed(2)}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {item.assessableValue.toFixed(2)}
+                                </TableCell>
+                                <TableCell className='text-xs font-medium'>
+                                  {item.totalValue.toFixed(2)}
+                                </TableCell>
+                                <TableCell>
+                                  <div className='flex gap-1'>
+                                    <Button
+                                      type='button'
+                                      variant='ghost'
+                                      size='sm'
+                                      onClick={() => handleEditInvoiceItem(idx)}
+                                      className='h-6 w-6 p-0'
+                                    >
+                                      <Edit className='h-3 w-3 text-blue-600' />
+                                    </Button>
+                                    <Button
+                                      type='button'
+                                      variant='ghost'
+                                      size='sm'
+                                      onClick={() =>
+                                        handleDeleteInvoiceItem(idx)
+                                      }
+                                      className='h-6 w-6 p-0'
+                                    >
+                                      <Trash2 className='h-3 w-3 text-red-600' />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          )}
+                          <TableRow className='bg-gray-50'>
+                            <TableCell
+                              colSpan={6}
+                              className='text-xs font-bold'
+                            >
+                              TOTAL
+                            </TableCell>
+                            <TableCell className='text-xs font-bold'>
+                              {currentInvoiceItems
+                                .reduce(
+                                  (sum: number, item: InvoiceItem) =>
+                                    sum + item.totalValue,
+                                  0
+                                )
+                                .toFixed(2)}
+                            </TableCell>
+                            <TableCell></TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    )}
+
+                    {/* Add Commodity Form - Shows Below Grid */}
+                    {showInvoiceItemForm && (
+                      <Card className='mb-3 border-blue-200'>
+                        <CardHeader className='py-2 px-3 bg-blue-50'>
+                          <CardTitle className='text-sm'>
+                            {editingInvoiceItem !== null
+                              ? "Edit Commodity"
+                              : "Add Commodity"}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className='p-3'>
+                          <div className='space-y-3'>
+                            {/* HS Code Search */}
+                            <FormField
+                              control={invoiceItemForm.control}
+                              name='hsCodeId'
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className='text-xs'>
+                                    Search HS Code (by Code or Description)
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Select
+                                      options={hsCodes}
+                                      value={hsCodes.find(
+                                        (h: SelectOption) =>
+                                          h.value === field.value
+                                      )}
+                                      onChange={(val) => {
+                                        field.onChange(val?.value);
+                                        handleHsCodeSelect(val);
+                                      }}
+                                      styles={compactSelectStyles}
+                                      isLoading={loadingHsCodes}
+                                      isClearable
+                                      placeholder='Search by Code or Description'
+                                      filterOption={(
+                                        option: any,
+                                        inputValue: string
+                                      ) => {
+                                        const searchValue =
+                                          inputValue.toLowerCase();
+                                        const code =
+                                          option.data.code?.toLowerCase() || "";
+                                        const description =
+                                          option.data.description?.toLowerCase() ||
+                                          "";
+                                        return (
+                                          code.includes(searchValue) ||
+                                          description.includes(searchValue)
+                                        );
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            {/* HS Code and Description */}
+                            <div className='grid grid-cols-2 gap-3'>
+                              <FormField
+                                control={invoiceItemForm.control}
+                                name='hsCode'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className='text-xs'>
+                                      HS Code
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        {...field}
+                                        className='h-8 text-xs bg-gray-50'
+                                        placeholder='Auto-filled'
+                                        readOnly
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={invoiceItemForm.control}
+                                name='originId'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className='text-xs'>
+                                      Origin (Country)
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Select
+                                        options={countries}
+                                        value={countries.find(
+                                          (c: SelectOption) =>
+                                            c.value === field.value
+                                        )}
+                                        onChange={(val) =>
+                                          field.onChange(val?.value)
+                                        }
+                                        styles={compactSelectStyles}
+                                        isLoading={loadingCountries}
+                                        isClearable
+                                        placeholder='Select Country'
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+
+                            <FormField
+                              control={invoiceItemForm.control}
+                              name='description'
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className='text-xs'>
+                                    Item Description
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Textarea
+                                      {...field}
+                                      className='h-16 text-xs'
+                                      placeholder='Auto-filled from HS Code'
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            {/* Values in grid */}
+                            <div className='grid grid-cols-4 gap-3'>
+                              <FormField
+                                control={invoiceItemForm.control}
+                                name='quantity'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className='text-xs'>
+                                      Quantity
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type='number'
+                                        step='0.01'
+                                        {...field}
+                                        onChange={(e) =>
+                                          field.onChange(Number(e.target.value))
+                                        }
+                                        className='h-8 text-xs'
+                                        placeholder='0'
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={invoiceItemForm.control}
+                                name='dutiableValue'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className='text-xs'>
+                                      Dutiable Value (DV)
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type='number'
+                                        step='0.01'
+                                        {...field}
+                                        onChange={(e) =>
+                                          field.onChange(Number(e.target.value))
+                                        }
+                                        className='h-8 text-xs'
+                                        placeholder='0.00'
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={invoiceItemForm.control}
+                                name='assessableValue'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className='text-xs'>
+                                      Assessable Value (AV)
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type='number'
+                                        step='0.01'
+                                        {...field}
+                                        onChange={(e) =>
+                                          field.onChange(Number(e.target.value))
+                                        }
+                                        className='h-8 text-xs'
+                                        placeholder='0.00'
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={invoiceItemForm.control}
+                                name='totalValue'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className='text-xs'>
+                                      Total (Qty × AV)
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type='number'
+                                        step='0.01'
+                                        {...field}
+                                        className='h-8 text-xs bg-gray-50'
+                                        placeholder='Auto-calculated'
+                                        readOnly
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                          </div>
+
+                          <div className='flex gap-2 mt-3'>
+                            <Button
+                              type='button'
+                              onClick={(e) => {
+                                e.preventDefault();
+                                invoiceItemForm.handleSubmit(
+                                  handleAddInvoiceItem
+                                )();
+                              }}
+                              size='sm'
+                              className='h-7 text-xs'
+                            >
+                              <Save className='h-3 w-3 mr-1' />
+                              {editingInvoiceItem !== null
+                                ? "Update"
+                                : "Add"}{" "}
+                              Item
+                            </Button>
+                            <Button
+                              type='button'
+                              variant='outline'
+                              size='sm'
+                              onClick={() => {
+                                setShowInvoiceItemForm(false);
+                                setEditingInvoiceItem(null);
+                              }}
+                              className='h-7 text-xs'
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {currentInvoiceItems.length === 0 &&
+                      !showInvoiceItemForm && (
+                        <div className='text-center py-8 text-sm text-gray-500 bg-gray-50 rounded'>
+                          No commodities added. Click Add Commodity to add items
+                          to this invoice.
+                        </div>
+                      )}
+                  </div>
+                </div>
+
+                <div className='flex gap-2 mt-4 pt-4 border-t'>
+                  <Button
+                    type='button'
+                    onClick={(e) => {
+                      e.preventDefault();
+                      invoiceForm.handleSubmit(handleAddInvoice)();
+                    }}
+                    size='sm'
+                    className='h-8 text-xs'
+                  >
+                    <Save className='h-3 w-3 mr-1' />
+                    {editingInvoice !== null ? "Update" : "Save"} Invoice
+                  </Button>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    onClick={() => {
+                      setShowInvoiceForm(false);
+                      setEditingInvoice(null);
+                      setCurrentInvoiceItems([]);
+                    }}
+                    className='h-8 text-xs'
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {invoices.length === 0 && !showInvoiceForm && (
+            <div className='text-center py-12 text-sm text-gray-500'>
+              No invoices added yet. Click Add Invoice to create an invoice with
+              commodities.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </TabsContent>
+  );
+}

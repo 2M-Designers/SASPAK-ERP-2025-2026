@@ -57,21 +57,32 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import moment from "moment";
 import { useToast } from "@/hooks/use-toast";
-import JobForm from "@/views/forms/job-order-forms/job-order-form-complete";
+import JobForm from "@/components/job-order/JobOrderForm";
 
 type JobMasterPageProps = {
   initialData?: any[];
 };
 
-// Job Master type with ALL fields
+// Updated Job Master type with ALL database fields
 type JobMaster = {
   jobId: number;
   companyId: number;
   jobNumber: string;
+  jobDate?: string;
   operationType: string;
-  jobSubType: string;
-  fclLclType?: string;
-  partyId: number;
+  operationMode?: string;
+  jobDocumentType?: string;
+  houseDocumentNumber?: string;
+  houseDocumentDate?: string;
+  masterDocumentNumber?: string;
+  masterDocumentDate?: string;
+  isFreightForwarding?: boolean;
+  isClearance?: boolean;
+  isTransporter?: boolean;
+  isOther?: boolean;
+  jobSubType?: string;
+  jobLoadType?: string;
+  freightType?: string;
   shipperPartyId?: number;
   consigneePartyId?: number;
   notifyParty1Id?: number;
@@ -80,10 +91,15 @@ type JobMaster = {
   overseasAgentId?: number;
   transporterPartyId?: number;
   depositorPartyId?: number;
+  carrierPartyId?: number;
+  terminalPartyId?: number;
   originPortId?: number;
   destinationPortId?: number;
+  placeOfDeliveryId?: number;
   vesselName?: string;
   voyageNo?: string;
+  grossWeight?: number;
+  netWeight?: number;
   etdDate?: string;
   etaDate?: string;
   vesselArrival?: string;
@@ -96,19 +112,30 @@ type JobMaster = {
   originalDocsReceivedOn?: string;
   copyDocsReceivedOn?: string;
   jobDescription?: string;
-  lcNumber?: string;
   igmNumber?: string;
-  hblNumber?: string;
-  mawbNumber?: string;
-  hawbNumber?: string;
+  indexNo?: string;
+  blStatus?: string;
+  insurance?: string;
+  landing?: string;
+  caseSubmittedToLineOn?: string;
+  rentInvoiceIssuedOn?: string;
+  refundBalanceReceivedOn?: string;
   status: string;
   remarks?: string;
+  poReceivedOn?: string;
+  poCustomDuty?: number;
+  poWharfage?: number;
+  poExciseDuty?: number;
+  poDeliveryOrder?: number;
+  poSecurityDeposite?: number;
+  poSASAdvance?: number;
+  jobInvoiceExchRate?: number;
   createdBy?: number;
   createdAt: string;
   updatedAt: string;
   version: number;
-  // Display names
-  partyName?: string;
+  processOwnerId?: number;
+  // Display names for foreign keys
   shipperName?: string;
   consigneeName?: string;
   notifyParty1Name?: string;
@@ -117,14 +144,18 @@ type JobMaster = {
   overseasAgentName?: string;
   transporterName?: string;
   depositorName?: string;
+  carrierName?: string;
+  terminalName?: string;
   originPortName?: string;
   destinationPortName?: string;
+  placeOfDeliveryName?: string;
+  // Child records
   equipments?: JobEquipment[];
   commodities?: JobCommodity[];
   charges?: JobCharge[];
 };
 
-// Job Equipment type with ALL fields
+// Job Equipment type
 type JobEquipment = {
   jobEquipmentId: number;
   companyId: number;
@@ -155,7 +186,7 @@ type JobEquipment = {
   containerSizeName?: string;
 };
 
-// Job Commodity type with ALL fields
+// Job Commodity type
 type JobCommodity = {
   jobCommodityId: number;
   companyId: number;
@@ -175,7 +206,7 @@ type JobCommodity = {
   currencyName?: string;
 };
 
-// Job Charge type with ALL fields
+// Job Charge type
 type JobCharge = {
   jobChargeId: number;
   companyId: number;
@@ -202,7 +233,7 @@ type JobCharge = {
   currencyName?: string;
 };
 
-// Field configuration for Job Master
+// Updated field configuration for Job Master
 const jobFieldConfig = [
   {
     fieldName: "jobId",
@@ -223,8 +254,74 @@ const jobFieldConfig = [
     isselected: true,
   },
   {
+    fieldName: "jobDate",
+    displayName: "Job Date",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
     fieldName: "operationType",
     displayName: "Operation Type",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "operationMode",
+    displayName: "Operation Mode",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "jobDocumentType",
+    displayName: "Document Type",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "houseDocumentNumber",
+    displayName: "House Doc No",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "houseDocumentDate",
+    displayName: "House Doc Date",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "masterDocumentNumber",
+    displayName: "Master Doc No",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "masterDocumentDate",
+    displayName: "Master Doc Date",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "isFreightForwarding",
+    displayName: "Freight Forwarding",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "isClearance",
+    displayName: "Clearance",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "isTransporter",
+    displayName: "Transporter",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "isOther",
+    displayName: "Other",
     isdisplayed: true,
     isselected: true,
   },
@@ -235,20 +332,14 @@ const jobFieldConfig = [
     isselected: true,
   },
   {
-    fieldName: "fclLclType",
-    displayName: "FCL/LCL Type",
+    fieldName: "jobLoadType",
+    displayName: "Load Type",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "partyId",
-    displayName: "Party ID",
-    isdisplayed: false,
-    isselected: true,
-  },
-  {
-    fieldName: "partyName",
-    displayName: "Party",
+    fieldName: "freightType",
+    displayName: "Freight Type",
     isdisplayed: true,
     isselected: true,
   },
@@ -289,6 +380,18 @@ const jobFieldConfig = [
     isselected: true,
   },
   {
+    fieldName: "grossWeight",
+    displayName: "Gross Weight",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "netWeight",
+    displayName: "Net Weight",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
     fieldName: "etdDate",
     displayName: "ETD",
     isdisplayed: true,
@@ -297,6 +400,24 @@ const jobFieldConfig = [
   {
     fieldName: "etaDate",
     displayName: "ETA",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "igmNumber",
+    displayName: "IGM Number",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "indexNo",
+    displayName: "Index No",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "blStatus",
+    displayName: "B/L Status",
     isdisplayed: true,
     isselected: true,
   },
@@ -346,7 +467,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     { value: "LOCAL", label: "Local" },
   ];
 
-  // Fetch Job data with ALL fields
+  // Fetch Job data with ALL updated fields
   const fetchJobOrders = async () => {
     setIsLoading(true);
     try {
@@ -356,7 +477,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           select:
-            "JobId, CompanyId, JobNumber, JobDate, OperationType, OperationMode, JobDocumentType, HouseDocumentNumber, HouseDocumentDate, MasterDocumentNumber, MasterDocumentDate, isFreightForwarding, isClearance, isTransporter, isOther, JobSubType, JobLoadType, FreightType, ShipperPartyId, ConsigneePartyId, NotifyParty1Id, NotifyParty2Id, PrincipalId, OverseasAgentId, TransporterPartyId, DepositorPartyId, CarrierPartyId, TerminalPartyId, OriginPortId, DestinationPortId, PlaceOfDeliveryId, VesselName, VoyageNo, GrossWeight, NetWeight, EtdDate, EtaDate, VesselArrival, DeliverDate, FreeDays, LastFreeDay, AdvanceRentPaidUpto, DispatchAddress, GdType, OriginalDocsReceivedOn, CopyDocsReceivedOn, JobDescription, IgmNumber, IndexNo, BLStatus, Insurance, Landing, CaseSubmittedToLineOn, RentInvoiceIssuedOn, RefundBalanceReceivedOn, Status, Remarks, PoReceivedOn, PoCustomDuty, PoWharfage, PoExciseDuty, PoDeliveryOrder, PoSecurityDeposite, PoSASAdvance, JobInvoiceExchRate, CreatedBy, CreatedAt, UpdatedAt, Version, ProcessOwnerId",
+            "JobId, CompanyId, JobNumber, JobDate, OperationType, OperationMode, JobDocumentType, HouseDocumentNumber, HouseDocumentDate, MasterDocumentNumber, MasterDocumentDate, isFreightForwarding, isClearance, isTransporter, isOther, JobSubType, JobLoadType, FreightType, ShipperPartyId, ConsigneePartyId, NotifyParty1Id, NotifyParty2Id, PrincipalId, OverseasAgentId, TransporterPartyId, DepositorPartyId, CarrierPartyId, TerminalPartyId, OriginPortId, DestinationPortId, PlaceOfDeliveryId, VesselName, VoyageNo, GrossWeight, NetWeight, EtdDate, EtaDate, VesselArrival, DeliverDate, FreeDays, LastFreeDay, AdvanceRentPaidUpto, DispatchAddress, GdType, OriginalDocsReceivedOn, CopyDocsReceivedOn, JobDescription, IgmNumber, IndexNo, BLStatus, Insurance, Landing, CaseSubmittedToLineOn, RentInvoiceIssuedOn, RefundBalanceReceivedOn, Status, Remarks, PoReceivedOn, PoCustomDuty, PoWharfage, PoExciseDuty, PoDeliveryOrder, PoSecurityDeposite, PoSASAdvance, JobInvoiceExchRate, CreatedBy, CreatedAt, UpdatedAt, Version, ProcessOwnerId, ",
           where: "",
           sortOn: "JobNumber",
           page: "1",
@@ -383,7 +504,6 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
               };
 
               const [
-                partyData,
                 shipperData,
                 consigneeData,
                 notifyParty1Data,
@@ -392,8 +512,9 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                 overseasAgentData,
                 transporterData,
                 depositorData,
+                carrierData,
+                terminalData,
               ] = await Promise.all([
-                fetchParty(job.partyId),
                 job.shipperPartyId
                   ? fetchParty(job.shipperPartyId)
                   : Promise.resolve(null),
@@ -418,6 +539,12 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                 job.depositorPartyId
                   ? fetchParty(job.depositorPartyId)
                   : Promise.resolve(null),
+                job.carrierPartyId
+                  ? fetchParty(job.carrierPartyId)
+                  : Promise.resolve(null),
+                job.terminalPartyId
+                  ? fetchParty(job.terminalPartyId)
+                  : Promise.resolve(null),
               ]);
 
               // Fetch port/location details
@@ -434,14 +561,18 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                 }
               };
 
-              const [originPortData, destinationPortData] = await Promise.all([
-                job.originPortId
-                  ? fetchLocation(job.originPortId)
-                  : Promise.resolve(null),
-                job.destinationPortId
-                  ? fetchLocation(job.destinationPortId)
-                  : Promise.resolve(null),
-              ]);
+              const [originPortData, destinationPortData, placeOfDeliveryData] =
+                await Promise.all([
+                  job.originPortId
+                    ? fetchLocation(job.originPortId)
+                    : Promise.resolve(null),
+                  job.destinationPortId
+                    ? fetchLocation(job.destinationPortId)
+                    : Promise.resolve(null),
+                  job.placeOfDeliveryId
+                    ? fetchLocation(job.placeOfDeliveryId)
+                    : Promise.resolve(null),
+                ]);
 
               // Child records will be loaded on-demand when viewing details
               let equipments: JobEquipment[] = [];
@@ -450,7 +581,6 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
 
               return {
                 ...job,
-                partyName: partyData?.partyName || "N/A",
                 shipperName: shipperData?.partyName || null,
                 consigneeName: consigneeData?.partyName || null,
                 notifyParty1Name: notifyParty1Data?.partyName || null,
@@ -459,11 +589,16 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                 overseasAgentName: overseasAgentData?.partyName || null,
                 transporterName: transporterData?.partyName || null,
                 depositorName: depositorData?.partyName || null,
+                carrierName: carrierData?.partyName || null,
+                terminalName: terminalData?.partyName || null,
                 originPortName: originPortData
                   ? `${originPortData.uncode} - ${originPortData.locationName}`
                   : null,
                 destinationPortName: destinationPortData
                   ? `${destinationPortData.uncode} - ${destinationPortData.locationName}`
+                  : null,
+                placeOfDeliveryName: placeOfDeliveryData
+                  ? `${placeOfDeliveryData.uncode} - ${placeOfDeliveryData.locationName}`
                   : null,
                 equipments,
                 commodities,
@@ -505,14 +640,13 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     const searchLower = searchTerm.toLowerCase();
     const searchableFields = [
       item.jobNumber?.toString(),
-      item.partyName?.toString(),
       item.shipperName?.toString(),
       item.consigneeName?.toString(),
       item.vesselName?.toString(),
       item.voyageNo?.toString(),
       item.igmNumber?.toString(),
-      item.hblNumber?.toString(),
-      item.mawbNumber?.toString(),
+      item.houseDocumentNumber?.toString(),
+      item.masterDocumentNumber?.toString(),
       item.status?.toString(),
     ];
     return searchableFields.some(
@@ -587,6 +721,10 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
         .length,
       localJobs: allJobs.filter((item) => item.operationType === "LOCAL")
         .length,
+      freightForwardingJobs: allJobs.filter((item) => item.isFreightForwarding)
+        .length,
+      clearanceJobs: allJobs.filter((item) => item.isClearance).length,
+      transporterJobs: allJobs.filter((item) => item.isTransporter).length,
     };
   };
 
@@ -673,11 +811,23 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
             const value = (job as any)[field.fieldName];
 
             if (
+              field.fieldName === "jobDate" ||
               field.fieldName === "etdDate" ||
               field.fieldName === "etaDate" ||
-              field.fieldName === "createdAt"
+              field.fieldName === "createdAt" ||
+              field.fieldName === "houseDocumentDate" ||
+              field.fieldName === "masterDocumentDate"
             ) {
               return value ? new Date(value).toLocaleDateString() : "";
+            }
+
+            if (
+              field.fieldName === "isFreightForwarding" ||
+              field.fieldName === "isClearance" ||
+              field.fieldName === "isTransporter" ||
+              field.fieldName === "isOther"
+            ) {
+              return value ? "Yes" : "No";
             }
 
             return value || "";
@@ -722,7 +872,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     }
 
     try {
-      const doc = new jsPDF();
+      const doc = new jsPDF("landscape");
 
       doc.setFontSize(16);
       doc.setTextColor(40, 116, 166);
@@ -735,9 +885,12 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
 
       const tableHeaders = [
         "Job No",
+        "Job Date",
         "Type",
-        "Sub Type",
-        "Party",
+        "Mode",
+        "Doc Type",
+        "Shipper",
+        "Consignee",
         "Origin",
         "Destination",
         "ETD",
@@ -746,9 +899,12 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
       ];
       const tableData = dataToExport.map((item) => [
         item.jobNumber?.toString() || "N/A",
+        item.jobDate ? new Date(item.jobDate).toLocaleDateString() : "N/A",
         (item.operationType?.toString() || "N/A").substring(0, 10),
-        (item.jobSubType?.toString() || "N/A").substring(0, 10),
-        (item.partyName?.toString() || "N/A").substring(0, 15),
+        (item.operationMode?.toString() || "N/A").substring(0, 10),
+        (item.jobDocumentType?.toString() || "N/A").substring(0, 10),
+        (item.shipperName?.toString() || "N/A").substring(0, 15),
+        (item.consigneeName?.toString() || "N/A").substring(0, 15),
         (item.originPortName?.toString() || "N/A").substring(0, 15),
         (item.destinationPortName?.toString() || "N/A").substring(0, 15),
         item.etdDate ? new Date(item.etdDate).toLocaleDateString() : "N/A",
@@ -794,7 +950,13 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
     doc.text(`Job Number: ${job.jobNumber}`, 20, 35);
-    doc.text(`Date: ${new Date(job.createdAt).toLocaleDateString()}`, 160, 35);
+    doc.text(
+      `Date: ${
+        job.jobDate ? new Date(job.jobDate).toLocaleDateString() : "N/A"
+      }`,
+      160,
+      35
+    );
 
     // Job Information
     doc.setFontSize(12);
@@ -803,40 +965,69 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
     doc.text(`Operation Type: ${job.operationType || "N/A"}`, 20, 57);
-    doc.text(`Job Sub Type: ${job.jobSubType || "N/A"}`, 20, 64);
-    doc.text(`FCL/LCL: ${job.fclLclType || "N/A"}`, 20, 71);
-    doc.text(`Party: ${job.partyName || "N/A"}`, 20, 78);
+    doc.text(`Operation Mode: ${job.operationMode || "N/A"}`, 20, 64);
+    doc.text(`Document Type: ${job.jobDocumentType || "N/A"}`, 20, 71);
+    doc.text(`Job Sub Type: ${job.jobSubType || "N/A"}`, 20, 78);
+    doc.text(`Load Type: ${job.jobLoadType || "N/A"}`, 20, 85);
+
+    // Services
+    doc.setFontSize(12);
+    doc.setTextColor(40, 116, 166);
+    doc.text("SERVICES", 110, 50);
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.text(
+      `Freight Forwarding: ${job.isFreightForwarding ? "Yes" : "No"}`,
+      110,
+      57
+    );
+    doc.text(`Clearance: ${job.isClearance ? "Yes" : "No"}`, 110, 64);
+    doc.text(`Transporter: ${job.isTransporter ? "Yes" : "No"}`, 110, 71);
+    doc.text(`Other: ${job.isOther ? "Yes" : "No"}`, 110, 78);
 
     // Routing
     doc.setFontSize(12);
     doc.setTextColor(40, 116, 166);
-    doc.text("ROUTING", 110, 50);
+    doc.text("ROUTING", 20, 100);
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
-    doc.text(`Origin: ${job.originPortName || "N/A"}`, 110, 57);
-    doc.text(`Destination: ${job.destinationPortName || "N/A"}`, 110, 64);
-    doc.text(`Vessel: ${job.vesselName || "N/A"}`, 110, 71);
-    doc.text(`Voyage: ${job.voyageNo || "N/A"}`, 110, 78);
+    doc.text(`Origin: ${job.originPortName || "N/A"}`, 20, 107);
+    doc.text(`Destination: ${job.destinationPortName || "N/A"}`, 20, 114);
+    doc.text(`Place of Delivery: ${job.placeOfDeliveryName || "N/A"}`, 20, 121);
+    doc.text(`Vessel: ${job.vesselName || "N/A"}`, 20, 128);
+    doc.text(`Voyage: ${job.voyageNo || "N/A"}`, 20, 135);
 
     // Parties
     doc.setFontSize(12);
     doc.setTextColor(40, 116, 166);
-    doc.text("PARTIES", 20, 95);
+    doc.text("PARTIES", 110, 100);
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
-    doc.text(`Shipper: ${job.shipperName || "N/A"}`, 20, 102);
-    doc.text(`Consignee: ${job.consigneeName || "N/A"}`, 20, 109);
+    doc.text(`Shipper: ${job.shipperName || "N/A"}`, 110, 107);
+    doc.text(`Consignee: ${job.consigneeName || "N/A"}`, 110, 114);
     if (job.notifyParty1Name) {
-      doc.text(`Notify 1: ${job.notifyParty1Name}`, 20, 116);
+      doc.text(`Notify 1: ${job.notifyParty1Name}`, 110, 121);
     }
-    if (job.notifyParty2Name) {
-      doc.text(`Notify 2: ${job.notifyParty2Name}`, 20, 123);
+    if (job.carrierName) {
+      doc.text(`Carrier: ${job.carrierName}`, 110, 128);
     }
 
-    // Dates
+    // Documents
     doc.setFontSize(12);
     doc.setTextColor(40, 116, 166);
-    doc.text("SCHEDULE", 110, 95);
+    doc.text("DOCUMENT INFORMATION", 20, 150);
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`House Doc No: ${job.houseDocumentNumber || "N/A"}`, 20, 157);
+    doc.text(`Master Doc No: ${job.masterDocumentNumber || "N/A"}`, 20, 164);
+    doc.text(`IGM Number: ${job.igmNumber || "N/A"}`, 20, 171);
+    doc.text(`Index No: ${job.indexNo || "N/A"}`, 20, 178);
+    doc.text(`B/L Status: ${job.blStatus || "N/A"}`, 20, 185);
+
+    // Schedule
+    doc.setFontSize(12);
+    doc.setTextColor(40, 116, 166);
+    doc.text("SCHEDULE", 110, 150);
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
     doc.text(
@@ -844,97 +1035,24 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
         job.etdDate ? new Date(job.etdDate).toLocaleDateString() : "N/A"
       }`,
       110,
-      102
+      157
     );
     doc.text(
       `ETA: ${
         job.etaDate ? new Date(job.etaDate).toLocaleDateString() : "N/A"
       }`,
       110,
-      109
+      164
     );
-    doc.text(`Free Days: ${job.freeDays || "0"}`, 110, 116);
-
-    // Equipment Details
-    if (job.equipments && job.equipments.length > 0) {
-      doc.setFontSize(12);
-      doc.setTextColor(40, 116, 166);
-      doc.text("EQUIPMENT DETAILS", 20, 140);
-
-      const equipHeaders = [
-        "Container No",
-        "Type",
-        "Size",
-        "Seal No",
-        "Status",
-      ];
-      const equipData = job.equipments.map((eq) => [
-        eq.containerNo || "N/A",
-        eq.containerTypeName || "N/A",
-        eq.containerSizeName || "N/A",
-        eq.sealNo || "N/A",
-        eq.status || "N/A",
-      ]);
-
-      autoTable(doc, {
-        head: [equipHeaders],
-        body: equipData,
-        startY: 145,
-        theme: "grid",
-        headStyles: {
-          fillColor: [240, 240, 240],
-          textColor: [0, 0, 0],
-          fontStyle: "bold",
-        },
-        styles: { fontSize: 8, cellPadding: 2 },
-      });
-    }
-
-    // Commodities
-    if (job.commodities && job.commodities.length > 0) {
-      const finalY = (doc as any).lastAutoTable?.finalY || 150;
-
-      doc.setFontSize(12);
-      doc.setTextColor(40, 116, 166);
-      doc.text("COMMODITY DETAILS", 20, finalY + 10);
-
-      const commHeaders = [
-        "Description",
-        "Weight (kg)",
-        "Volume (CBM)",
-        "Value",
-      ];
-      const commData = job.commodities.map((comm) => [
-        comm.description || "N/A",
-        `${comm.grossWeight?.toFixed(2) || "0"}`,
-        `${comm.volumeCbm?.toFixed(2) || "0"}`,
-        `${comm.declaredValueFC?.toFixed(2) || "0"}`,
-      ]);
-
-      autoTable(doc, {
-        head: [commHeaders],
-        body: commData,
-        startY: finalY + 15,
-        theme: "grid",
-        headStyles: {
-          fillColor: [240, 240, 240],
-          textColor: [0, 0, 0],
-          fontStyle: "bold",
-        },
-        styles: { fontSize: 8, cellPadding: 2 },
-      });
-    }
+    doc.text(`Free Days: ${job.freeDays || "0"}`, 110, 171);
+    doc.text(`Gross Weight: ${job.grossWeight || "0"} kg`, 110, 178);
+    doc.text(`Net Weight: ${job.netWeight || "0"} kg`, 110, 185);
 
     // Footer
-    const finalY = (doc as any).lastAutoTable?.finalY || 200;
     doc.setFontSize(8);
     doc.setTextColor(100, 100, 100);
-    doc.text(
-      "Generated on: " + new Date().toLocaleDateString(),
-      20,
-      finalY + 10
-    );
-    doc.text(`Status: ${job.status}`, 160, finalY + 10);
+    doc.text("Generated on: " + new Date().toLocaleDateString(), 20, 200);
+    doc.text(`Status: ${job.status}`, 160, 200);
 
     doc.save(`Job_${job.jobNumber}_${moment().format("YYYY-MM-DD")}.pdf`);
     toast({
@@ -1076,7 +1194,9 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
         <div className='font-semibold text-sm text-gray-900'>
           <div>{row.getValue("jobNumber") || "-"}</div>
           <div className='text-xs text-gray-500 mt-0.5'>
-            {row.original.jobSubType || "-"}
+            {row.original.jobDate
+              ? new Date(row.original.jobDate).toLocaleDateString()
+              : "-"}
           </div>
         </div>
       ),
@@ -1087,31 +1207,78 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
       cell: ({ row }) => {
         const operationType = row.getValue("operationType") as string;
         return (
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getOperationTypeBadge(
-              operationType
-            )}`}
-          >
-            {operationType}
-          </span>
+          <div>
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getOperationTypeBadge(
+                operationType
+              )}`}
+            >
+              {operationType}
+            </span>
+            {row.original.operationMode && (
+              <div className='text-xs text-gray-500 mt-0.5'>
+                {row.original.operationMode}
+              </div>
+            )}
+          </div>
         );
       },
     },
     {
-      accessorKey: "fclLclType",
-      header: "FCL/LCL",
+      accessorKey: "documentInfo",
+      header: "Documents",
       cell: ({ row }) => (
-        <span className='text-sm text-gray-700'>
-          {row.getValue("fclLclType") || "-"}
+        <div className='text-xs text-gray-700'>
+          <div className='font-medium'>
+            {row.original.jobDocumentType || "-"}
+          </div>
+          {row.original.houseDocumentNumber && (
+            <div className='mt-0.5'>H: {row.original.houseDocumentNumber}</div>
+          )}
+          {row.original.masterDocumentNumber && (
+            <div className='mt-0.5'>M: {row.original.masterDocumentNumber}</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "services",
+      header: "Services",
+      cell: ({ row }) => (
+        <div className='flex gap-1'>
+          {row.original.isFreightForwarding && (
+            <span className='inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700'>
+              FF
+            </span>
+          )}
+          {row.original.isClearance && (
+            <span className='inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-700'>
+              CL
+            </span>
+          )}
+          {row.original.isTransporter && (
+            <span className='inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-700'>
+              TR
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "shipperName",
+      header: "Shipper",
+      cell: ({ row }) => (
+        <span className='text-sm text-gray-700 font-medium'>
+          {row.getValue("shipperName") || "-"}
         </span>
       ),
     },
     {
-      accessorKey: "partyName",
-      header: "Party",
+      accessorKey: "consigneeName",
+      header: "Consignee",
       cell: ({ row }) => (
         <span className='text-sm text-gray-700 font-medium'>
-          {row.getValue("partyName") || "-"}
+          {row.getValue("consigneeName") || "-"}
         </span>
       ),
     },
@@ -1162,13 +1329,18 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
       ),
     },
     {
-      accessorKey: "equipmentCount",
-      header: "Containers",
+      accessorKey: "weight",
+      header: "Weight",
       cell: ({ row }) => (
-        <div className='text-center'>
-          <span className='inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-800 text-xs font-medium'>
-            {row.original.equipments?.length || 0}
-          </span>
+        <div className='text-xs text-gray-700'>
+          {row.original.grossWeight && (
+            <div>G: {row.original.grossWeight.toFixed(2)} kg</div>
+          )}
+          {row.original.netWeight && (
+            <div className='mt-0.5'>
+              N: {row.original.netWeight.toFixed(2)} kg
+            </div>
+          )}
         </div>
       ),
     },
@@ -1198,7 +1370,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     },
   ];
 
-  // View Job Details Dialog with ALL fields
+  // View Job Details Dialog with ALL updated fields
   const ViewJobDialog = () => (
     <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
       <DialogContent className='max-w-6xl max-h-[90vh] overflow-y-auto'>
@@ -1231,9 +1403,31 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                       </span>
                     </div>
                     <div className='flex justify-between'>
+                      <span className='text-gray-600'>Job Date:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.jobDate
+                          ? new Date(
+                              selectedJobDetails.jobDate
+                            ).toLocaleDateString()
+                          : "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
                       <span className='text-gray-600'>Operation Type:</span>
                       <span className='font-medium'>
                         {selectedJobDetails.operationType || "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Operation Mode:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.operationMode || "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Document Type:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.jobDocumentType || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
@@ -1243,15 +1437,15 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-gray-600'>FCL/LCL:</span>
+                      <span className='text-gray-600'>Load Type:</span>
                       <span className='font-medium'>
-                        {selectedJobDetails.fclLclType || "-"}
+                        {selectedJobDetails.jobLoadType || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='text-gray-600'>Party:</span>
+                      <span className='text-gray-600'>Freight Type:</span>
                       <span className='font-medium'>
-                        {selectedJobDetails.partyName || "-"}
+                        {selectedJobDetails.freightType || "-"}
                       </span>
                     </div>
                   </div>
@@ -1261,8 +1455,126 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
               <Card>
                 <CardHeader className='py-3 px-4'>
                   <CardTitle className='text-sm font-medium'>
-                    Routing & Schedule
+                    Services
                   </CardTitle>
+                </CardHeader>
+                <CardContent className='pt-0 px-4 pb-3'>
+                  <div className='space-y-1.5 text-xs'>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Freight Forwarding:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.isFreightForwarding ? "Yes" : "No"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Clearance:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.isClearance ? "Yes" : "No"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Transporter:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.isTransporter ? "Yes" : "No"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Other:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.isOther ? "Yes" : "No"}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Document Information */}
+            <Card>
+              <CardHeader className='py-3 px-4'>
+                <CardTitle className='text-sm font-medium'>
+                  Document Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className='pt-0 px-4 pb-3'>
+                <div className='grid grid-cols-3 gap-4 text-xs'>
+                  {selectedJobDetails.houseDocumentNumber && (
+                    <div>
+                      <span className='text-gray-600'>House Doc No: </span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.houseDocumentNumber}
+                      </span>
+                    </div>
+                  )}
+                  {selectedJobDetails.houseDocumentDate && (
+                    <div>
+                      <span className='text-gray-600'>House Doc Date: </span>
+                      <span className='font-medium'>
+                        {new Date(
+                          selectedJobDetails.houseDocumentDate
+                        ).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                  {selectedJobDetails.masterDocumentNumber && (
+                    <div>
+                      <span className='text-gray-600'>Master Doc No: </span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.masterDocumentNumber}
+                      </span>
+                    </div>
+                  )}
+                  {selectedJobDetails.masterDocumentDate && (
+                    <div>
+                      <span className='text-gray-600'>Master Doc Date: </span>
+                      <span className='font-medium'>
+                        {new Date(
+                          selectedJobDetails.masterDocumentDate
+                        ).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                  {selectedJobDetails.igmNumber && (
+                    <div>
+                      <span className='text-gray-600'>IGM Number: </span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.igmNumber}
+                      </span>
+                    </div>
+                  )}
+                  {selectedJobDetails.indexNo && (
+                    <div>
+                      <span className='text-gray-600'>Index No: </span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.indexNo}
+                      </span>
+                    </div>
+                  )}
+                  {selectedJobDetails.blStatus && (
+                    <div>
+                      <span className='text-gray-600'>B/L Status: </span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.blStatus}
+                      </span>
+                    </div>
+                  )}
+                  {selectedJobDetails.gdType && (
+                    <div>
+                      <span className='text-gray-600'>GD Type: </span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.gdType}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Routing & Schedule */}
+            <div className='grid grid-cols-2 gap-4'>
+              <Card>
+                <CardHeader className='py-3 px-4'>
+                  <CardTitle className='text-sm font-medium'>Routing</CardTitle>
                 </CardHeader>
                 <CardContent className='pt-0 px-4 pb-3'>
                   <div className='space-y-1.5 text-xs'>
@@ -1278,6 +1590,36 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                         {selectedJobDetails.destinationPortName || "-"}
                       </span>
                     </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Place of Delivery:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.placeOfDeliveryName || "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Vessel:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.vesselName || "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Voyage:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.voyageNo || "-"}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className='py-3 px-4'>
+                  <CardTitle className='text-sm font-medium'>
+                    Schedule
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className='pt-0 px-4 pb-3'>
+                  <div className='space-y-1.5 text-xs'>
                     <div className='flex justify-between'>
                       <span className='text-gray-600'>ETD:</span>
                       <span className='font-medium'>
@@ -1299,6 +1641,26 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                       </span>
                     </div>
                     <div className='flex justify-between'>
+                      <span className='text-gray-600'>Vessel Arrival:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.vesselArrival
+                          ? new Date(
+                              selectedJobDetails.vesselArrival
+                            ).toLocaleDateString()
+                          : "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Deliver Date:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.deliverDate
+                          ? new Date(
+                              selectedJobDetails.deliverDate
+                            ).toLocaleDateString()
+                          : "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
                       <span className='text-gray-600'>Free Days:</span>
                       <span className='font-medium'>
                         {selectedJobDetails.freeDays || "0"}
@@ -1308,41 +1670,6 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                 </CardContent>
               </Card>
             </div>
-
-            {/* Vessel Information */}
-            <Card>
-              <CardHeader className='py-3 px-4'>
-                <CardTitle className='text-sm font-medium'>
-                  Vessel Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='pt-0 px-4 pb-3'>
-                <div className='grid grid-cols-3 gap-4 text-xs'>
-                  <div>
-                    <span className='text-gray-600'>Vessel Name: </span>
-                    <span className='font-medium'>
-                      {selectedJobDetails.vesselName || "-"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className='text-gray-600'>Voyage No: </span>
-                    <span className='font-medium'>
-                      {selectedJobDetails.voyageNo || "-"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className='text-gray-600'>Vessel Arrival: </span>
-                    <span className='font-medium'>
-                      {selectedJobDetails.vesselArrival
-                        ? new Date(
-                            selectedJobDetails.vesselArrival
-                          ).toLocaleDateString()
-                        : "-"}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
 
             {/* Parties Information */}
             <Card>
@@ -1433,249 +1760,178 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                       </p>
                     </div>
                   )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Document Information */}
-            <Card>
-              <CardHeader className='py-3 px-4'>
-                <CardTitle className='text-sm font-medium'>
-                  Document Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='pt-0 px-4 pb-3'>
-                <div className='grid grid-cols-3 gap-4 text-xs'>
-                  {selectedJobDetails.lcNumber && (
+                  {selectedJobDetails.carrierName && (
                     <div>
-                      <span className='text-gray-600'>LC Number: </span>
-                      <span className='font-medium'>
-                        {selectedJobDetails.lcNumber}
-                      </span>
+                      <h4 className='text-xs font-semibold text-gray-700 mb-2'>
+                        Carrier
+                      </h4>
+                      <p className='text-sm'>
+                        {selectedJobDetails.carrierName}
+                      </p>
                     </div>
                   )}
-                  {selectedJobDetails.igmNumber && (
+                  {selectedJobDetails.terminalName && (
                     <div>
-                      <span className='text-gray-600'>IGM Number: </span>
-                      <span className='font-medium'>
-                        {selectedJobDetails.igmNumber}
-                      </span>
-                    </div>
-                  )}
-                  {selectedJobDetails.hblNumber && (
-                    <div>
-                      <span className='text-gray-600'>HBL Number: </span>
-                      <span className='font-medium'>
-                        {selectedJobDetails.hblNumber}
-                      </span>
-                    </div>
-                  )}
-                  {selectedJobDetails.mawbNumber && (
-                    <div>
-                      <span className='text-gray-600'>MAWB Number: </span>
-                      <span className='font-medium'>
-                        {selectedJobDetails.mawbNumber}
-                      </span>
-                    </div>
-                  )}
-                  {selectedJobDetails.hawbNumber && (
-                    <div>
-                      <span className='text-gray-600'>HAWB Number: </span>
-                      <span className='font-medium'>
-                        {selectedJobDetails.hawbNumber}
-                      </span>
-                    </div>
-                  )}
-                  {selectedJobDetails.gdType && (
-                    <div>
-                      <span className='text-gray-600'>GD Type: </span>
-                      <span className='font-medium'>
-                        {selectedJobDetails.gdType}
-                      </span>
+                      <h4 className='text-xs font-semibold text-gray-700 mb-2'>
+                        Terminal
+                      </h4>
+                      <p className='text-sm'>
+                        {selectedJobDetails.terminalName}
+                      </p>
                     </div>
                   )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Equipment Information */}
-            {selectedJobDetails.equipments &&
-              selectedJobDetails.equipments.length > 0 && (
-                <Card>
-                  <CardHeader className='py-3 px-4'>
-                    <CardTitle className='text-sm font-medium'>
-                      Equipment Details ({selectedJobDetails.equipments.length}{" "}
-                      containers)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className='pt-0 px-4 pb-3'>
-                    <div className='overflow-x-auto'>
-                      <table className='w-full text-xs'>
-                        <thead>
-                          <tr className='border-b bg-gray-50'>
-                            <th className='text-left py-2 px-2'>
-                              Container No
-                            </th>
-                            <th className='text-left py-2 px-2'>Type</th>
-                            <th className='text-left py-2 px-2'>Size</th>
-                            <th className='text-left py-2 px-2'>Seal No</th>
-                            <th className='text-left py-2 px-2'>Gate Out</th>
-                            <th className='text-left py-2 px-2'>Gate In</th>
-                            <th className='text-left py-2 px-2'>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedJobDetails.equipments.map((eq, index) => (
-                            <tr
-                              key={eq.jobEquipmentId}
-                              className='border-b hover:bg-gray-50'
-                            >
-                              <td className='py-2 px-2'>{eq.containerNo}</td>
-                              <td className='py-2 px-2'>
-                                {eq.containerTypeName || "N/A"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {eq.containerSizeName || "N/A"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {eq.sealNo || "N/A"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {eq.gateOutDate
-                                  ? new Date(
-                                      eq.gateOutDate
-                                    ).toLocaleDateString()
-                                  : "N/A"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {eq.gateInDate
-                                  ? new Date(eq.gateInDate).toLocaleDateString()
-                                  : "N/A"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {eq.status || "N/A"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+            {/* Weight & Additional Info */}
+            <div className='grid grid-cols-2 gap-4'>
+              <Card>
+                <CardHeader className='py-3 px-4'>
+                  <CardTitle className='text-sm font-medium'>
+                    Weight Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className='pt-0 px-4 pb-3'>
+                  <div className='space-y-1.5 text-xs'>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Gross Weight:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.grossWeight
+                          ? `${selectedJobDetails.grossWeight.toFixed(2)} kg`
+                          : "-"}
+                      </span>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Net Weight:</span>
+                      <span className='font-medium'>
+                        {selectedJobDetails.netWeight
+                          ? `${selectedJobDetails.netWeight.toFixed(2)} kg`
+                          : "-"}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Commodity Information */}
-            {selectedJobDetails.commodities &&
-              selectedJobDetails.commodities.length > 0 && (
-                <Card>
-                  <CardHeader className='py-3 px-4'>
-                    <CardTitle className='text-sm font-medium'>
-                      Commodity Details ({selectedJobDetails.commodities.length}{" "}
-                      items)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className='pt-0 px-4 pb-3'>
-                    <div className='overflow-x-auto'>
-                      <table className='w-full text-xs'>
-                        <thead>
-                          <tr className='border-b bg-gray-50'>
-                            <th className='text-left py-2 px-2'>Description</th>
-                            <th className='text-left py-2 px-2'>HS Code</th>
-                            <th className='text-left py-2 px-2'>
-                              Gross Weight
-                            </th>
-                            <th className='text-left py-2 px-2'>Net Weight</th>
-                            <th className='text-left py-2 px-2'>Volume</th>
-                            <th className='text-left py-2 px-2'>Value</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedJobDetails.commodities.map((comm, index) => (
-                            <tr
-                              key={comm.jobCommodityId}
-                              className='border-b hover:bg-gray-50'
-                            >
-                              <td className='py-2 px-2'>{comm.description}</td>
-                              <td className='py-2 px-2'>
-                                {comm.hsCode || "N/A"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {comm.grossWeight?.toFixed(2) || "0"} kg
-                              </td>
-                              <td className='py-2 px-2'>
-                                {comm.netWeight?.toFixed(2) || "0"} kg
-                              </td>
-                              <td className='py-2 px-2'>
-                                {comm.volumeCbm?.toFixed(2) || "0"} CBM
-                              </td>
-                              <td className='py-2 px-2'>
-                                {comm.declaredValueFC?.toFixed(2) || "0"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+              <Card>
+                <CardHeader className='py-3 px-4'>
+                  <CardTitle className='text-sm font-medium'>
+                    Other Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className='pt-0 px-4 pb-3'>
+                  <div className='space-y-1.5 text-xs'>
+                    {selectedJobDetails.insurance && (
+                      <div className='flex justify-between'>
+                        <span className='text-gray-600'>Insurance:</span>
+                        <span className='font-medium'>
+                          {selectedJobDetails.insurance}
+                        </span>
+                      </div>
+                    )}
+                    {selectedJobDetails.landing && (
+                      <div className='flex justify-between'>
+                        <span className='text-gray-600'>Landing:</span>
+                        <span className='font-medium'>
+                          {selectedJobDetails.landing}
+                        </span>
+                      </div>
+                    )}
+                    {selectedJobDetails.jobInvoiceExchRate && (
+                      <div className='flex justify-between'>
+                        <span className='text-gray-600'>
+                          Invoice Exch Rate:
+                        </span>
+                        <span className='font-medium'>
+                          {selectedJobDetails.jobInvoiceExchRate.toFixed(4)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
 
-            {/* Charges Information */}
-            {selectedJobDetails.charges &&
-              selectedJobDetails.charges.length > 0 && (
-                <Card>
-                  <CardHeader className='py-3 px-4'>
-                    <CardTitle className='text-sm font-medium'>
-                      Charge Details ({selectedJobDetails.charges.length} items)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className='pt-0 px-4 pb-3'>
-                    <div className='overflow-x-auto'>
-                      <table className='w-full text-xs'>
-                        <thead>
-                          <tr className='border-b bg-gray-50'>
-                            <th className='text-left py-2 px-2'>Charge</th>
-                            <th className='text-left py-2 px-2'>Basis</th>
-                            <th className='text-left py-2 px-2'>Price FC</th>
-                            <th className='text-left py-2 px-2'>Amount FC</th>
-                            <th className='text-left py-2 px-2'>Tax</th>
-                            <th className='text-left py-2 px-2'>Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedJobDetails.charges.map((charge, index) => (
-                            <tr
-                              key={charge.jobChargeId}
-                              className='border-b hover:bg-gray-50'
-                            >
-                              <td className='py-2 px-2'>
-                                {charge.chargeName || "N/A"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {charge.chargeBasis || "N/A"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {charge.priceFC?.toFixed(2) || "0"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {charge.amountFC?.toFixed(2) || "0"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {charge.taxFC?.toFixed(2) || "0"}
-                              </td>
-                              <td className='py-2 px-2'>
-                                {(
-                                  (charge.amountFC || 0) + (charge.taxFC || 0)
-                                ).toFixed(2)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+            {/* Purchase Order Information */}
+            {(selectedJobDetails.poCustomDuty ||
+              selectedJobDetails.poWharfage ||
+              selectedJobDetails.poExciseDuty ||
+              selectedJobDetails.poDeliveryOrder ||
+              selectedJobDetails.poSecurityDeposite ||
+              selectedJobDetails.poSASAdvance) && (
+              <Card>
+                <CardHeader className='py-3 px-4'>
+                  <CardTitle className='text-sm font-medium'>
+                    Purchase Order Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className='pt-0 px-4 pb-3'>
+                  <div className='grid grid-cols-3 gap-4 text-xs'>
+                    {selectedJobDetails.poReceivedOn && (
+                      <div>
+                        <span className='text-gray-600'>PO Received On: </span>
+                        <span className='font-medium'>
+                          {new Date(
+                            selectedJobDetails.poReceivedOn
+                          ).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                    {selectedJobDetails.poCustomDuty && (
+                      <div>
+                        <span className='text-gray-600'>Custom Duty: </span>
+                        <span className='font-medium'>
+                          {selectedJobDetails.poCustomDuty.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {selectedJobDetails.poWharfage && (
+                      <div>
+                        <span className='text-gray-600'>Wharfage: </span>
+                        <span className='font-medium'>
+                          {selectedJobDetails.poWharfage.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {selectedJobDetails.poExciseDuty && (
+                      <div>
+                        <span className='text-gray-600'>Excise Duty: </span>
+                        <span className='font-medium'>
+                          {selectedJobDetails.poExciseDuty.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {selectedJobDetails.poDeliveryOrder && (
+                      <div>
+                        <span className='text-gray-600'>Delivery Order: </span>
+                        <span className='font-medium'>
+                          {selectedJobDetails.poDeliveryOrder.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {selectedJobDetails.poSecurityDeposite && (
+                      <div>
+                        <span className='text-gray-600'>
+                          Security Deposit:{" "}
+                        </span>
+                        <span className='font-medium'>
+                          {selectedJobDetails.poSecurityDeposite.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {selectedJobDetails.poSASAdvance && (
+                      <div>
+                        <span className='text-gray-600'>SAS Advance: </span>
+                        <span className='font-medium'>
+                          {selectedJobDetails.poSASAdvance.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Additional Information */}
             {(selectedJobDetails.jobDescription ||
@@ -1704,6 +1960,16 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                       </h4>
                       <p className='text-xs text-gray-600 whitespace-pre-wrap'>
                         {selectedJobDetails.remarks}
+                      </p>
+                    </div>
+                  )}
+                  {selectedJobDetails.dispatchAddress && (
+                    <div>
+                      <h4 className='text-xs font-semibold text-gray-700 mb-1'>
+                        Dispatch Address
+                      </h4>
+                      <p className='text-xs text-gray-600 whitespace-pre-wrap'>
+                        {selectedJobDetails.dispatchAddress}
                       </p>
                     </div>
                   )}
@@ -1859,6 +2125,52 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
           </Card>
         </div>
 
+        <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
+          <Card className='border border-teal-200 shadow-sm'>
+            <CardHeader className='pb-2 pt-3 px-4'>
+              <CardTitle className='text-xs font-medium text-teal-700 uppercase tracking-wide'>
+                Freight Forwarding
+              </CardTitle>
+              <div className='text-2xl font-bold text-teal-900 mt-1'>
+                {stats.freightForwardingJobs}
+              </div>
+            </CardHeader>
+            <CardContent className='pt-0 pb-3 px-4'>
+              <div className='text-xs text-gray-600'>FF services</div>
+            </CardContent>
+          </Card>
+
+          <Card className='border border-orange-200 shadow-sm'>
+            <CardHeader className='pb-2 pt-3 px-4'>
+              <CardTitle className='text-xs font-medium text-orange-700 uppercase tracking-wide'>
+                Clearance
+              </CardTitle>
+              <div className='text-2xl font-bold text-orange-900 mt-1'>
+                {stats.clearanceJobs}
+              </div>
+            </CardHeader>
+            <CardContent className='pt-0 pb-3 px-4'>
+              <div className='text-xs text-gray-600'>Customs clearance</div>
+            </CardContent>
+          </Card>
+
+          <Card className='border border-pink-200 shadow-sm'>
+            <CardHeader className='pb-2 pt-3 px-4'>
+              <CardTitle className='text-xs font-medium text-pink-700 uppercase tracking-wide'>
+                Transport
+              </CardTitle>
+              <div className='text-2xl font-bold text-pink-900 mt-1'>
+                {stats.transporterJobs}
+              </div>
+            </CardHeader>
+            <CardContent className='pt-0 pb-3 px-4'>
+              <div className='text-xs text-gray-600'>
+                Transportation services
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card className='border shadow-sm'>
           <CardHeader className='pb-3 pt-4 px-4'>
             <CardTitle className='text-sm font-semibold text-gray-900'>
@@ -1993,7 +2305,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                 <FiSearch className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
                 <Input
                   type='text'
-                  placeholder='Search by Job No, Party, Vessel, IGM...'
+                  placeholder='Search by Job No, Shipper, Vessel, IGM...'
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   className='pl-9 pr-9 py-1.5 text-sm h-9'

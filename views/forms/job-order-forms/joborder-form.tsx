@@ -12,7 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import Select from "react-select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, Plus, Trash2, X } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, X, Package } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -139,9 +139,26 @@ const invoiceSchema = z.object({
   fiExpiryDate: z.string().optional(),
 });
 
+// Invoice Item/Commodity Schema
+const invoiceItemSchema = z.object({
+  invoiceItemId: z.number().optional(),
+  itemId: z.number().optional(),
+  hsCode: z.string().min(1, "HS Code required"),
+  description: z.string().min(1, "Description required"),
+  quantity: z.number().min(0).default(0),
+  unitPrice: z.number().min(0).default(0),
+  totalPrice: z.number().min(0).default(0),
+  weight: z.number().min(0).default(0),
+  netWeight: z.number().min(0).default(0),
+  packageType: z.string().optional(),
+  packages: z.number().min(0).default(0),
+  currencyId: z.number().optional(),
+});
+
 type JobMasterFormValues = z.infer<typeof jobMasterSchema>;
 type FclContainerFormValues = z.infer<typeof fclContainerSchema>;
 type InvoiceFormValues = z.infer<typeof invoiceSchema>;
+type InvoiceItemFormValues = z.infer<typeof invoiceItemSchema>;
 
 export default function JobOrderForm({
   type,
@@ -165,6 +182,8 @@ export default function JobOrderForm({
   const [locations, setLocations] = useState<any[]>([]);
   const [currencies, setCurrencies] = useState<any[]>([]);
   const [vessels, setVessels] = useState<any[]>([]);
+  const [hsCodes, setHsCodes] = useState<any[]>([]);
+  const [units, setUnits] = useState<any[]>([]);
 
   // Loading states
   const [loadingParties, setLoadingParties] = useState(false);
@@ -173,17 +192,24 @@ export default function JobOrderForm({
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
   const [loadingVessels, setLoadingVessels] = useState(false);
+  const [loadingHsCodes, setLoadingHsCodes] = useState(false);
+  const [loadingUnits, setLoadingUnits] = useState(false);
 
   // Child records
   const [fclContainers, setFclContainers] = useState<FclContainerFormValues[]>(
     []
   );
   const [invoices, setInvoices] = useState<InvoiceFormValues[]>([]);
+  const [invoiceItems, setInvoiceItems] = useState<InvoiceItemFormValues[]>([]);
 
   // Form visibility
   const [showFclForm, setShowFclForm] = useState(false);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [showInvoiceItemForm, setShowInvoiceItemForm] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<number | null>(null);
+  const [editingInvoiceItem, setEditingInvoiceItem] = useState<number | null>(
+    null
+  );
 
   const form = useForm<JobMasterFormValues>({
     resolver: zodResolver(jobMasterSchema),
@@ -209,6 +235,18 @@ export default function JobOrderForm({
   const invoiceForm = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceSchema),
     defaultValues: { lcValue: 0 },
+  });
+
+  const invoiceItemForm = useForm<InvoiceItemFormValues>({
+    resolver: zodResolver(invoiceItemSchema),
+    defaultValues: {
+      quantity: 0,
+      unitPrice: 0,
+      totalPrice: 0,
+      weight: 0,
+      netWeight: 0,
+      packages: 0,
+    },
   });
 
   // Watch for changes
@@ -436,6 +474,74 @@ export default function JobOrderForm({
     }
   };
 
+  const fetchHsCodes = async () => {
+    setLoadingHsCodes(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(`${baseUrl}Commodity/GetList`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          select: "CommodityId,HSCODE,Description",
+          where: "IsActive == true",
+          sortOn: "HSCODE",
+          page: "1",
+          pageSize: "1000",
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          setHsCodes(
+            data.map((c: any) => ({
+              value: c.commodityId,
+              label: `${c.hscode} - ${c.description}`,
+              hscode: c.hscode,
+              description: c.description,
+            }))
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching HS codes:", error);
+    } finally {
+      setLoadingHsCodes(false);
+    }
+  };
+
+  const fetchUnits = async () => {
+    setLoadingUnits(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(`${baseUrl}SetupUnit/GetList`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          select: "UnitId,UnitName,UnitCode",
+          where: "IsActive == true",
+          sortOn: "UnitName",
+          page: "1",
+          pageSize: "100",
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          setUnits(
+            data.map((u: any) => ({
+              value: u.unitId,
+              label: u.unitName,
+            }))
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching units:", error);
+    } finally {
+      setLoadingUnits(false);
+    }
+  };
+
   useEffect(() => {
     fetchParties();
     fetchContainerTypes();
@@ -443,6 +549,8 @@ export default function JobOrderForm({
     fetchLocations();
     fetchCurrencies();
     fetchVessels();
+    fetchHsCodes();
+    fetchUnits();
   }, []);
 
   // Generate job number on mount for add mode
@@ -486,6 +594,19 @@ export default function JobOrderForm({
     }
   }, [shipperId, consigneeId, parties, form]);
 
+  // Calculate total price when quantity or unit price changes
+  useEffect(() => {
+    const subscription = invoiceItemForm.watch((value, { name }) => {
+      if (name === "quantity" || name === "unitPrice") {
+        const quantity = invoiceItemForm.getValues("quantity") || 0;
+        const unitPrice = invoiceItemForm.getValues("unitPrice") || 0;
+        const totalPrice = quantity * unitPrice;
+        invoiceItemForm.setValue("totalPrice", totalPrice);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [invoiceItemForm]);
+
   // Handlers for child records
   const handleAddFcl = (data: FclContainerFormValues) => {
     setFclContainers([...fclContainers, data]);
@@ -523,6 +644,47 @@ export default function JobOrderForm({
   const handleDeleteInvoice = (index: number) => {
     setInvoices(invoices.filter((_, i) => i !== index));
     toast({ title: "Success", description: "Invoice deleted" });
+  };
+
+  const handleAddInvoiceItem = (data: InvoiceItemFormValues) => {
+    if (editingInvoiceItem !== null) {
+      const updated = [...invoiceItems];
+      updated[editingInvoiceItem] = data;
+      setInvoiceItems(updated);
+      toast({ title: "Success", description: "Invoice item updated" });
+    } else {
+      setInvoiceItems([...invoiceItems, data]);
+      toast({ title: "Success", description: "Invoice item added" });
+    }
+    invoiceItemForm.reset({
+      quantity: 0,
+      unitPrice: 0,
+      totalPrice: 0,
+      weight: 0,
+      netWeight: 0,
+      packages: 0,
+    });
+    setShowInvoiceItemForm(false);
+    setEditingInvoiceItem(null);
+  };
+
+  const handleEditInvoiceItem = (index: number) => {
+    setEditingInvoiceItem(index);
+    invoiceItemForm.reset(invoiceItems[index]);
+    setShowInvoiceItemForm(true);
+  };
+
+  const handleDeleteInvoiceItem = (index: number) => {
+    setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
+    toast({ title: "Success", description: "Invoice item deleted" });
+  };
+
+  const handleHsCodeSelect = (selectedOption: any) => {
+    if (selectedOption) {
+      invoiceItemForm.setValue("hsCode", selectedOption.hscode);
+      invoiceItemForm.setValue("description", selectedOption.description);
+      invoiceItemForm.setValue("itemId", selectedOption.value);
+    }
   };
 
   const onSubmit = async (values: JobMasterFormValues) => {
@@ -615,6 +777,22 @@ export default function JobOrderForm({
             : null,
           version: 0,
         })),
+        // Add invoice items to payload
+        jobInvoiceDetails: invoiceItems.map((item) => ({
+          jobInvoiceDetailId: item.invoiceItemId || 0,
+          commodityId: item.itemId || null,
+          hsCode: item.hsCode || "",
+          description: item.description || "",
+          quantity: item.quantity || 0,
+          unitPrice: item.unitPrice || 0,
+          totalPrice: item.totalPrice || 0,
+          weight: item.weight || 0,
+          netWeight: item.netWeight || 0,
+          packageType: item.packageType || "",
+          packages: item.packages || 0,
+          currencyId: item.currencyId || null,
+          version: 0,
+        })),
       };
 
       if (type === "edit" && values.jobId) {
@@ -681,6 +859,7 @@ export default function JobOrderForm({
             {type === "edit" ? "Edit Job Order" : "New Job Order"}
           </h1>
           <Button
+            type='button'
             variant='ghost'
             size='sm'
             onClick={() => router.back()}
@@ -1766,159 +1945,164 @@ export default function JobOrderForm({
                         {showFclForm && (
                           <Card className='mb-3 border-green-200'>
                             <CardContent className='p-3'>
-                              <div className='grid grid-cols-7 gap-2 mb-2'>
-                                <FormField
-                                  control={fclForm.control}
-                                  name='containerNo'
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel className='text-xs'>
-                                        Container No.
-                                      </FormLabel>
-                                      <FormControl>
-                                        <Input
-                                          {...field}
-                                          className='h-8 text-xs'
-                                        />
-                                      </FormControl>
-                                    </FormItem>
-                                  )}
-                                />
+                              <div className='space-y-3'>
+                                <div className='grid grid-cols-7 gap-2 mb-2'>
+                                  <FormField
+                                    control={fclForm.control}
+                                    name='containerNo'
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel className='text-xs'>
+                                          Container No.
+                                        </FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            {...field}
+                                            className='h-8 text-xs'
+                                          />
+                                        </FormControl>
+                                      </FormItem>
+                                    )}
+                                  />
 
-                                <FormField
-                                  control={fclForm.control}
-                                  name='containerSizeId'
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel className='text-xs'>
-                                        Container Size
-                                      </FormLabel>
-                                      <FormControl>
-                                        <Select
-                                          options={containerSizes}
-                                          value={containerSizes.find(
-                                            (s) => s.value === field.value
-                                          )}
-                                          onChange={(val) =>
-                                            field.onChange(val?.value)
-                                          }
-                                          styles={compactSelectStyles}
-                                          isClearable
-                                          placeholder='Fill from API'
-                                        />
-                                      </FormControl>
-                                      <FormLabel className='text-xs text-gray-500'>
-                                        Fill from API
-                                      </FormLabel>
-                                    </FormItem>
-                                  )}
-                                />
+                                  <FormField
+                                    control={fclForm.control}
+                                    name='containerSizeId'
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel className='text-xs'>
+                                          Container Size
+                                        </FormLabel>
+                                        <FormControl>
+                                          <Select
+                                            options={containerSizes}
+                                            value={containerSizes.find(
+                                              (s) => s.value === field.value
+                                            )}
+                                            onChange={(val) =>
+                                              field.onChange(val?.value)
+                                            }
+                                            styles={compactSelectStyles}
+                                            isClearable
+                                            placeholder='Fill from API'
+                                          />
+                                        </FormControl>
+                                        <FormLabel className='text-xs text-gray-500'>
+                                          Fill from API
+                                        </FormLabel>
+                                      </FormItem>
+                                    )}
+                                  />
 
-                                <FormField
-                                  control={fclForm.control}
-                                  name='containerTypeId'
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel className='text-xs'>
-                                        Container Type
-                                      </FormLabel>
-                                      <FormControl>
-                                        <Select
-                                          options={containerTypes}
-                                          value={containerTypes.find(
-                                            (t) => t.value === field.value
-                                          )}
-                                          onChange={(val) =>
-                                            field.onChange(val?.value)
-                                          }
-                                          styles={compactSelectStyles}
-                                          isClearable
-                                          placeholder='Fill from API'
-                                        />
-                                      </FormControl>
-                                      <FormLabel className='text-xs text-gray-500'>
-                                        Fill from API
-                                      </FormLabel>
-                                    </FormItem>
-                                  )}
-                                />
+                                  <FormField
+                                    control={fclForm.control}
+                                    name='containerTypeId'
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel className='text-xs'>
+                                          Container Type
+                                        </FormLabel>
+                                        <FormControl>
+                                          <Select
+                                            options={containerTypes}
+                                            value={containerTypes.find(
+                                              (t) => t.value === field.value
+                                            )}
+                                            onChange={(val) =>
+                                              field.onChange(val?.value)
+                                            }
+                                            styles={compactSelectStyles}
+                                            isClearable
+                                            placeholder='Fill from API'
+                                          />
+                                        </FormControl>
+                                        <FormLabel className='text-xs text-gray-500'>
+                                          Fill from API
+                                        </FormLabel>
+                                      </FormItem>
+                                    )}
+                                  />
 
-                                <FormField
-                                  control={fclForm.control}
-                                  name='weight'
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel className='text-xs'>
-                                        Weight
-                                      </FormLabel>
-                                      <FormControl>
-                                        <Input
-                                          type='number'
-                                          step='0.0001'
-                                          {...field}
-                                          onChange={(e) =>
-                                            field.onChange(
-                                              parseFloat(e.target.value) || 0
-                                            )
-                                          }
-                                          className='h-8 text-xs'
-                                        />
-                                      </FormControl>
-                                    </FormItem>
-                                  )}
-                                />
+                                  <FormField
+                                    control={fclForm.control}
+                                    name='weight'
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel className='text-xs'>
+                                          Weight
+                                        </FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            type='number'
+                                            step='0.0001'
+                                            {...field}
+                                            onChange={(e) =>
+                                              field.onChange(
+                                                parseFloat(e.target.value) || 0
+                                              )
+                                            }
+                                            className='h-8 text-xs'
+                                          />
+                                        </FormControl>
+                                      </FormItem>
+                                    )}
+                                  />
 
-                                <FormField
-                                  control={fclForm.control}
-                                  name='noOfPackages'
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel className='text-xs'>
-                                        No. of Packages
-                                      </FormLabel>
-                                      <FormControl>
-                                        <Input
-                                          type='number'
-                                          {...field}
-                                          onChange={(e) =>
-                                            field.onChange(
-                                              Number(e.target.value)
-                                            )
-                                          }
-                                          className='h-8 text-xs'
-                                        />
-                                      </FormControl>
-                                    </FormItem>
-                                  )}
-                                />
+                                  <FormField
+                                    control={fclForm.control}
+                                    name='noOfPackages'
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel className='text-xs'>
+                                          No. of Packages
+                                        </FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            type='number'
+                                            {...field}
+                                            onChange={(e) =>
+                                              field.onChange(
+                                                Number(e.target.value)
+                                              )
+                                            }
+                                            className='h-8 text-xs'
+                                          />
+                                        </FormControl>
+                                      </FormItem>
+                                    )}
+                                  />
 
-                                <FormField
-                                  control={fclForm.control}
-                                  name='packageType'
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel className='text-xs'>
-                                        Package Type
-                                      </FormLabel>
-                                      <FormControl>
-                                        <Input
-                                          {...field}
-                                          className='h-8 text-xs'
-                                        />
-                                      </FormControl>
-                                    </FormItem>
-                                  )}
-                                />
+                                  <FormField
+                                    control={fclForm.control}
+                                    name='packageType'
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel className='text-xs'>
+                                          Package Type
+                                        </FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            {...field}
+                                            className='h-8 text-xs'
+                                          />
+                                        </FormControl>
+                                      </FormItem>
+                                    )}
+                                  />
 
-                                <div className='flex items-end'>
-                                  <Button
-                                    type='button'
-                                    onClick={fclForm.handleSubmit(handleAddFcl)}
-                                    size='sm'
-                                    className='h-8 text-xs w-full'
-                                  >
-                                    Add
-                                  </Button>
+                                  <div className='flex items-end'>
+                                    <Button
+                                      type='button'
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        fclForm.handleSubmit(handleAddFcl)();
+                                      }}
+                                      size='sm'
+                                      className='h-8 text-xs w-full'
+                                    >
+                                      Add
+                                    </Button>
+                                  </div>
                                 </div>
                               </div>
                             </CardContent>
@@ -2052,24 +2236,49 @@ export default function JobOrderForm({
                   </CardContent>
                 </Card>
               </TabsContent>
+
               {/* Invoice Details Tab */}
               <TabsContent value='invoice' className='mt-0'>
                 <Card>
                   <CardHeader className='py-3 px-4 bg-blue-50 flex flex-row items-center justify-between'>
-                    <CardTitle className='text-base'>Invoice Details</CardTitle>
-                    <Button
-                      type='button'
-                      size='sm'
-                      onClick={() => {
-                        setShowInvoiceForm(!showInvoiceForm);
-                        setEditingInvoice(null);
-                        invoiceForm.reset({ lcValue: 0 });
-                      }}
-                      className='h-7 text-xs'
-                    >
-                      <Plus className='h-3 w-3 mr-1' />
-                      Add Invoice
-                    </Button>
+                    <CardTitle className='text-base'>
+                      Invoice Details (Multiple Invoices Supported)
+                    </CardTitle>
+                    <div className='flex gap-2'>
+                      <Button
+                        type='button'
+                        size='sm'
+                        onClick={() => {
+                          setShowInvoiceItemForm(!showInvoiceItemForm);
+                          setEditingInvoiceItem(null);
+                          invoiceItemForm.reset({
+                            quantity: 0,
+                            unitPrice: 0,
+                            totalPrice: 0,
+                            weight: 0,
+                            netWeight: 0,
+                            packages: 0,
+                          });
+                        }}
+                        className='h-7 text-xs'
+                      >
+                        <Package className='h-3 w-3 mr-1' />
+                        Add Commodity
+                      </Button>
+                      <Button
+                        type='button'
+                        size='sm'
+                        onClick={() => {
+                          setShowInvoiceForm(!showInvoiceForm);
+                          setEditingInvoice(null);
+                          invoiceForm.reset({ lcValue: 0 });
+                        }}
+                        className='h-7 text-xs'
+                      >
+                        <Plus className='h-3 w-3 mr-1' />
+                        Add Invoice
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className='p-4'>
                     {showInvoiceForm && (
@@ -2080,7 +2289,7 @@ export default function JobOrderForm({
                             <div className='grid grid-cols-12 gap-2 items-center'>
                               <div className='col-span-2'>
                                 <FormLabel className='text-xs'>
-                                  Invoice No.
+                                  Invoice No. (+)
                                 </FormLabel>
                               </div>
                               <div className='col-span-2'>
@@ -2395,9 +2604,10 @@ export default function JobOrderForm({
                           <div className='flex gap-2 mt-3'>
                             <Button
                               type='button'
-                              onClick={invoiceForm.handleSubmit(
-                                handleAddInvoice
-                              )}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                invoiceForm.handleSubmit(handleAddInvoice)();
+                              }}
                               size='sm'
                               className='h-7 text-xs'
                             >
@@ -2423,78 +2633,575 @@ export default function JobOrderForm({
                       </Card>
                     )}
 
-                    {invoices.length > 0 ? (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className='text-xs'>
-                              Invoice No.
-                            </TableHead>
-                            <TableHead className='text-xs'>Date</TableHead>
-                            <TableHead className='text-xs'>Issued By</TableHead>
-                            <TableHead className='text-xs'>LC No.</TableHead>
-                            <TableHead className='text-xs'>LC Value</TableHead>
-                            <TableHead className='text-xs'>FI No.</TableHead>
-                            <TableHead className='text-xs'>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {invoices.map((inv, idx) => (
-                            <TableRow key={idx}>
-                              <TableCell className='text-xs'>
-                                {inv.invoiceNumber || "-"}
-                              </TableCell>
-                              <TableCell className='text-xs'>
-                                {inv.invoiceDate
-                                  ? new Date(
-                                      inv.invoiceDate
-                                    ).toLocaleDateString()
-                                  : "-"}
-                              </TableCell>
-                              <TableCell className='text-xs'>
-                                {inv.invoiceIssuedBy || "-"}
-                              </TableCell>
-                              <TableCell className='text-xs'>
-                                {inv.lcNumber || "-"}
-                              </TableCell>
-                              <TableCell className='text-xs'>
-                                {inv.lcValue || 0}
-                              </TableCell>
-                              <TableCell className='text-xs'>
-                                {inv.fiNumber || "-"}
-                              </TableCell>
-                              <TableCell>
-                                <div className='flex gap-1'>
-                                  <Button
-                                    type='button'
-                                    variant='ghost'
-                                    size='sm'
-                                    onClick={() => handleEditInvoice(idx)}
-                                    className='h-6 w-6 p-0'
-                                  >
-                                    <Save className='h-3 w-3 text-blue-600' />
-                                  </Button>
-                                  <Button
-                                    type='button'
-                                    variant='ghost'
-                                    size='sm'
-                                    onClick={() => handleDeleteInvoice(idx)}
-                                    className='h-6 w-6 p-0'
-                                  >
-                                    <Trash2 className='h-3 w-3 text-red-600' />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    ) : (
-                      <div className='text-center py-8 text-sm text-gray-500'>
-                        No invoices added. Click + Add Invoice to add multiple
-                        invoices.
-                      </div>
+                    {showInvoiceItemForm && (
+                      <Card className='mb-4 border-blue-200'>
+                        <CardContent className='p-3'>
+                          <div className='space-y-3'>
+                            <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
+                              <div className='col-span-2'>
+                                <FormLabel className='text-xs'>
+                                  HS Code
+                                </FormLabel>
+                              </div>
+                              <div className='col-span-4'>
+                                <FormField
+                                  control={invoiceItemForm.control}
+                                  name='itemId'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Select
+                                          options={hsCodes}
+                                          value={hsCodes.find(
+                                            (h) => h.value === field.value
+                                          )}
+                                          onChange={(val) => {
+                                            field.onChange(val?.value);
+                                            handleHsCodeSelect(val);
+                                          }}
+                                          styles={compactSelectStyles}
+                                          isLoading={loadingHsCodes}
+                                          isClearable
+                                          placeholder='Search/Select HS Code'
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                            </div>
+
+                            <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
+                              <div className='col-span-2'>
+                                <FormLabel className='text-xs'>
+                                  HS Code
+                                </FormLabel>
+                              </div>
+                              <div className='col-span-4'>
+                                <FormField
+                                  control={invoiceItemForm.control}
+                                  name='hsCode'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          {...field}
+                                          className='h-8 text-xs'
+                                          placeholder='HS Code will auto-fill'
+                                          readOnly
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                            </div>
+
+                            <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
+                              <div className='col-span-2'>
+                                <FormLabel className='text-xs'>
+                                  Description
+                                </FormLabel>
+                              </div>
+                              <div className='col-span-8'>
+                                <FormField
+                                  control={invoiceItemForm.control}
+                                  name='description'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Textarea
+                                          {...field}
+                                          className='h-20 text-xs'
+                                          placeholder='Commodity description'
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                            </div>
+
+                            <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
+                              <div className='col-span-2'>
+                                <FormLabel className='text-xs'>
+                                  Quantity
+                                </FormLabel>
+                              </div>
+                              <div className='col-span-2'>
+                                <FormField
+                                  control={invoiceItemForm.control}
+                                  name='quantity'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          type='number'
+                                          step='0.01'
+                                          {...field}
+                                          onChange={(e) =>
+                                            field.onChange(
+                                              Number(e.target.value)
+                                            )
+                                          }
+                                          className='h-8 text-xs'
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+
+                              <div className='col-span-2 text-right'>
+                                <FormLabel className='text-xs'>
+                                  Unit Price
+                                </FormLabel>
+                              </div>
+                              <div className='col-span-2'>
+                                <FormField
+                                  control={invoiceItemForm.control}
+                                  name='unitPrice'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          type='number'
+                                          step='0.01'
+                                          {...field}
+                                          onChange={(e) =>
+                                            field.onChange(
+                                              Number(e.target.value)
+                                            )
+                                          }
+                                          className='h-8 text-xs'
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+
+                              <div className='col-span-2 text-right'>
+                                <FormLabel className='text-xs'>
+                                  Total Price
+                                </FormLabel>
+                              </div>
+                              <div className='col-span-2'>
+                                <FormField
+                                  control={invoiceItemForm.control}
+                                  name='totalPrice'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          type='number'
+                                          step='0.01'
+                                          {...field}
+                                          className='h-8 text-xs bg-gray-50'
+                                          readOnly
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                            </div>
+
+                            <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
+                              <div className='col-span-2'>
+                                <FormLabel className='text-xs'>
+                                  Weight (KG)
+                                </FormLabel>
+                              </div>
+                              <div className='col-span-2'>
+                                <FormField
+                                  control={invoiceItemForm.control}
+                                  name='weight'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          type='number'
+                                          step='0.01'
+                                          {...field}
+                                          onChange={(e) =>
+                                            field.onChange(
+                                              Number(e.target.value)
+                                            )
+                                          }
+                                          className='h-8 text-xs'
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+
+                              <div className='col-span-2 text-right'>
+                                <FormLabel className='text-xs'>
+                                  Net Weight (KG)
+                                </FormLabel>
+                              </div>
+                              <div className='col-span-2'>
+                                <FormField
+                                  control={invoiceItemForm.control}
+                                  name='netWeight'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          type='number'
+                                          step='0.01'
+                                          {...field}
+                                          onChange={(e) =>
+                                            field.onChange(
+                                              Number(e.target.value)
+                                            )
+                                          }
+                                          className='h-8 text-xs'
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                            </div>
+
+                            <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
+                              <div className='col-span-2'>
+                                <FormLabel className='text-xs'>
+                                  Package Type
+                                </FormLabel>
+                              </div>
+                              <div className='col-span-2'>
+                                <FormField
+                                  control={invoiceItemForm.control}
+                                  name='packageType'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          {...field}
+                                          className='h-8 text-xs'
+                                          placeholder='e.g., Cartons, Boxes'
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+
+                              <div className='col-span-2 text-right'>
+                                <FormLabel className='text-xs'>
+                                  No. of Packages
+                                </FormLabel>
+                              </div>
+                              <div className='col-span-2'>
+                                <FormField
+                                  control={invoiceItemForm.control}
+                                  name='packages'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          type='number'
+                                          {...field}
+                                          onChange={(e) =>
+                                            field.onChange(
+                                              Number(e.target.value)
+                                            )
+                                          }
+                                          className='h-8 text-xs'
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+
+                              <div className='col-span-2 text-right'>
+                                <FormLabel className='text-xs'>
+                                  Currency
+                                </FormLabel>
+                              </div>
+                              <div className='col-span-2'>
+                                <FormField
+                                  control={invoiceItemForm.control}
+                                  name='currencyId'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Select
+                                          options={currencies}
+                                          value={currencies.find(
+                                            (c) => c.value === field.value
+                                          )}
+                                          onChange={(val) =>
+                                            field.onChange(val?.value)
+                                          }
+                                          styles={compactSelectStyles}
+                                          isClearable
+                                          placeholder='Select currency'
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className='flex gap-2 mt-3'>
+                            <Button
+                              type='button'
+                              onClick={(e) => {
+                                e.preventDefault();
+                                invoiceItemForm.handleSubmit(
+                                  handleAddInvoiceItem
+                                )();
+                              }}
+                              size='sm'
+                              className='h-7 text-xs'
+                            >
+                              <Save className='h-3 w-3 mr-1' />
+                              {editingInvoiceItem !== null
+                                ? "Update"
+                                : "Add"}{" "}
+                              Item
+                            </Button>
+                            <Button
+                              type='button'
+                              variant='outline'
+                              size='sm'
+                              onClick={() => {
+                                setShowInvoiceItemForm(false);
+                                setEditingInvoiceItem(null);
+                                invoiceItemForm.reset({
+                                  quantity: 0,
+                                  unitPrice: 0,
+                                  totalPrice: 0,
+                                  weight: 0,
+                                  netWeight: 0,
+                                  packages: 0,
+                                });
+                              }}
+                              className='h-7 text-xs'
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
                     )}
+
+                    {/* Invoice Items/Commodities Table */}
+                    <div className='mb-6'>
+                      <div className='flex items-center justify-between mb-3'>
+                        <div className='text-sm font-semibold text-gray-700'>
+                          Invoice Items/Commodities (HS Code Details)
+                        </div>
+                        <div className='text-xs text-gray-500'>
+                          {invoiceItems.length} item(s) added
+                        </div>
+                      </div>
+
+                      {invoiceItems.length > 0 ? (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className='text-xs'>HS Code</TableHead>
+                              <TableHead className='text-xs'>
+                                Description
+                              </TableHead>
+                              <TableHead className='text-xs'>
+                                Quantity
+                              </TableHead>
+                              <TableHead className='text-xs'>
+                                Unit Price
+                              </TableHead>
+                              <TableHead className='text-xs'>
+                                Total Price
+                              </TableHead>
+                              <TableHead className='text-xs'>
+                                Weight (KG)
+                              </TableHead>
+                              <TableHead className='text-xs'>
+                                Packages
+                              </TableHead>
+                              <TableHead className='text-xs'>Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {invoiceItems.map((item, idx) => (
+                              <TableRow key={idx}>
+                                <TableCell className='text-xs'>
+                                  {item.hsCode}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {item.description}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {item.quantity}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {item.unitPrice.toFixed(2)}
+                                </TableCell>
+                                <TableCell className='text-xs font-medium'>
+                                  {item.totalPrice.toFixed(2)}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {item.weight}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {item.packages}
+                                </TableCell>
+                                <TableCell>
+                                  <div className='flex gap-1'>
+                                    <Button
+                                      type='button'
+                                      variant='ghost'
+                                      size='sm'
+                                      onClick={() => handleEditInvoiceItem(idx)}
+                                      className='h-6 w-6 p-0'
+                                    >
+                                      <Save className='h-3 w-3 text-blue-600' />
+                                    </Button>
+                                    <Button
+                                      type='button'
+                                      variant='ghost'
+                                      size='sm'
+                                      onClick={() =>
+                                        handleDeleteInvoiceItem(idx)
+                                      }
+                                      className='h-6 w-6 p-0'
+                                    >
+                                      <Trash2 className='h-3 w-3 text-red-600' />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                          {/* Summary Row */}
+                          <TableRow className='bg-gray-50'>
+                            <TableCell
+                              colSpan={4}
+                              className='text-xs font-bold'
+                            >
+                              TOTAL
+                            </TableCell>
+                            <TableCell className='text-xs font-bold'>
+                              {invoiceItems
+                                .reduce((sum, item) => sum + item.totalPrice, 0)
+                                .toFixed(2)}
+                            </TableCell>
+                            <TableCell className='text-xs font-bold'>
+                              {invoiceItems
+                                .reduce((sum, item) => sum + item.weight, 0)
+                                .toFixed(2)}
+                            </TableCell>
+                            <TableCell className='text-xs font-bold'>
+                              {invoiceItems.reduce(
+                                (sum, item) => sum + item.packages,
+                                0
+                              )}
+                            </TableCell>
+                            <TableCell></TableCell>
+                          </TableRow>
+                        </Table>
+                      ) : (
+                        <div className='text-center py-8 text-sm text-gray-500'>
+                          No invoice items added. Click Add Commodity to add HS
+                          Code details.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Existing Invoices Table */}
+                    <div className='mb-6'>
+                      <div className='text-sm font-semibold text-gray-700 mb-3'>
+                        Invoices
+                      </div>
+                      {invoices.length > 0 ? (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className='text-xs'>
+                                Invoice No.
+                              </TableHead>
+                              <TableHead className='text-xs'>Date</TableHead>
+                              <TableHead className='text-xs'>
+                                Issued By
+                              </TableHead>
+                              <TableHead className='text-xs'>LC No.</TableHead>
+                              <TableHead className='text-xs'>
+                                LC Value
+                              </TableHead>
+                              <TableHead className='text-xs'>FI No.</TableHead>
+                              <TableHead className='text-xs'>Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {invoices.map((inv, idx) => (
+                              <TableRow key={idx}>
+                                <TableCell className='text-xs'>
+                                  {inv.invoiceNumber || "-"}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {inv.invoiceDate
+                                    ? new Date(
+                                        inv.invoiceDate
+                                      ).toLocaleDateString()
+                                    : "-"}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {inv.invoiceIssuedBy || "-"}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {inv.lcNumber || "-"}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {inv.lcValue || 0}
+                                </TableCell>
+                                <TableCell className='text-xs'>
+                                  {inv.fiNumber || "-"}
+                                </TableCell>
+                                <TableCell>
+                                  <div className='flex gap-1'>
+                                    <Button
+                                      type='button'
+                                      variant='ghost'
+                                      size='sm'
+                                      onClick={() => handleEditInvoice(idx)}
+                                      className='h-6 w-6 p-0'
+                                    >
+                                      <Save className='h-3 w-3 text-blue-600' />
+                                    </Button>
+                                    <Button
+                                      type='button'
+                                      variant='ghost'
+                                      size='sm'
+                                      onClick={() => handleDeleteInvoice(idx)}
+                                      className='h-6 w-6 p-0'
+                                    >
+                                      <Trash2 className='h-3 w-3 text-red-600' />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      ) : (
+                        <div className='text-center py-8 text-sm text-gray-500'>
+                          No invoices added. Click + Add Invoice to add multiple
+                          invoices.
+                        </div>
+                      )}
+                    </div>
 
                     <div className='border-t my-4'></div>
 
