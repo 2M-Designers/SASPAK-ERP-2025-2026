@@ -442,12 +442,12 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                             <FormControl>
                               <Select
                                 options={
-                                  freightType === "COLLECT"
+                                  freightType === "Collect"
                                     ? [
                                         { value: "FOB", label: "FOB" },
                                         { value: "EXW", label: "EXW" },
                                       ]
-                                    : freightType === "PREPAID"
+                                    : freightType === "Prepaid"
                                     ? [
                                         { value: "DDP", label: "DDP" },
                                         { value: "DDU", label: "DDU" },

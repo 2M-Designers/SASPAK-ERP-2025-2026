@@ -178,12 +178,19 @@ export default function JobOrderForm({
   });
 
   // Watch for changes
-  const shippingType = form.watch("jobSubType");
-  const mode = form.watch("operationMode");
-  const documentType = form.watch("jobDocumentType");
-  const shipperPartyId = form.watch("shipperPartyId");
-  const consigneePartyId = form.watch("consigneePartyId");
-  const freightType = form.watch("freightType");
+  const shippingType = form.watch("jobSubType"); // FCL or LCL
+  const mode = form.watch("operationMode"); // Sea, Air, Road
+  const documentType = form.watch("jobDocumentType"); // HOUSE or MASTER
+  const shipperPartyId = form.watch("shipperPartyId"); // Shipper Party ID
+  const consigneePartyId = form.watch("consigneePartyId"); // Consignee Party ID
+  const freightType = form.watch("freightType"); // COLLECT or PREPAID
+
+  // DEBUG LOGGING FOR WATCHED VALUES
+  console.log("=== WATCH VALUES DEBUG ===");
+  console.log("documentType:", documentType); // Should log "HOUSE" or "MASTER" when selected
+  console.log("shippingType:", shippingType); // Should log "FCL" or "LCL" when selected
+  console.log("mode:", mode); // Should log "Sea", "Air", "Road" when selected
+  console.log("freightType:", freightType); // Should log "COLLECT" or "PREPAID" when selected
 
   // Load all data on mount
   useEffect(() => {

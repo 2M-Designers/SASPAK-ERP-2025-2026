@@ -135,7 +135,7 @@ export default function ShippingTab(props: ShippingTabProps) {
         </CardHeader>
         <CardContent className='p-4'>
           {/* Document Type Conditional Rendering */}
-          {documentType === "HOUSE" && (
+          {documentType === "House" && (
             <>
               {/* House Document Row */}
               <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
