@@ -29,12 +29,29 @@ interface SelectOption {
 
 interface FclContainer {
   jobEquipmentId?: number;
+
+  // Basic Fields
   containerNo: string;
   containerSizeId?: number;
   containerTypeId?: number;
   weight: number;
-  noOfPackages: number;
-  packageType?: string;
+
+  // Additional Fields
+  sealNo?: string;
+  eirReceivedOn?: string;
+  eirSubmitted: boolean;
+  eirDocumentId?: number;
+  rentInvoiceIssuedOn?: string;
+  containerRentFc: number;
+  containerRentLc: number;
+  damageDirtyFc: number;
+  damageDirtyLc: number;
+  refundAppliedOn?: string;
+  refundFc: number;
+  refundLc: number;
+  gateOutDate?: string;
+  gateInDate?: string;
+  status?: string;
 }
 
 interface ShippingTabProps {
@@ -149,7 +166,11 @@ export default function ShippingTab(props: ShippingTabProps) {
                     render={({ field }) => (
                       <FormItem>
                         <FormControl>
-                          <Input {...field} className='h-8 text-xs' />
+                          <Input
+                            {...field}
+                            value={field.value || ""}
+                            className='h-8 text-xs'
+                          />
                         </FormControl>
                       </FormItem>
                     )}
@@ -220,7 +241,11 @@ export default function ShippingTab(props: ShippingTabProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
-                      <Input {...field} className='h-8 text-xs' />
+                      <Input
+                        {...field}
+                        value={field.value || ""}
+                        className='h-8 text-xs'
+                      />
                     </FormControl>
                   </FormItem>
                 )}
@@ -318,6 +343,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                       <Input
                         type='number'
                         {...field}
+                        value={field.value || 0}
                         onChange={(e) => field.onChange(Number(e.target.value))}
                         className='h-8 text-xs'
                       />
@@ -367,6 +393,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                         type='number'
                         step='0.0001'
                         {...field}
+                        value={field.value || 0.0}
                         className='h-8 text-xs bg-gray-100'
                         readOnly
                       />
@@ -392,6 +419,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                         type='number'
                         step='0.0001'
                         {...field}
+                        value={field.value || 0.0}
                         onChange={(e) => {
                           const value = parseFloat(e.target.value);
                           field.onChange(isNaN(value) ? 0 : value);
@@ -587,7 +615,11 @@ export default function ShippingTab(props: ShippingTabProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
-                      <Input {...field} className='h-8 text-xs' />
+                      <Input
+                        {...field}
+                        value={field.value || ""}
+                        className='h-8 text-xs'
+                      />
                     </FormControl>
                   </FormItem>
                 )}
@@ -600,11 +632,15 @@ export default function ShippingTab(props: ShippingTabProps) {
             <div className='col-span-2'>
               <FormField
                 control={form.control}
-                name='indexNumber'
+                name='indexNo'
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
-                      <Input {...field} className='h-8 text-xs' />
+                      <Input
+                        {...field}
+                        value={field.value || ""}
+                        className='h-8 text-xs'
+                      />
                     </FormControl>
                   </FormItem>
                 )}
@@ -647,7 +683,7 @@ export default function ShippingTab(props: ShippingTabProps) {
             <div className='col-span-3'>
               <FormField
                 control={form.control}
-                name='blStatus'
+                name='blstatus'
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
@@ -694,17 +730,26 @@ export default function ShippingTab(props: ShippingTabProps) {
                 <Table className='mb-3'>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className='text-xs'>Container No.</TableHead>
+                      {/*<TableHead className='text-xs'>Container No.</TableHead>
                       <TableHead className='text-xs'>Size</TableHead>
                       <TableHead className='text-xs'>Type</TableHead>
                       <TableHead className='text-xs'>Weight</TableHead>
                       <TableHead className='text-xs'>Packages</TableHead>
                       <TableHead className='text-xs'>Package Type</TableHead>
+                      <TableHead className='text-xs'>Actions</TableHead>*/}
+                      <TableHead className='text-xs'>Container No.</TableHead>
+                      <TableHead className='text-xs'>Size</TableHead>
+                      <TableHead className='text-xs'>Type</TableHead>
+                      <TableHead className='text-xs'>Weight</TableHead>
+                      <TableHead className='text-xs'>Seal No.</TableHead>
+                      <TableHead className='text-xs'>Gate Out</TableHead>
+                      <TableHead className='text-xs'>Gate In</TableHead>
+                      <TableHead className='text-xs'>Status</TableHead>
                       <TableHead className='text-xs'>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {fclContainers.map(
+                    {/*{fclContainers.map(
                       (container: FclContainer, idx: number) => (
                         <TableRow key={idx}>
                           <TableCell className='text-xs'>
@@ -744,12 +789,67 @@ export default function ShippingTab(props: ShippingTabProps) {
                           </TableCell>
                         </TableRow>
                       )
+                    )}*/}
+                    {fclContainers.map(
+                      (container: FclContainer, idx: number) => (
+                        <TableRow key={idx}>
+                          <TableCell className='text-xs'>
+                            {container.containerNo}
+                          </TableCell>
+                          <TableCell className='text-xs'>
+                            {containerSizes.find(
+                              (s: SelectOption) =>
+                                s.value === container.containerSizeId
+                            )?.label || "-"}
+                          </TableCell>
+                          <TableCell className='text-xs'>
+                            {containerTypes.find(
+                              (t: SelectOption) =>
+                                t.value === container.containerTypeId
+                            )?.label || "-"}
+                          </TableCell>
+                          <TableCell className='text-xs'>
+                            {container.weight.toFixed(4)}
+                          </TableCell>
+                          <TableCell className='text-xs'>
+                            {container.sealNo || "-"}
+                          </TableCell>
+                          <TableCell className='text-xs'>
+                            {container.gateOutDate
+                              ? new Date(
+                                  container.gateOutDate
+                                ).toLocaleDateString()
+                              : "-"}
+                          </TableCell>
+                          <TableCell className='text-xs'>
+                            {container.gateInDate
+                              ? new Date(
+                                  container.gateInDate
+                                ).toLocaleDateString()
+                              : "-"}
+                          </TableCell>
+                          <TableCell className='text-xs'>
+                            {container.status || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              type='button'
+                              variant='ghost'
+                              size='sm'
+                              onClick={() => handleDeleteFcl(idx)}
+                              className='h-6 w-6 p-0'
+                            >
+                              <Trash2 className='h-3 w-3 text-red-600' />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
                     )}
                   </TableBody>
                 </Table>
               )}
 
-              {/* Container Form - Shows Below Grid */}
+              {/* Container Form - Shows Below Grid 
               {showFclForm && (
                 <Card className='mb-3 border-green-200'>
                   <CardContent className='p-3'>
@@ -909,6 +1009,212 @@ export default function ShippingTab(props: ShippingTabProps) {
                             Add
                           </Button>
                         </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}*/}
+
+              {showFclForm && (
+                <Card className='mb-3 border-green-200'>
+                  <CardContent className='p-3'>
+                    <div className='space-y-3'>
+                      {/* Row 1: Basic Fields */}
+                      <div className='grid grid-cols-8 gap-2'>
+                        {/* Container No */}
+                        <FormField
+                          control={fclForm.control}
+                          name='containerNo'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className='text-xs'>
+                                Container No.
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  value={field.value || ""}
+                                  className='h-8 text-xs'
+                                  placeholder='ABCU-123456-7'
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* Container Size */}
+                        <FormField
+                          control={fclForm.control}
+                          name='containerSizeId'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className='text-xs'>Size</FormLabel>
+                              <FormControl>
+                                <Select
+                                  options={containerSizes}
+                                  value={containerSizes.find(
+                                    (s: SelectOption) => s.value === field.value
+                                  )}
+                                  onChange={(val) => field.onChange(val?.value)}
+                                  styles={compactSelectStyles}
+                                  isLoading={loadingContainerSizes}
+                                  isClearable
+                                  placeholder='Size'
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* Container Type */}
+                        <FormField
+                          control={fclForm.control}
+                          name='containerTypeId'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className='text-xs'>Type</FormLabel>
+                              <FormControl>
+                                <Select
+                                  options={containerTypes}
+                                  value={containerTypes.find(
+                                    (t: SelectOption) => t.value === field.value
+                                  )}
+                                  onChange={(val) => field.onChange(val?.value)}
+                                  styles={compactSelectStyles}
+                                  isLoading={loadingContainerTypes}
+                                  isClearable
+                                  placeholder='Type'
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* Gross Weight */}
+                        <FormField
+                          control={fclForm.control}
+                          name='weight'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className='text-xs'>Weight</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type='number'
+                                  step='0.0001'
+                                  {...field}
+                                  value={field.value || 0.0}
+                                  onChange={(e) =>
+                                    field.onChange(
+                                      parseFloat(e.target.value) || 0
+                                    )
+                                  }
+                                  className='h-8 text-xs'
+                                  placeholder='0.0000'
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* NEW: Seal No */}
+                        <FormField
+                          control={fclForm.control}
+                          name='sealNo'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className='text-xs'>
+                                Seal No.
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  value={field.value || ""}
+                                  className='h-8 text-xs'
+                                  placeholder='Seal'
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* NEW: Gate Out */}
+                        <FormField
+                          control={fclForm.control}
+                          name='gateOutDate'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className='text-xs'>
+                                Gate Out
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  type='date'
+                                  {...field}
+                                  value={field.value || ""}
+                                  className='h-8 text-xs'
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* NEW: Gate In */}
+                        <FormField
+                          control={fclForm.control}
+                          name='gateInDate'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className='text-xs'>Gate In</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type='date'
+                                  {...field}
+                                  value={field.value || ""}
+                                  className='h-8 text-xs'
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* NEW: Status */}
+                        <FormField
+                          control={fclForm.control}
+                          name='status'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className='text-xs'>Status</FormLabel>
+                              <FormControl>
+                                <Select
+                                  options={packageTypes}
+                                  value={packageTypes.find(
+                                    (p: SelectOption) => p.value === field.value
+                                  )}
+                                  onChange={(val) => field.onChange(val?.value)}
+                                  styles={compactSelectStyles}
+                                  isLoading={loadingPackageTypes}
+                                  isClearable
+                                  placeholder='Status'
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Row 2: Add Button */}
+                      <div className='flex justify-end'>
+                        <Button
+                          type='button'
+                          onClick={(e) => {
+                            e.preventDefault();
+                            fclForm.handleSubmit(handleAddFcl)();
+                          }}
+                          size='sm'
+                          className='h-8 text-xs'
+                        >
+                          Add Container
+                        </Button>
                       </div>
                     </div>
                   </CardContent>

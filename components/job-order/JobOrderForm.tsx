@@ -65,6 +65,7 @@ export default function JobOrderForm({
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState("main");
+  const [isLoadingJobData, setIsLoadingJobData] = useState(false);
 
   // Dropdown states
   const [parties, setParties] = useState<any[]>([]);
@@ -136,8 +137,8 @@ export default function JobOrderForm({
     resolver: zodResolver(jobMasterSchema),
     mode: "onChange",
     defaultValues: {
+      // Numbers - OK to use 0
       companyId: 1,
-      status: "Draft",
       freeDays: 0,
       grossWeight: 0,
       netWeight: 0,
@@ -145,13 +146,66 @@ export default function JobOrderForm({
       securityValue: 0,
       freightCharges: 0,
       otherCharges: 0,
-      jobDate: new Date().toISOString().split("T")[0],
+      insuranceValue: 0,
 
-      // ADD THESE SCOPE CHECKBOX DEFAULTS:
+      // Strings - MUST use empty string ""
+      status: "Draft",
+      jobDate: new Date().toISOString().split("T")[0],
+      jobNumber: "", // ← NOT undefined
+      houseDocumentNumber: "", // ← NOT undefined
+      houseDocumentDate: "", // ← NOT undefined
+      masterDocumentNumber: "", // ← NOT undefined
+      masterDocumentDate: "", // ← NOT undefined
+      igmNumber: "", // ← NOT undefined
+      customerReferenceNumber: "", // ← NOT undefined
+      vesselName: "", // ← NOT undefined
+      lastFreeDay: "", // ← NOT undefined
+      expectedArrivalDate: "", // ← NOT undefined
+      gdNumber: "", // ← NOT undefined
+      gdDate: "", // ← NOT undefined
+      gdType: "", // ← NOT undefined
+      gdClearedUS: "", // ← NOT undefined
+      securityType: "", // ← NOT undefined
+      securityExpiryDate: "", // ← NOT undefined
+      rmsChannel: "", // ← NOT undefined
+      delayInClearance: "", // ← NOT undefined
+      delayInDispatch: "", // ← NOT undefined
+      psqcaSamples: "", // ← NOT undefined
+      remarks: "", // ← NOT undefined
+      billingPartiesInfo: "", // ← NOT undefined
+      jobRemarks: "", // ← NOT undefined
+      insurance: "", // ← NOT undefined
+      landing: "", // ← NOT undefined
+      principalReference: "", // ← NOT undefined
+      clientReference: "", // ← NOT undefined
+      indexNo: "", // ← NOT undefined
+
+      // Booleans - OK to use false
       isFreightForwarding: false,
       isClearance: false,
       isTransporter: false,
       isOther: false,
+
+      // Nullable fields (dropdowns) - Use null
+      operationType: null,
+      operationMode: null,
+      jobSubType: null,
+      jobLoadType: null,
+      jobDocumentType: null,
+      processOwnerId: null,
+      shipperPartyId: null,
+      consigneePartyId: null,
+      notifyPartyId: null,
+      originAgentId: null,
+      localAgentId: null,
+      carrierPartyId: null,
+      terminalId: null,
+      polId: null,
+      podId: null,
+      placeOfDeliveryId: null,
+      freightType: null,
+      blstatus: null,
+      version: 0,
 
       ...defaultState,
     },
@@ -159,7 +213,20 @@ export default function JobOrderForm({
 
   const fclForm = useForm<FclContainerFormValues>({
     resolver: zodResolver(fclContainerSchema),
-    defaultValues: { weight: 0, noOfPackages: 0 },
+    defaultValues: {
+      weight: 0,
+      sealNo: "",
+      gateOutDate: "",
+      gateInDate: "",
+      status: "",
+      containerRentFc: 0, // ← Defaults to 0, so must be required
+      containerRentLc: 0, // ← Defaults to 0, so must be required
+      damageDirtyFc: 0, // ← Defaults to 0, so must be required
+      damageDirtyLc: 0, // ← Defaults to 0, so must be required
+      refundFc: 0, // ← Defaults to 0, so must be required
+      refundLc: 0, // ← Defaults to 0, so must be required
+      eirSubmitted: false, // ← Defaults to false, so must be required
+    },
   });
 
   const invoiceForm = useForm<InvoiceFormValues>({
@@ -191,6 +258,194 @@ export default function JobOrderForm({
   console.log("shippingType:", shippingType); // Should log "FCL" or "LCL" when selected
   console.log("mode:", mode); // Should log "Sea", "Air", "Road" when selected
   console.log("freightType:", freightType); // Should log "COLLECT" or "PREPAID" when selected
+
+  // Helper function to transform API dates to form format (YYYY-MM-DD)
+  const formatDateForForm = (isoDate: string | null | undefined) => {
+    if (!isoDate) return "";
+    try {
+      return new Date(isoDate).toISOString().split("T")[0];
+    } catch {
+      return "";
+    }
+  };
+
+  const populateForm = (jobData: any) => {
+    // Populate main form
+    form.reset({
+      jobId: jobData.jobId || 0,
+      companyId: jobData.companyId || 1,
+      jobNumber: jobData.jobNumber || "",
+      jobDate: formatDateForForm(jobData.jobDate),
+      status: jobData.status || "Draft",
+
+      // ⭐ FIXED: Match API field name
+      customerReferenceNumber: jobData.customerReferenceNumber || "",
+
+      // Scope
+      isFreightForwarding: jobData.isFreightForwarding || false,
+      isClearance: jobData.isClearance || false,
+      isTransporter: jobData.isTransporter || false,
+      isOther: jobData.isOther || false,
+
+      // Operation
+      operationType: jobData.operationType || null,
+      operationMode: jobData.operationMode || null,
+      jobSubType: jobData.jobSubType || null,
+      jobLoadType: jobData.jobLoadType || null,
+      jobDocumentType: jobData.jobDocumentType || null,
+
+      // Parties
+      processOwnerId: jobData.processOwnerId || null,
+      shipperPartyId: jobData.shipperPartyId || null,
+      consigneePartyId: jobData.consigneePartyId || null,
+      notifyPartyId: jobData.notifyPartyId || null,
+
+      // ⭐ FIXED: Use correct field names (with "Number")
+      houseDocumentNumber: jobData.houseDocumentNumber || "",
+      houseDocumentDate: formatDateForForm(jobData.houseDocumentDate),
+      masterDocumentNumber: jobData.masterDocumentNumber || "",
+      masterDocumentDate: formatDateForForm(jobData.masterDocumentDate),
+
+      // Agents
+      originAgentId: jobData.originAgentId || null,
+      localAgentId: jobData.localAgentId || null,
+      carrierPartyId: jobData.carrierPartyId || null,
+
+      // Shipping
+      freeDays: jobData.freeDays || 0,
+      lastFreeDay: formatDateForForm(jobData.lastFreeDay),
+      grossWeight: jobData.grossWeight || 0,
+      netWeight: jobData.netWeight || 0,
+
+      // Ports (API uses different names)
+      polId: jobData.originPortId || null,
+      podId: jobData.destinationPortId || null,
+      placeOfDeliveryId: jobData.placeOfDeliveryId || null,
+
+      // Vessel
+      vesselName: jobData.vesselName || "",
+      terminalId: jobData.terminalPartyId || null,
+      expectedArrivalDate: formatDateForForm(jobData.expectedArrivalDate),
+
+      // Documentation
+      igmNumber: jobData.igmNumber || "",
+      indexNo: jobData.indexNo || "", // API uses indexNo
+
+      freightType: jobData.freightType || null,
+
+      // ⭐ FIXED: Check if API returns blStatus or blstatus
+      blstatus: jobData.blstatus || jobData.blstatus || null,
+
+      // Financial - GD
+      exchangeRate: jobData.exchangeRate || 0,
+      freightCharges: jobData.freightCharges || 0,
+      otherCharges: jobData.otherCharges || 0,
+      insuranceValue: jobData.insuranceValue || 0,
+      insurance: jobData.insurance || "",
+      landing: jobData.landing || "",
+
+      // GD Details
+      gdNumber: jobData.gdNumber || "",
+      gdDate: formatDateForForm(jobData.gdDate),
+      gdType: jobData.gdType || "",
+      gdClearedUS: jobData.gdClearedUS || "",
+
+      // Security
+      securityType: jobData.securityType || "",
+      securityValue: jobData.securityValue || 0,
+      securityExpiryDate: formatDateForForm(jobData.securityExpiryDate),
+
+      // RMS
+      rmsChannel: jobData.rmsChannel || "",
+      delayInClearance: jobData.delayInClearance || "",
+      delayInDispatch: jobData.delayInDispatch || "",
+      psqcaSamples: jobData.psqcaSamples || "",
+      remarks: jobData.remarks || "",
+
+      // Additional
+      billingPartiesInfo: jobData.billingPartiesInfo || "",
+      jobRemarks: jobData.jobRemarks || "",
+      version: jobData.version || 0,
+      //principalReference: jobData.principalReference || "",
+      //clientReference: jobData.clientReference || "",
+    });
+
+    // Populate containers (unchanged - already correct)
+    if (jobData.jobEquipments && Array.isArray(jobData.jobEquipments)) {
+      const transformedContainers = jobData.jobEquipments.map(
+        (equipment: any) => ({
+          jobEquipmentId: equipment.jobEquipmentId || 0,
+          containerNo: equipment.containerNo || "",
+          containerSizeId: equipment.containerSizeId || null,
+          containerTypeId: equipment.containerTypeId || null,
+          weight: equipment.tareWeight || 0,
+
+          sealNo: equipment.sealNo || "",
+          eirReceivedOn: formatDateForForm(equipment.eirReceivedOn),
+          eirSubmitted: equipment.eirSubmitted || false,
+          eirDocumentId: equipment.eirDocumentId || null,
+
+          rentInvoiceIssuedOn: formatDateForForm(equipment.rentInvoiceIssuedOn),
+          containerRentFc: equipment.containerRentFc || 0,
+          containerRentLc: equipment.containerRentLc || 0,
+
+          damageDirtyFc: equipment.damageDirtyFc || 0,
+          damageDirtyLc: equipment.damageDirtyLc || 0,
+
+          refundAppliedOn: formatDateForForm(equipment.refundAppliedOn),
+          refundFc: equipment.refundFc || 0,
+          refundLc: equipment.refundLc || 0,
+
+          gateOutDate: formatDateForForm(equipment.gateOutDate),
+          gateInDate: formatDateForForm(equipment.gateInDate),
+
+          status: equipment.status || "",
+        })
+      );
+
+      setFclContainers(transformedContainers);
+    }
+
+    // Populate invoices (unchanged - already correct)
+    if (jobData.jobInvoices && Array.isArray(jobData.jobInvoices)) {
+      const transformedInvoices = jobData.jobInvoices.map((invoice: any) => ({
+        invoiceId: invoice.jobInvoiceId || 0,
+        invoiceNumber: invoice.invoiceNumber || "",
+        invoiceDate: formatDateForForm(invoice.invoiceDate),
+        invoiceIssuedByPartyId: invoice.issuedByPartyId || null,
+        shippingTerm: invoice.shippingTerm || "",
+
+        lcNumber: invoice.lcNumber || "",
+        lcValue: invoice.lcValue || 0,
+        lcDate: formatDateForForm(invoice.lcDate),
+        lcIssuedByBankId: invoice.lcIssuedByBankId || null,
+        lcCurrencyId: invoice.lcCurrencyid || null,
+
+        fiNumber: invoice.flNumber || "",
+        fiDate: formatDateForForm(invoice.flDate),
+        fiExpiryDate: formatDateForForm(invoice.expiryDate),
+
+        items: (invoice.jobInvoiceDetails || []).map((item: any) => ({
+          invoiceItemId: item.jobInvoiceDetailId || 0,
+          hsCodeId: item.hsCodeId || null,
+          hsCode: item.hsCode || "",
+          description: item.description || "",
+          originId: item.originId || null,
+          quantity: item.quantity || 0,
+          dutiableValue: item.dutiableValue || 0,
+          assessableValue: item.assessableValue || 0,
+          totalValue: item.totalValue || 0,
+        })),
+      }));
+
+      setInvoices(transformedInvoices);
+    }
+
+    toast({
+      title: "Success",
+      description: "Job data loaded successfully",
+    });
+  };
 
   // Load all data on mount
   useEffect(() => {
@@ -225,34 +480,35 @@ export default function JobOrderForm({
     loadData();
   }, []);
 
-  // REMOVE THIS ENTIRE useEffect:
-  /*
+  // Fetch job data for edit mode
   useEffect(() => {
-    if (type === "add") {
-      generateJobNumber();
-    }
-  }, [type]);
-  */
+    const fetchJobData = async () => {
+      if (type === "edit" && defaultState?.jobId) {
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+          const response = await fetch(`${baseUrl}Job/${defaultState.jobId}`);
 
-  // REMOVE THIS ENTIRE FUNCTION:
-  /*
-  const generateJobNumber = async () => {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Job/GenerateJobNumber`);
-      if (response.ok) {
-        const data = await response.text();
-        const jobNumber = data.replace(/"/g, "");
-        form.setValue("jobNumber", jobNumber);
+          if (!response.ok) {
+            throw new Error("Failed to fetch job data");
+          }
+
+          const jobData = await response.json();
+          console.log("Fetched Job Data:", jobData);
+
+          populateForm(jobData);
+        } catch (error) {
+          console.error("Error fetching job data:", error);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to load job data",
+          });
+        }
       }
-    } catch (error) {
-      console.error("Error generating job number:", error);
-      const timestamp = Date.now();
-      const randomNum = Math.floor(Math.random() * 1000);
-      form.setValue("jobNumber", `JOB-${timestamp}-${randomNum}`);
-    }
-  };
-  */
+    };
+
+    fetchJobData();
+  }, [type, defaultState?.jobId]);
 
   // Calculate gross weight from containers
   useEffect(() => {
@@ -317,158 +573,12 @@ export default function JobOrderForm({
     return () => subscription.unsubscribe();
   }, [invoiceItemForm]);
 
-  const onSubmit_Old = async (values: JobMasterFormValues) => {
-    setIsSubmitting(true);
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
-      const payload: any = {
-        companyId: values.companyId || 1,
-        jobNumber: values.jobNumber || "",
-        jobDate: values.jobDate
-          ? new Date(values.jobDate).toISOString()
-          : new Date().toISOString(),
-        // ADD THESE SCOPE FIELDS:
-        isFreightForwarding: values.isFreightForwarding || false,
-        isClearance: values.isClearance || false,
-        isTransporter: values.isTransporter || false,
-        isOther: values.isOther || false,
-        operationType: values.operationType || null,
-        operationMode: values.operationMode || null,
-        jobDocumentType: values.jobDocumentType || null,
-        houseDocumentNumber: values.houseDocumentNumber || null,
-        houseDocumentDate: values.houseDocumentDate
-          ? new Date(values.houseDocumentDate).toISOString()
-          : null,
-        masterDocumentNumber: values.masterDocumentNumber || null,
-        masterDocumentDate: values.masterDocumentDate
-          ? new Date(values.masterDocumentDate).toISOString()
-          : null,
-        jobSubType: values.jobSubType || null,
-        jobLoadType: values.jobLoadType || null,
-        freightType: values.freightType || null,
-        shipperPartyId: values.shipperPartyId || null,
-        consigneePartyId: values.consigneePartyId || null,
-        principalId: values.processOwnerId || null,
-        overseasAgentId: values.originAgentId || null,
-
-        terminalPartyId: values.terminalId || null,
-        originPortId: values.polId || null,
-        destinationPortId: values.podId || null,
-        placeOfDeliveryId: values.placeOfDeliveryId || null,
-        vesselName: values.vesselName || null,
-        grossWeight: values.grossWeight || 0,
-        netWeight: parseFloat(values.netWeight?.toFixed(4)) || 0,
-        freeDays: values.freeDays || 0,
-        lastFreeDay: values.lastFreeDay
-          ? new Date(values.lastFreeDay).toISOString()
-          : null,
-        gdType: values.gdType || null,
-        gdNumber: values.gdNumber || null,
-        gdDate: values.gdDate ? new Date(values.gdDate).toISOString() : null,
-        igmNumber: values.igmNumber || null,
-        indexNo: values.indexNumber || null,
-        blStatus: values.blStatus || null,
-        insurance: values.insurance || null,
-        insuranceValue: values.insuranceValue || 0,
-        landing: values.landing || null,
-        exchangeRate: parseFloat(values.exchangeRate?.toFixed(4)) || 0,
-        freightCharges: values.freightCharges || 0,
-        otherCharges: values.otherCharges || 0,
-        status: values.status || "DRAFT",
-        remarks: values.remarks || null,
-        version: values.version || 0,
-        jobEquipments: fclContainers.map((c) => ({
-          jobEquipmentId: c.jobEquipmentId || 0,
-          containerNo: c.containerNo,
-          containerTypeId: c.containerTypeId || null,
-          containerSizeId: c.containerSizeId || null,
-          tareWeight: c.weight || 0,
-          version: 0,
-        })),
-        jobInvoices: invoices.map((inv) => ({
-          jobInvoiceId: inv.invoiceId || 0,
-          invoiceNumber: inv.invoiceNumber || "",
-          invoiceDate: inv.invoiceDate
-            ? new Date(inv.invoiceDate).toISOString()
-            : null,
-          issuedByPartyId: inv.invoiceIssuedByPartyId || null,
-          shippingTerm: inv.shippingTerm || "",
-          lcNumber: inv.lcNumber || "",
-          lcValue: inv.lcValue || 0,
-          lcDate: inv.lcDate ? new Date(inv.lcDate).toISOString() : null,
-          lcIssuedByBankId: inv.lcIssuedByBankId || null,
-          lcCurrencyid: inv.lcCurrencyId || null,
-          flNumber: inv.fiNumber || "",
-          flDate: inv.fiDate ? new Date(inv.fiDate).toISOString() : null,
-          expiryDate: inv.fiExpiryDate
-            ? new Date(inv.fiExpiryDate).toISOString()
-            : null,
-          version: 0,
-          jobInvoiceDetails: inv.items.map((item) => ({
-            jobInvoiceDetailId: item.invoiceItemId || 0,
-            hsCodeId: item.hsCodeId || null,
-            hsCode: item.hsCode || "",
-            description: item.description || "",
-            originId: item.originId || null,
-            quantity: item.quantity || 0,
-            dutiableValue: item.dutiableValue || 0,
-            assessableValue: item.assessableValue || 0,
-            totalValue: item.totalValue || 0,
-            version: 0,
-          })),
-        })),
-      };
-
-      if (type === "edit" && values.jobId) {
-        payload.jobId = values.jobId;
-      }
-
-      console.log("Payload:", payload);
-
-      const response = await fetch(`${baseUrl}Job`, {
-        method: type === "edit" ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error("API Error:", errorData);
-        throw new Error("Failed to save job");
-      }
-
-      const result = await response.json();
-      toast({
-        title: "Success!",
-        description: `Job ${
-          type === "edit" ? "updated" : "created"
-        } successfully`,
-      });
-      handleAddEdit(result);
-    } catch (error: any) {
-      console.error("Submission error:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Submission failed",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // COMPLETE onSubmit FUNCTION - COPY & PASTE THIS INTO JobOrderForm.tsx
-
-  // COMPLETE onSubmit FUNCTION - UPDATED FOR YOUR PATTERN
-  // Copy & Paste this into your JobOrderForm component
-
-  // COMPLETE onSubmit FUNCTION - WITH STATUS FIELD
-  // Copy & Paste this into your JobOrderForm component
-
   const onSubmit = async (values: any) => {
     try {
       setIsSubmitting(true);
+
+      // Get CompanyId from localStorage
+      const companyId = parseInt(localStorage.getItem("companyId") || "1");
 
       // ========================================
       // 1. MAP INVOICES TO jobInvoices FORMAT
@@ -488,7 +598,6 @@ export default function JobOrderForm({
         fiDate: invoice.fiDate || null,
         fiExpiryDate: invoice.fiExpiryDate || null,
 
-        // Map invoice items to jobInvoiceItems
         jobInvoiceItems: (invoice.items || []).map((item) => ({
           invoiceItemId: item.invoiceItemId || 0,
           hsCodeId: item.hsCodeId || null,
@@ -504,28 +613,75 @@ export default function JobOrderForm({
 
       // ========================================
       // 2. MAP FCL CONTAINERS TO jobEquipments FORMAT
+      // WITH ALL REQUIRED FIELDS
       // ========================================
       const jobEquipments = fclContainers.map((container) => ({
         jobEquipmentId: container.jobEquipmentId || 0,
+        companyId: companyId, // ← From localStorage
+        jobId: values.jobId || 0, // Will be set properly by API
+
+        // Basic Fields
         containerNo: container.containerNo || "",
         containerTypeId: container.containerTypeId || null,
         containerSizeId: container.containerSizeId || null,
+
+        // Weight field mapped to TareWeight
         tareWeight: container.weight || 0,
-        noOfPackages: container.noOfPackages || 0,
-        packageType: container.packageType || null,
+
+        // Additional Fields
+        sealNo: container.sealNo || null,
+
+        // EIR Fields
+        eirReceivedOn: container.eirReceivedOn
+          ? new Date(container.eirReceivedOn).toISOString()
+          : null,
+        eirSubmitted: container.eirSubmitted || false,
+        eirDocumentId: container.eirDocumentId || null,
+
+        // Rent Fields
+        rentInvoiceIssuedOn: container.rentInvoiceIssuedOn
+          ? new Date(container.rentInvoiceIssuedOn).toISOString()
+          : null,
+        containerRentFc: container.containerRentFc || 0,
+        containerRentLc: container.containerRentLc || 0,
+
+        // Damage/Dirty Fields
+        damageDirtyFc: container.damageDirtyFc || 0,
+        damageDirtyLc: container.damageDirtyLc || 0,
+
+        // Refund Fields
+        refundAppliedOn: container.refundAppliedOn
+          ? new Date(container.refundAppliedOn).toISOString()
+          : null,
+        refundFc: container.refundFc || 0,
+        refundLc: container.refundLc || 0,
+
+        // Gate Fields
+        gateOutDate: container.gateOutDate
+          ? new Date(container.gateOutDate).toISOString()
+          : null,
+        gateInDate: container.gateInDate
+          ? new Date(container.gateInDate).toISOString()
+          : null,
+
+        // Status
+        status: container.status || null,
+
+        // Version
+        version: 0,
       }));
 
       // ========================================
       // 3. BUILD COMPLETE PAYLOAD
       // ========================================
       const payload: any = {
-        // Job Main fields
-        companyId: values.companyId || 1,
+        companyId: companyId,
         jobNumber: values.jobNumber || "",
         jobDate: values.jobDate
           ? new Date(values.jobDate).toISOString()
           : new Date().toISOString(),
-        indexNo: values.indexNo || null,
+        customerReferenceNumber: values.customerReferenceNumber || null,
+
         operationType: values.operationType || null,
         operationMode: values.operationMode || null,
         loadType: values.loadType || null,
@@ -533,51 +689,48 @@ export default function JobOrderForm({
         documentType: values.documentType || null,
         direction: values.direction || null,
         jobDocumentType: values.jobDocumentType || null,
-
         jobSubType: values.jobSubType || null,
         jobLoadType: values.jobLoadType || null,
-
         processOwnerId: values.processOwnerId || null,
         principalId: values.principalId || null,
         overseasAgentId: values.originAgentId || null,
-
         terminalPartyId: values.terminalId || null,
         originPortId: values.polId || null,
         destinationPortId: values.podId || null,
-
         principalReference: values.principalReference || null,
         clientReference: values.clientReference || null,
 
-        // Shipping fields
-        status: values.status || "Draft", // Default to "Draft" if not provided
+        status: values.status || "Draft",
 
-        // Scope checkboxes
         isFreightForwarding: values.isFreightForwarding || false,
         isClearance: values.isClearance || false,
         isTransporter: values.isTransporter || false,
         isOther: values.isOther || false,
         insurance: values.insurance || null,
-
         billingPartiesInfo: values.billingPartiesInfo || null,
         jobRemarks: values.jobRemarks || null,
 
-        // Parties
         shipperPartyId: values.shipperPartyId || null,
         consigneePartyId: values.consigneePartyId || null,
         notifyPartyId: values.notifyPartyId || null,
         billingToShipperId: values.billingToShipperId || null,
         billingToConsigneeId: values.billingToConsigneeId || null,
 
-        // Shipping fields
-        houseDocumentNo: values.houseDocumentNo || null,
-        houseDocumentDate: values.houseDocumentDate || null,
+        houseDocumentNumber: values.houseDocumentNumber || null,
+        houseDocumentDate: values.houseDocumentDate
+          ? new Date(values.houseDocumentDate).toISOString()
+          : null,
         originAgentId: values.originAgentId || null,
-        masterDocumentNo: values.masterDocumentNo || null,
-        masterDocumentDate: values.masterDocumentDate || null,
+        masterDocumentNumber: values.masterDocumentNumber || null,
+        masterDocumentDate: values.masterDocumentDate
+          ? new Date(values.masterDocumentDate).toISOString()
+          : null,
         localAgentId: values.localAgentId || null,
         carrierPartyId: values.carrierPartyId || null,
         freeDays: values.freeDays || null,
-        lastFreeDay: values.lastFreeDay || null,
+        lastFreeDay: values.lastFreeDay
+          ? new Date(values.lastFreeDay).toISOString()
+          : null,
         grossWeight: values.grossWeight || 0,
         netWeight: values.netWeight || 0,
         polId: values.polId || null,
@@ -585,60 +738,61 @@ export default function JobOrderForm({
         placeOfDeliveryId: values.placeOfDeliveryId || null,
         vesselName: values.vesselName || null,
         terminalId: values.terminalId || null,
-        expectedArrivalDate: values.expectedArrivalDate || null,
+        expectedArrivalDate: values.expectedArrivalDate
+          ? new Date(values.expectedArrivalDate).toISOString()
+          : null,
         igmNumber: values.igmNumber || null,
-        indexNumber: values.indexNumber || null,
+        indexNo: values.indexNo || null,
         freightType: values.freightType || null,
-        blStatus: values.blStatus || null,
+        blstatus: values.blstatus || null,
 
-        // GD fields
         exchangeRate: values.exchangeRate || 0,
         freightCharges: values.freightCharges || 0,
         otherCharges: values.otherCharges || 0,
         insuranceValue: values.insuranceValue || 0,
         landing: values.landing || null,
         gdNumber: values.gdNumber || null,
-        gdDate: values.gdDate || null,
+        gdDate: values.gdDate ? new Date(values.gdDate).toISOString() : null,
         gdType: values.gdType || null,
         gdClearedUS: values.gdClearedUS || null,
         securityType: values.securityType || null,
         securityValue: values.securityValue || null,
-        securityExpiryDate: values.securityExpiryDate || null,
+        securityExpiryDate: values.securityExpiryDate
+          ? new Date(values.securityExpiryDate).toISOString()
+          : null,
         rmsChannel: values.rmsChannel || null,
         delayInClearance: values.delayInClearance || null,
         delayInDispatch: values.delayInDispatch || null,
         psqcaSamples: values.psqcaSamples || null,
         remarks: values.remarks || null,
 
-        // Mapped arrays
-        jobInvoices: jobInvoices,
+        // ⭐ UPDATED: Complete equipment payload
         jobEquipments: jobEquipments,
+        jobInvoices: jobInvoices,
 
-        version: 0,
+        version: values.version || 0,
       };
 
-      // Add jobId for edit mode
       if (type === "edit" && values.jobId) {
         payload.jobId = values.jobId;
       } else {
         payload.jobId = 0;
       }
 
-      // ========================================
-      // 4. DEBUG LOGGING
-      // ========================================
       console.log("=== PAYLOAD DEBUG ===");
-      console.log("Type:", type);
-      console.log("Status:", payload.status);
-      console.log("Invoices State:", invoices);
-      console.log("FCL Containers State:", fclContainers);
-      console.log("Mapped jobInvoices:", jobInvoices);
-      console.log("Mapped jobEquipments:", jobEquipments);
+      console.log("CompanyId from localStorage:", companyId);
+      console.log("Equipment Count:", jobEquipments.length);
+      console.log("Sample Equipment:", jobEquipments[0]);
       console.log("Complete Payload:", payload);
 
-      // ========================================
-      // 5. API CALL
-      // ========================================
+      // Add this before the fetch call
+      console.log("=== UPDATE DEBUG ===");
+      console.log("Edit Mode:", type === "edit");
+      console.log("Job ID:", payload.jobId);
+      console.log("Has houseDocumentNumber:", !!payload.houseDocumentNumber);
+      console.log("Has masterDocumentNumber:", !!payload.masterDocumentNumber);
+      console.log("Complete Payload:", JSON.stringify(payload, null, 2));
+
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
       const response = await fetch(`${baseUrl}Job`, {
@@ -674,15 +828,6 @@ export default function JobOrderForm({
       setIsSubmitting(false);
     }
   };
-
-  // ========================================
-  // USAGE IN FORM
-  // ========================================
-  // <Form {...form}>
-  //   <form onSubmit={form.handleSubmit(onSubmit)}>
-  //     {/* Your tabs and fields */}
-  //   </form>
-  // </Form>
 
   // Shared props for all tabs
   const sharedProps = {
@@ -800,57 +945,72 @@ export default function JobOrderForm({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
-            <Tabs
-              value={activeTab}
-              onValueChange={setActiveTab}
-              className='w-full'
-            >
-              <TabsList className='grid w-full grid-cols-6 mb-3'>
-                <TabsTrigger value='main'>Job Order</TabsTrigger>
-                <TabsTrigger value='shipping'>Shipping</TabsTrigger>
-                <TabsTrigger value='invoice'>Invoice</TabsTrigger>
-                <TabsTrigger value='gd'>GD Info</TabsTrigger>
-                <TabsTrigger value='dispatch'>Dispatch</TabsTrigger>
-                <TabsTrigger value='completion'>Completion</TabsTrigger>
-              </TabsList>
+            {/* ADD LOADING INDICATOR HERE */}
+            {isLoadingJobData && (
+              <div className='flex justify-center items-center p-8 bg-white rounded-lg border'>
+                <Loader2 className='h-8 w-8 animate-spin text-blue-600' />
+                <span className='ml-2 text-sm font-medium'>
+                  Loading job data...
+                </span>
+              </div>
+            )}
 
-              {/* All tabs as separate components */}
-              <JobMainTab {...sharedProps} />
-              <ShippingTab {...sharedProps} />
-              <InvoiceTab {...sharedProps} />
-              <GDTab {...sharedProps} />
-              <DispatchTab {...sharedProps} />
-              <CompletionTab {...sharedProps} />
-            </Tabs>
+            {/* Only show tabs when not loading */}
+            {!isLoadingJobData && (
+              <Tabs
+                value={activeTab}
+                onValueChange={setActiveTab}
+                className='w-full'
+              >
+                <TabsList className='grid w-full grid-cols-6 mb-3'>
+                  <TabsTrigger value='main'>Job Order</TabsTrigger>
+                  <TabsTrigger value='shipping'>Shipping</TabsTrigger>
+                  <TabsTrigger value='invoice'>Invoice</TabsTrigger>
+                  <TabsTrigger value='gd'>GD Info</TabsTrigger>
+                  <TabsTrigger value='dispatch'>Dispatch</TabsTrigger>
+                  <TabsTrigger value='completion'>Completion</TabsTrigger>
+                </TabsList>
 
-            {/* Submit Button */}
-            <div className='flex justify-end gap-3 mt-4'>
-              <Button
-                type='button'
-                variant='outline'
-                onClick={() => router.back()}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type='submit'
-                disabled={isSubmitting}
-                className='min-w-[120px]'
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className='h-4 w-4 mr-2 animate-spin' />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className='h-4 w-4 mr-2' />
-                    {type === "edit" ? "Update Job" : "Create Job"}
-                  </>
-                )}
-              </Button>
-            </div>
+                {/* All tabs as separate components */}
+                <JobMainTab {...sharedProps} />
+                <ShippingTab {...sharedProps} />
+                <InvoiceTab {...sharedProps} />
+                <GDTab {...sharedProps} />
+                <DispatchTab {...sharedProps} />
+                <CompletionTab {...sharedProps} />
+              </Tabs>
+            )}
+
+            {/* Submit Button - Show only when not loading */}
+            {!isLoadingJobData && (
+              <div className='flex justify-end gap-3 mt-4'>
+                <Button
+                  type='button'
+                  variant='outline'
+                  onClick={() => router.back()}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type='submit'
+                  disabled={isSubmitting}
+                  className='min-w-[120px]'
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className='h-4 w-4 mr-2 animate-spin' />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className='h-4 w-4 mr-2' />
+                      {type === "edit" ? "Update Job" : "Create Job"}
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </form>
         </Form>
       </div>

@@ -85,6 +85,7 @@ export default function JobMainTab(props: JobMainTabProps) {
                     <FormControl>
                       <Input
                         {...field}
+                        value={field.value || ""}
                         className='h-8 text-xs bg-gray-100'
                         placeholder='Auto-generated'
                         readOnly
@@ -101,12 +102,13 @@ export default function JobMainTab(props: JobMainTabProps) {
             <div className='col-span-3'>
               <FormField
                 control={form.control}
-                name='indexNo'
+                name='customerReferenceNumber'
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
                       <Input
                         {...field}
+                        value={field.value || ""}
                         className='h-8 text-xs'
                         placeholder='Enter customer reference'
                       />
@@ -170,6 +172,7 @@ export default function JobMainTab(props: JobMainTabProps) {
                       <Input
                         type='date'
                         {...field}
+                        value={field.value || ""}
                         className='h-8 text-xs'
                         readOnly
                       />

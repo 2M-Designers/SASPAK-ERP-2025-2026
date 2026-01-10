@@ -376,6 +376,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                             <FormControl>
                               <Input
                                 {...field}
+                                value={field.value || ""}
                                 className='h-8 text-xs'
                                 placeholder='INV-001'
                               />
@@ -493,6 +494,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                             <FormControl>
                               <Input
                                 {...field}
+                                value={field.value || ""}
                                 className='h-8 text-xs'
                                 placeholder='LC-123'
                               />
@@ -530,6 +532,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                 type='number'
                                 step='0.01'
                                 {...field}
+                                value={field.value || 0}
                                 onChange={(e) =>
                                   field.onChange(Number(e.target.value))
                                 }
@@ -608,6 +611,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                             <FormControl>
                               <Input
                                 {...field}
+                                value={field.value || ""}
                                 className='h-8 text-xs'
                                 placeholder='FI-001'
                               />
@@ -868,6 +872,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                     <FormControl>
                                       <Input
                                         {...field}
+                                        value={field.value || ""}
                                         className='h-8 text-xs bg-gray-50'
                                         placeholder='Auto-filled'
                                         readOnly
@@ -918,6 +923,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                   <FormControl>
                                     <Textarea
                                       {...field}
+                                      value={field.value || ""}
                                       className='h-16 text-xs'
                                       placeholder='Auto-filled from HS Code'
                                     />
@@ -942,6 +948,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                         type='number'
                                         step='0.01'
                                         {...field}
+                                        value={field.value || 0}
                                         onChange={(e) =>
                                           field.onChange(Number(e.target.value))
                                         }
@@ -966,6 +973,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                         type='number'
                                         step='0.01'
                                         {...field}
+                                        value={field.value || 0}
                                         onChange={(e) =>
                                           field.onChange(Number(e.target.value))
                                         }
@@ -990,6 +998,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                         type='number'
                                         step='0.01'
                                         {...field}
+                                        value={field.value || 0}
                                         onChange={(e) =>
                                           field.onChange(Number(e.target.value))
                                         }
@@ -1014,6 +1023,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                         type='number'
                                         step='0.01'
                                         {...field}
+                                        value={field.value || 0}
                                         className='h-8 text-xs bg-gray-50'
                                         placeholder='Auto-calculated'
                                         readOnly

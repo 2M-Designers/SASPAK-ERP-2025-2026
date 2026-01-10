@@ -6,6 +6,7 @@ export const jobMasterSchema = z.object({
   companyId: z.number().default(1),
   jobNumber: z.string().optional(),
   jobDate: z.string().default(new Date().toISOString().split("T")[0]),
+  customerReferenceNumber: z.string().optional(),
   indexNo: z.string().optional(),
   processOwnerId: z.number().optional(),
 
@@ -42,9 +43,9 @@ export const jobMasterSchema = z.object({
   terminalId: z.number().optional(),
   expectedArrivalDate: z.string().optional(),
   igmNumber: z.string().optional(),
-  indexNumber: z.string().optional(),
+
   freightType: z.string().optional(),
-  blStatus: z.string().optional(),
+  blstatus: z.string().optional(),
   exchangeRate: z.number().min(0).default(0),
   insurance: z.string().optional(),
   insurancePercentage: z.number().optional(),
@@ -66,10 +67,14 @@ export const jobMasterSchema = z.object({
   version: z.number().optional(),
   freightCharges: z.number().min(0).default(0),
   otherCharges: z.number().min(0).default(0),
+  notifyPartyId: z.number().optional().nullable(), // ← MISSING
+  billingToShipperId: z.number().optional().nullable(), // ← MISSING
+  billingToConsigneeId: z.number().optional().nullable(), // ← MISSING
+  jobRemarks: z.string().optional().nullable(),
 });
 
 // FCL Container Schema
-export const fclContainerSchema = z.object({
+/*export const fclContainerSchema = z.object({
   jobEquipmentId: z.number().optional(),
   containerNo: z.string().min(1, "Required"),
   containerSizeId: z.number().optional(),
@@ -77,7 +82,7 @@ export const fclContainerSchema = z.object({
   weight: z.number().min(0).default(0),
   noOfPackages: z.number().min(0).default(0),
   packageType: z.string().optional(),
-});
+});*/
 
 // Invoice Item Schema
 export const invoiceItemSchema = z.object({
@@ -108,6 +113,63 @@ export const invoiceSchema = z.object({
   fiDate: z.string().optional(),
   fiExpiryDate: z.string().optional(),
   items: z.array(invoiceItemSchema).default([]),
+});
+
+// ============================================
+// UPDATED FCL CONTAINER SCHEMA
+// Add this to your schemas/jobOrderSchemas.ts
+// ============================================
+
+// Container Number Validation Pattern
+// Format: ABCU-123456-7 or ABCU1234567
+const containerNoPattern = /^[A-Z]{4}[-]?\d{6,7}[-]?\d?$/;
+
+export const fclContainerSchema = z.object({
+  jobEquipmentId: z.number().optional(),
+
+  // Basic Fields
+  containerNo: z
+    .string()
+    .min(1, "Container number is required")
+    .regex(containerNoPattern, "Format: ABCU-123456-7 or ABCU1234567"),
+  containerSizeId: z.number().optional(),
+  containerTypeId: z.number().optional(),
+
+  // Weight field (maps to TareWeight in API)
+  weight: z.number().min(0, "Weight must be positive").default(0),
+
+  // NEW: Additional Equipment Fields
+  sealNo: z.string().optional(),
+
+  // EIR Fields
+  eirReceivedOn: z.string().optional(),
+  eirSubmitted: z.boolean().default(false),
+  eirDocumentId: z.number().optional(),
+
+  // Rent Fields
+  rentInvoiceIssuedOn: z.string().optional(),
+  containerRentFc: z.number().min(0).default(0),
+  containerRentLc: z.number().min(0).default(0),
+
+  // Damage/Dirty Fields
+  damageDirtyFc: z.number().min(0).default(0),
+  damageDirtyLc: z.number().min(0).default(0),
+
+  // Refund Fields
+  refundAppliedOn: z.string().optional(),
+  refundFc: z.number().min(0).default(0),
+  refundLc: z.number().min(0).default(0),
+
+  // Gate Fields
+  gateOutDate: z.string().optional(),
+  gateInDate: z.string().optional(),
+
+  // Status (using package type)
+  status: z.string().optional(),
+
+  // No longer needed in form (removed)
+  // noOfPackages: z.number().min(0).default(0),
+  // packageType: z.string().optional(),
 });
 
 // Export types
