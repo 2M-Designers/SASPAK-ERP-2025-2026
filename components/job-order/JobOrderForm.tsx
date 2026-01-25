@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import JobMainTab from "./tabs/JobMainTab";
 import ShippingTab from "./tabs/ShippingTab";
 import InvoiceTab from "./tabs/InvoiceTab";
-import GDTab from "./tabs/GDTab";
+import GDInfoTab from "./tabs/GDInfoTab";
 import DispatchTab from "./tabs/DispatchTab";
 import CompletionTab from "./tabs/CompletionTab";
 
@@ -230,6 +230,7 @@ export default function JobOrderForm({
       jobInvoiceExchRate: 0,
       insurance: "",
       landing: "",
+      freightCharges: 0,
 
       // PO Fields
       poReceivedOn: "",
@@ -249,6 +250,7 @@ export default function JobOrderForm({
       gdsecurityType: "",
       gdsecurityValue: "",
       gdsecurityExpiryDate: "",
+      psqcaSamples: "",
 
       // Case & Rent
       caseSubmittedToLineOn: "",
@@ -400,6 +402,7 @@ export default function JobOrderForm({
       jobInvoiceExchRate: jobData.jobInvoiceExchRate || 0,
       insurance: jobData.insurance || "",
       landing: jobData.landing || "",
+      freightCharges: jobData.freightCharges || 0,
 
       // PO Fields
       poReceivedOn: formatDateForForm(jobData.poReceivedOn),
@@ -419,6 +422,7 @@ export default function JobOrderForm({
       gdsecurityType: jobData.gdsecurityType || "",
       gdsecurityValue: jobData.gdsecurityValue || "",
       gdsecurityExpiryDate: formatDateForForm(jobData.gdsecurityExpiryDate),
+      psqcaSamples: jobData.psqcaSamples || "",
 
       // Case & Rent
       caseSubmittedToLineOn: formatDateForForm(jobData.caseSubmittedToLineOn),
@@ -1073,6 +1077,7 @@ export default function JobOrderForm({
         jobInvoiceExchRate: values.jobInvoiceExchRate || 0,
         insurance: values.insurance || null,
         landing: values.landing || null,
+        freightCharges: values.freightCharges || 0,
 
         // PO Fields
         poReceivedOn: values.poReceivedOn
@@ -1090,12 +1095,13 @@ export default function JobOrderForm({
         gdType: values.gdType || null,
         gddate: values.gddate ? new Date(values.gddate).toISOString() : null,
         gdcharges: values.gdcharges || 0,
-        gdclearedUs: values.gdclearedUs || null,
+        GdclearedUs: values.GdclearedUs || null,
         gdsecurityType: values.gdsecurityType || null,
         gdsecurityValue: values.gdsecurityValue || null,
         gdsecurityExpiryDate: values.gdsecurityExpiryDate
           ? new Date(values.gdsecurityExpiryDate).toISOString()
           : null,
+        psqcaSamples: values.psqcaSamples || null,
 
         // Case & Rent
         caseSubmittedToLineOn: values.caseSubmittedToLineOn
@@ -1287,6 +1293,7 @@ export default function JobOrderForm({
     shippingType,
     mode,
     documentType,
+    freightType: form.watch("freightType"), // Add current freight type value
     fclContainers,
     setFclContainers,
     fclForm,
@@ -1382,7 +1389,7 @@ export default function JobOrderForm({
                 <JobMainTab {...sharedProps} />
                 <ShippingTab {...sharedProps} />
                 <InvoiceTab {...sharedProps} />
-                <GDTab {...sharedProps} />
+                <GDInfoTab {...sharedProps} />
                 <DispatchTab {...sharedProps} />
                 <CompletionTab {...sharedProps} />
               </Tabs>

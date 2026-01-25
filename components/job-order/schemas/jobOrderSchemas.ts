@@ -89,6 +89,7 @@ export const jobMasterSchema = z.object({
   jobInvoiceExchRate: z.number().min(0).default(0),
   insurance: z.string().optional(),
   landing: z.string().optional(),
+  freightCharges: z.number().min(0).default(0).optional(),
 
   // PO (Payment Order) Fields
   poReceivedOn: z.string().optional(),
@@ -108,6 +109,7 @@ export const jobMasterSchema = z.object({
   gdsecurityType: z.string().optional(),
   gdsecurityValue: z.string().optional(), // Note: This is a STRING, not number
   gdsecurityExpiryDate: z.string().optional(),
+  psqcaSamples: z.string().optional(), // PSQCA Samples status
 
   // Case & Rent Tracking
   caseSubmittedToLineOn: z.string().optional(),
