@@ -118,6 +118,7 @@ export const jobMasterSchema = z.object({
 
   // Remarks
   remarks: z.string().optional(),
+  dispatchNotes: z.string().optional(),
 });
 
 // ============================================

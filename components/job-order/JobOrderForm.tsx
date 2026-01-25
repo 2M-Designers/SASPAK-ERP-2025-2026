@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import JobMainTab from "./tabs/JobMainTab";
 import ShippingTab from "./tabs/ShippingTab";
 import InvoiceTab from "./tabs/InvoiceTab";
-import GDInfoTab from "./tabs/GDInfoTab";
+import GDTab from "./tabs/GDInfoTab";
 import DispatchTab from "./tabs/DispatchTab";
 import CompletionTab from "./tabs/CompletionTab";
 
@@ -115,6 +115,7 @@ export default function JobOrderForm({
     InvoiceItemFormValues[]
   >([]);
   const [goodsDeclarations, setGoodsDeclarations] = useState<any[]>([]); // For GD tab data
+  const [dispatchRecords, setDispatchRecords] = useState<any[]>([]); // For Dispatch tab data
 
   // Form visibility
   const [showFclForm, setShowFclForm] = useState(false);
@@ -259,6 +260,7 @@ export default function JobOrderForm({
 
       // Remarks
       remarks: "",
+      dispatchNotes: "",
 
       ...defaultState,
     },
@@ -433,6 +435,7 @@ export default function JobOrderForm({
 
       // Remarks
       remarks: jobData.remarks || "",
+      dispatchNotes: jobData.dispatchNotes || "",
     });
 
     // Populate containers
@@ -546,6 +549,33 @@ export default function JobOrderForm({
       Array.isArray(jobData.jobGoodsDeclarations)
     ) {
       setGoodsDeclarations(jobData.jobGoodsDeclarations);
+    }
+
+    // Populate dispatch records (JobEquipmentHandingOvers)
+    if (
+      jobData.jobEquipmentHandingOvers &&
+      Array.isArray(jobData.jobEquipmentHandingOvers)
+    ) {
+      const transformedDispatch = jobData.jobEquipmentHandingOvers.map(
+        (dispatch: any) => ({
+          jobEquipmentHandingOverId: dispatch.jobEquipmentHandingOverId || 0,
+          jobId: dispatch.jobId || 0,
+          containerNumber: dispatch.containerNumber || "",
+          containerTypeId: dispatch.containerTypeId || undefined,
+          containerSizeId: dispatch.containerSizeId || undefined,
+          netWeight: dispatch.netWeight || 0,
+          transporterPartyId: dispatch.transporterPartyId || undefined,
+          destinationLocationId: dispatch.destinationLocationId || undefined,
+          buyingAmountLc: dispatch.buyingAmountLc || 0,
+          topayAmountLc: dispatch.topayAmountLc || 0,
+          dispatchDate: formatDateForForm(dispatch.dispatchDate),
+          version: dispatch.version || 0,
+          // LCL/Air specific fields
+          packageType: dispatch.packageType || undefined,
+          quantity: dispatch.quantity || undefined,
+        }),
+      );
+      setDispatchRecords(transformedDispatch);
     }
 
     toast({
@@ -666,6 +696,7 @@ export default function JobOrderForm({
               commodities: new Map(),
               equipments: new Map(),
               goodsDeclarations: new Map(),
+              dispatchRecords: new Map(),
             };
 
             // Map invoice versions
@@ -705,6 +736,16 @@ export default function JobOrderForm({
               });
             }
 
+            // Map dispatch records versions
+            if (latestData.jobEquipmentHandingOvers) {
+              latestData.jobEquipmentHandingOvers.forEach((dispatch: any) => {
+                latestVersions.dispatchRecords.set(
+                  dispatch.jobEquipmentHandingOverId,
+                  dispatch.version || 0,
+                );
+              });
+            }
+
             console.log("Latest versions fetched:", {
               job: latestVersions.jobVersion,
               invoices: Array.from(latestVersions.invoices.entries()),
@@ -712,6 +753,9 @@ export default function JobOrderForm({
               equipments: Array.from(latestVersions.equipments.entries()),
               goodsDeclarations: Array.from(
                 latestVersions.goodsDeclarations.entries(),
+              ),
+              dispatchRecords: Array.from(
+                latestVersions.dispatchRecords.entries(),
               ),
             });
           } else {
@@ -975,6 +1019,38 @@ export default function JobOrderForm({
       }
       // For UPDATE mode with no GD data: send empty array (existing records remain unchanged)
 
+      // Build JobEquipmentHandingOvers (Dispatch Records)
+      // ✅ Use latest version numbers for UPDATE operations
+      const jobEquipmentHandingOvers = dispatchRecords.map((dispatch: any) => {
+        const dispatchId = dispatch.jobEquipmentHandingOverId || 0;
+        const latestDispatchVersion =
+          type === "edit" && dispatchId > 0
+            ? (latestVersions.dispatchRecords?.get(dispatchId) ??
+              dispatch.version ??
+              0)
+            : dispatch.version || 0;
+
+        return {
+          jobEquipmentHandingOverId: dispatchId,
+          jobId: values.jobId || 0,
+          containerNumber: dispatch.containerNumber || "",
+          containerTypeId: dispatch.containerTypeId || null,
+          containerSizeId: dispatch.containerSizeId || null,
+          netWeight: dispatch.netWeight || 0,
+          transporterPartyId: dispatch.transporterPartyId || null,
+          destinationLocationId: dispatch.destinationLocationId || null,
+          buyingAmountLc: dispatch.buyingAmountLc || 0,
+          topayAmountLc: dispatch.topayAmountLc || 0,
+          dispatchDate: dispatch.dispatchDate
+            ? new Date(dispatch.dispatchDate).toISOString()
+            : null,
+          version: latestDispatchVersion, // ✅ Use latest version
+          // LCL/Air specific fields
+          packageType: dispatch.packageType || null,
+          quantity: dispatch.quantity || null,
+        };
+      });
+
       // Build complete payload matching new schema
       const payload: any = {
         companyId: companyId,
@@ -1095,7 +1171,7 @@ export default function JobOrderForm({
         gdType: values.gdType || null,
         gddate: values.gddate ? new Date(values.gddate).toISOString() : null,
         gdcharges: values.gdcharges || 0,
-        GdclearedUs: values.GdclearedUs || null,
+        gdclearedUs: values.gdclearedUs || null,
         gdsecurityType: values.gdsecurityType || null,
         gdsecurityValue: values.gdsecurityValue || null,
         gdsecurityExpiryDate: values.gdsecurityExpiryDate
@@ -1116,10 +1192,12 @@ export default function JobOrderForm({
 
         // Remarks
         remarks: values.remarks || null,
+        dispatchNotes: values.dispatchNotes || null,
 
         // Child Records
         jobEquipments: jobEquipments,
         jobInvoices: jobInvoices, // ✅ Now includes nested jobInvoiceCommodities
+        jobEquipmentHandingOvers: jobEquipmentHandingOvers, // ✅ Dispatch records
         // JobGoodsDeclarations: Required for CREATE, optional for UPDATE
         ...(type === "add" || jobGoodsDeclarations.length > 0
           ? { jobGoodsDeclarations: jobGoodsDeclarations }
@@ -1315,6 +1393,8 @@ export default function JobOrderForm({
     setEditingInvoiceItem,
     goodsDeclarations,
     setGoodsDeclarations,
+    dispatchRecords,
+    setDispatchRecords,
     insuranceType,
     setInsuranceType,
     toast,
@@ -1389,7 +1469,7 @@ export default function JobOrderForm({
                 <JobMainTab {...sharedProps} />
                 <ShippingTab {...sharedProps} />
                 <InvoiceTab {...sharedProps} />
-                <GDInfoTab {...sharedProps} />
+                <GDTab {...sharedProps} />
                 <DispatchTab {...sharedProps} />
                 <CompletionTab {...sharedProps} />
               </Tabs>
