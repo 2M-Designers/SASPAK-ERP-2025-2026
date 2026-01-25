@@ -34,7 +34,7 @@ interface FclContainer {
   containerNo: string;
   containerSizeId?: number;
   containerTypeId?: number;
-  weight: number;
+  tareWeight: number;
 
   // Additional Fields
   sealNo?: string;
@@ -125,7 +125,7 @@ export default function ShippingTab(props: ShippingTabProps) {
       containerNo: "",
       containerSizeId: currentContainerSizeId,
       containerTypeId: currentContainerTypeId,
-      weight: 0,
+      tareWeight: 0,
       noOfPackages: 0,
       packageType: "",
     });
@@ -136,7 +136,7 @@ export default function ShippingTab(props: ShippingTabProps) {
 
   const handleDeleteFcl = (index: number) => {
     setFclContainers(
-      fclContainers.filter((_: FclContainer, i: number) => i !== index)
+      fclContainers.filter((_: FclContainer, i: number) => i !== index),
     );
     toast({ title: "Success", description: "Container deleted" });
   };
@@ -213,7 +213,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                           <Select
                             options={parties}
                             value={parties.find(
-                              (p: SelectOption) => p.value === field.value
+                              (p: SelectOption) => p.value === field.value,
                             )}
                             onChange={(val) => field.onChange(val?.value)}
                             styles={compactSelectStyles}
@@ -281,14 +281,14 @@ export default function ShippingTab(props: ShippingTabProps) {
             <div className='col-span-3'>
               <FormField
                 control={form.control}
-                name='localAgentId'
+                name='principalId'
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
                       <Select
                         options={parties}
                         value={parties.find(
-                          (p: SelectOption) => p.value === field.value
+                          (p: SelectOption) => p.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -317,7 +317,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                       <Select
                         options={parties}
                         value={parties.find(
-                          (p: SelectOption) => p.value === field.value
+                          (p: SelectOption) => p.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -441,14 +441,14 @@ export default function ShippingTab(props: ShippingTabProps) {
             <div className='col-span-4'>
               <FormField
                 control={form.control}
-                name='polId'
+                name='originPortId'
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
                       <Select
                         options={locations}
                         value={locations.find(
-                          (l: SelectOption) => l.value === field.value
+                          (l: SelectOption) => l.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -470,14 +470,14 @@ export default function ShippingTab(props: ShippingTabProps) {
             <div className='col-span-4'>
               <FormField
                 control={form.control}
-                name='podId'
+                name='destinationPortId'
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
                       <Select
                         options={locations}
                         value={locations.find(
-                          (l: SelectOption) => l.value === field.value
+                          (l: SelectOption) => l.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -506,7 +506,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                       <Select
                         options={locations}
                         value={locations.find(
-                          (l: SelectOption) => l.value === field.value
+                          (l: SelectOption) => l.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -536,7 +536,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                       <Select
                         options={vessels}
                         value={vessels.find(
-                          (v: SelectOption) => v.value === field.value
+                          (v: SelectOption) => v.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -559,14 +559,14 @@ export default function ShippingTab(props: ShippingTabProps) {
             <div className='col-span-4'>
               <FormField
                 control={form.control}
-                name='terminalId'
+                name='terminalPartyId'
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
                       <Select
                         options={parties}
                         value={parties.find(
-                          (p: SelectOption) => p.value === field.value
+                          (p: SelectOption) => p.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -663,7 +663,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                       <Select
                         options={freightTypes}
                         value={freightTypes.find(
-                          (f: SelectOption) => f.value === field.value
+                          (f: SelectOption) => f.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -690,7 +690,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                       <Select
                         options={blStatuses}
                         value={blStatuses.find(
-                          (b: SelectOption) => b.value === field.value
+                          (b: SelectOption) => b.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -799,17 +799,17 @@ export default function ShippingTab(props: ShippingTabProps) {
                           <TableCell className='text-xs'>
                             {containerSizes.find(
                               (s: SelectOption) =>
-                                s.value === container.containerSizeId
+                                s.value === container.containerSizeId,
                             )?.label || "-"}
                           </TableCell>
                           <TableCell className='text-xs'>
                             {containerTypes.find(
                               (t: SelectOption) =>
-                                t.value === container.containerTypeId
+                                t.value === container.containerTypeId,
                             )?.label || "-"}
                           </TableCell>
                           <TableCell className='text-xs'>
-                            {container.weight.toFixed(4)}
+                            {container.tareWeight.toFixed(4)}
                           </TableCell>
                           <TableCell className='text-xs'>
                             {container.sealNo || "-"}
@@ -817,14 +817,14 @@ export default function ShippingTab(props: ShippingTabProps) {
                           <TableCell className='text-xs'>
                             {container.gateOutDate
                               ? new Date(
-                                  container.gateOutDate
+                                  container.gateOutDate,
                                 ).toLocaleDateString()
                               : "-"}
                           </TableCell>
                           <TableCell className='text-xs'>
                             {container.gateInDate
                               ? new Date(
-                                  container.gateInDate
+                                  container.gateInDate,
                                 ).toLocaleDateString()
                               : "-"}
                           </TableCell>
@@ -843,7 +843,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                             </Button>
                           </TableCell>
                         </TableRow>
-                      )
+                      ),
                     )}
                   </TableBody>
                 </Table>
@@ -1053,7 +1053,8 @@ export default function ShippingTab(props: ShippingTabProps) {
                                 <Select
                                   options={containerSizes}
                                   value={containerSizes.find(
-                                    (s: SelectOption) => s.value === field.value
+                                    (s: SelectOption) =>
+                                      s.value === field.value,
                                   )}
                                   onChange={(val) => field.onChange(val?.value)}
                                   styles={compactSelectStyles}
@@ -1077,7 +1078,8 @@ export default function ShippingTab(props: ShippingTabProps) {
                                 <Select
                                   options={containerTypes}
                                   value={containerTypes.find(
-                                    (t: SelectOption) => t.value === field.value
+                                    (t: SelectOption) =>
+                                      t.value === field.value,
                                   )}
                                   onChange={(val) => field.onChange(val?.value)}
                                   styles={compactSelectStyles}
@@ -1093,7 +1095,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                         {/* Gross Weight */}
                         <FormField
                           control={fclForm.control}
-                          name='weight'
+                          name='tareWeight'
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel className='text-xs'>Weight</FormLabel>
@@ -1105,7 +1107,7 @@ export default function ShippingTab(props: ShippingTabProps) {
                                   value={field.value || 0.0}
                                   onChange={(e) =>
                                     field.onChange(
-                                      parseFloat(e.target.value) || 0
+                                      parseFloat(e.target.value) || 0,
                                     )
                                   }
                                   className='h-8 text-xs'
@@ -1188,7 +1190,8 @@ export default function ShippingTab(props: ShippingTabProps) {
                                 <Select
                                   options={packageTypes}
                                   value={packageTypes.find(
-                                    (p: SelectOption) => p.value === field.value
+                                    (p: SelectOption) =>
+                                      p.value === field.value,
                                   )}
                                   onChange={(val) => field.onChange(val?.value)}
                                   styles={compactSelectStyles}

@@ -195,7 +195,7 @@ export default function JobMainTab(props: JobMainTabProps) {
                       <Select
                         options={processOwners}
                         value={processOwners.find(
-                          (p: SelectOption) => p.value === field.value
+                          (p: SelectOption) => p.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -314,7 +314,7 @@ export default function JobMainTab(props: JobMainTabProps) {
                       <Select
                         options={operationTypes}
                         value={operationTypes.find(
-                          (t: SelectOption) => t.value === field.value
+                          (t: SelectOption) => t.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -343,7 +343,7 @@ export default function JobMainTab(props: JobMainTabProps) {
                       <Select
                         options={operationModes}
                         value={operationModes.find(
-                          (m: SelectOption) => m.value === field.value
+                          (m: SelectOption) => m.value === field.value,
                         )}
                         onChange={(val) => {
                           field.onChange(val?.value);
@@ -380,7 +380,7 @@ export default function JobMainTab(props: JobMainTabProps) {
                         <Select
                           options={jobLoadTypes}
                           value={jobLoadTypes.find(
-                            (t: SelectOption) => t.value === field.value
+                            (t: SelectOption) => t.value === field.value,
                           )}
                           onChange={(val) => field.onChange(val?.value)}
                           styles={compactSelectStyles}
@@ -411,7 +411,7 @@ export default function JobMainTab(props: JobMainTabProps) {
                         <Select
                           options={jobLoads}
                           value={jobLoads.find(
-                            (l: SelectOption) => l.value === field.value
+                            (l: SelectOption) => l.value === field.value,
                           )}
                           onChange={(val) => field.onChange(val?.value)}
                           styles={compactSelectStyles}
@@ -441,7 +441,7 @@ export default function JobMainTab(props: JobMainTabProps) {
                       <Select
                         options={documentTypes}
                         value={documentTypes.find(
-                          (d: SelectOption) => d.value === field.value
+                          (d: SelectOption) => d.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -470,7 +470,7 @@ export default function JobMainTab(props: JobMainTabProps) {
                       <Select
                         options={parties}
                         value={parties.find(
-                          (p: SelectOption) => p.value === field.value
+                          (p: SelectOption) => p.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}
@@ -499,7 +499,7 @@ export default function JobMainTab(props: JobMainTabProps) {
                       <Select
                         options={parties}
                         value={parties.find(
-                          (p: SelectOption) => p.value === field.value
+                          (p: SelectOption) => p.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         styles={compactSelectStyles}

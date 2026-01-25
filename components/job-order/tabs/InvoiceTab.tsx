@@ -21,6 +21,7 @@ import {
 import Select from "react-select";
 import { Plus, Save, Edit, Trash2, Package, Upload } from "lucide-react";
 import { compactSelectStyles } from "../utils/styles";
+import { useEffect } from "react";
 
 // Define types
 interface SelectOption {
@@ -33,6 +34,7 @@ interface SelectOption {
 
 interface InvoiceItem {
   invoiceItemId?: number;
+  jobInvoiceId?: number; // ✅ ADDED - Link to parent invoice
   hsCodeId?: number;
   hsCode: string;
   description: string;
@@ -41,6 +43,7 @@ interface InvoiceItem {
   dutiableValue: number;
   assessableValue: number;
   totalValue: number;
+  version?: number; // ✅ ADDED for tracking updates
 }
 
 interface Invoice {
@@ -54,10 +57,13 @@ interface Invoice {
   lcIssuedByBankId?: number;
   lcValue: number;
   lcCurrencyId?: number;
+  lcExchangeRate: number;
   fiNumber?: string;
   fiDate?: string;
   fiExpiryDate?: string;
+  invoiceStatus?: string;
   items: InvoiceItem[];
+  version?: number; // ✅ ADDED for tracking updates
 }
 
 interface InvoiceTabProps {
@@ -121,8 +127,66 @@ export default function InvoiceTab(props: InvoiceTabProps) {
     toast,
   } = props;
 
+  // Auto-calculate invoice item totalValue
+  useEffect(() => {
+    const subscription = invoiceItemForm.watch(
+      (value: any, { name }: { name: string }) => {
+        if (name === "quantity" || name === "assessableValue") {
+          const qty = value.quantity || 0;
+          const av = value.assessableValue || 0;
+          const total = qty * av;
+
+          // Only update if different to avoid infinite loop
+          if (value.totalValue !== total) {
+            invoiceItemForm.setValue("totalValue", total);
+          }
+        }
+      },
+    );
+    return () => subscription.unsubscribe();
+  }, [invoiceItemForm]);
+
+  // Debug: Log props on mount and when invoices change
+  useEffect(() => {
+    console.log("=== INVOICE TAB PROPS ===");
+    console.log("Invoices received:", invoices.length);
+    console.log("setInvoices type:", typeof setInvoices);
+  }, [invoices]);
+
   // Handler functions
   const handleAddInvoiceItem = (data: InvoiceItem) => {
+    console.log("=== handleAddInvoiceItem CALLED ===");
+    console.log("Raw item data received:", JSON.stringify(data, null, 2));
+    console.log(
+      "Item values - Qty:",
+      data.quantity,
+      "DV:",
+      data.dutiableValue,
+      "AV:",
+      data.assessableValue,
+      "Total:",
+      data.totalValue,
+    );
+
+    // Validate that quantity and assessable value are entered
+    if (!data.quantity || data.quantity <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please enter a quantity greater than 0",
+      });
+      return;
+    }
+
+    if (!data.assessableValue || data.assessableValue <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please enter an assessable value greater than 0",
+      });
+      return;
+    }
+
     if (editingInvoiceItem !== null) {
       const updated = [...currentInvoiceItems];
       updated[editingInvoiceItem] = data;
@@ -132,11 +196,15 @@ export default function InvoiceTab(props: InvoiceTabProps) {
       setCurrentInvoiceItems([...currentInvoiceItems, data]);
       toast({ title: "Success", description: "Item added to invoice" });
     }
+
+    console.log("Updated currentInvoiceItems:", currentInvoiceItems.length + 1);
+
     invoiceItemForm.reset({
       quantity: 0,
       dutiableValue: 0,
       assessableValue: 0,
       totalValue: 0,
+      version: 0,
     });
     setShowInvoiceItemForm(false);
     setEditingInvoiceItem(null);
@@ -150,12 +218,20 @@ export default function InvoiceTab(props: InvoiceTabProps) {
 
   const handleDeleteInvoiceItem = (index: number) => {
     setCurrentInvoiceItems(
-      currentInvoiceItems.filter((_: InvoiceItem, i: number) => i !== index)
+      currentInvoiceItems.filter((_: InvoiceItem, i: number) => i !== index),
     );
     toast({ title: "Success", description: "Item removed" });
   };
 
   const handleAddInvoice = (data: Invoice) => {
+    console.log("=== handleAddInvoice CALLED ===");
+    console.log("Invoice form data:", JSON.stringify(data, null, 2));
+    console.log("Current invoice items count:", currentInvoiceItems.length);
+    console.log(
+      "Current invoice items:",
+      JSON.stringify(currentInvoiceItems, null, 2),
+    );
+
     if (currentInvoiceItems.length === 0) {
       toast({
         variant: "destructive",
@@ -166,18 +242,34 @@ export default function InvoiceTab(props: InvoiceTabProps) {
     }
 
     const invoiceWithItems = { ...data, items: currentInvoiceItems };
+    console.log(
+      "Invoice with items merged:",
+      JSON.stringify(invoiceWithItems, null, 2),
+    );
+    console.log("Items in merged invoice:", invoiceWithItems.items.length);
 
     if (editingInvoice !== null) {
       const updated = [...invoices];
       updated[editingInvoice] = invoiceWithItems;
+      console.log("Updating invoice at index:", editingInvoice);
       setInvoices(updated);
       toast({ title: "Success", description: "Invoice updated" });
     } else {
-      setInvoices([...invoices, invoiceWithItems]);
+      console.log(
+        "Adding new invoice. Current invoices count:",
+        invoices.length,
+      );
+      const newInvoices = [...invoices, invoiceWithItems];
+      console.log("New invoices array length:", newInvoices.length);
+      console.log(
+        "Last invoice items count:",
+        newInvoices[newInvoices.length - 1].items.length,
+      );
+      setInvoices(newInvoices);
       toast({ title: "Success", description: "Invoice added" });
     }
 
-    invoiceForm.reset({ lcValue: 0, items: [] });
+    invoiceForm.reset({ lcValue: 0, lcExchangeRate: 0, version: 0, items: [] });
     setCurrentInvoiceItems([]);
     setShowInvoiceForm(false);
     setEditingInvoice(null);
@@ -226,7 +318,12 @@ export default function InvoiceTab(props: InvoiceTabProps) {
             onClick={() => {
               setShowInvoiceForm(!showInvoiceForm);
               setEditingInvoice(null);
-              invoiceForm.reset({ lcValue: 0, items: [] });
+              invoiceForm.reset({
+                lcValue: 0,
+                lcExchangeRate: 0,
+                version: 0,
+                items: [],
+              });
               setCurrentInvoiceItems([]);
             }}
             className='h-7 text-xs'
@@ -322,7 +419,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                 <TableCell className='text-xs'>
                                   {countries.find(
                                     (c: SelectOption) =>
-                                      c.value === item.originId
+                                      c.value === item.originId,
                                   )?.label || "-"}
                                 </TableCell>
                                 <TableCell className='text-xs'>
@@ -338,7 +435,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                   {item.totalValue.toFixed(2)}
                                 </TableCell>
                               </TableRow>
-                            )
+                            ),
                           )}
                         </TableBody>
                       </Table>
@@ -417,7 +514,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                               <Select
                                 options={parties}
                                 value={parties.find(
-                                  (p: SelectOption) => p.value === field.value
+                                  (p: SelectOption) => p.value === field.value,
                                 )}
                                 onChange={(val) => field.onChange(val?.value)}
                                 styles={compactSelectStyles}
@@ -449,18 +546,18 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                         { value: "EXW", label: "EXW" },
                                       ]
                                     : freightType === "Prepaid"
-                                    ? [
-                                        { value: "DDP", label: "DDP" },
-                                        { value: "DDU", label: "DDU" },
-                                        { value: "CFR", label: "CFR" },
-                                      ]
-                                    : [
-                                        { value: "FOB", label: "FOB" },
-                                        { value: "EXW", label: "EXW" },
-                                        { value: "DDP", label: "DDP" },
-                                        { value: "DDU", label: "DDU" },
-                                        { value: "CFR", label: "CFR" },
-                                      ]
+                                      ? [
+                                          { value: "DDP", label: "DDP" },
+                                          { value: "DDU", label: "DDU" },
+                                          { value: "CFR", label: "CFR" },
+                                        ]
+                                      : [
+                                          { value: "FOB", label: "FOB" },
+                                          { value: "EXW", label: "EXW" },
+                                          { value: "DDP", label: "DDP" },
+                                          { value: "DDU", label: "DDU" },
+                                          { value: "CFR", label: "CFR" },
+                                        ]
                                 }
                                 value={
                                   field.value
@@ -554,7 +651,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                               <Select
                                 options={currencies}
                                 value={currencies.find(
-                                  (c: SelectOption) => c.value === field.value
+                                  (c: SelectOption) => c.value === field.value,
                                 )}
                                 onChange={(val) => field.onChange(val?.value)}
                                 styles={compactSelectStyles}
@@ -568,7 +665,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                       />
                     </div>
 
-                    <div className='grid grid-cols-1 gap-3 mt-3'>
+                    <div className='grid grid-cols-2 gap-3 mt-3'>
                       <FormField
                         control={invoiceForm.control}
                         name='lcIssuedByBankId'
@@ -581,13 +678,38 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                               <Select
                                 options={banks}
                                 value={banks.find(
-                                  (b: SelectOption) => b.value === field.value
+                                  (b: SelectOption) => b.value === field.value,
                                 )}
                                 onChange={(val) => field.onChange(val?.value)}
                                 styles={compactSelectStyles}
                                 isLoading={loadingBanks}
                                 isClearable
                                 placeholder='Select Bank'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={invoiceForm.control}
+                        name='lcExchangeRate'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>
+                              LC Exchange Rate
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type='number'
+                                step='0.0001'
+                                {...field}
+                                value={field.value || 0}
+                                onChange={(e) =>
+                                  field.onChange(Number(e.target.value))
+                                }
+                                className='h-8 text-xs'
+                                placeholder='0.0000'
                               />
                             </FormControl>
                           </FormItem>
@@ -696,6 +818,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                               dutiableValue: 0,
                               assessableValue: 0,
                               totalValue: 0,
+                              version: 0,
                             });
                           }}
                           className='h-7 text-xs'
@@ -736,7 +859,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                 <TableCell className='text-xs'>
                                   {countries.find(
                                     (c: SelectOption) =>
-                                      c.value === item.originId
+                                      c.value === item.originId,
                                   )?.label || "-"}
                                 </TableCell>
                                 <TableCell className='text-xs'>
@@ -776,7 +899,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                   </div>
                                 </TableCell>
                               </TableRow>
-                            )
+                            ),
                           )}
                           <TableRow className='bg-gray-50'>
                             <TableCell
@@ -790,7 +913,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                 .reduce(
                                   (sum: number, item: InvoiceItem) =>
                                     sum + item.totalValue,
-                                  0
+                                  0,
                                 )
                                 .toFixed(2)}
                             </TableCell>
@@ -826,7 +949,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                       options={hsCodes}
                                       value={hsCodes.find(
                                         (h: SelectOption) =>
-                                          h.value === field.value
+                                          h.value === field.value,
                                       )}
                                       onChange={(val) => {
                                         field.onChange(val?.value);
@@ -838,7 +961,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                       placeholder='Search by Code or Description'
                                       filterOption={(
                                         option: any,
-                                        inputValue: string
+                                        inputValue: string,
                                       ) => {
                                         const searchValue =
                                           inputValue.toLowerCase();
@@ -896,7 +1019,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                         options={countries}
                                         value={countries.find(
                                           (c: SelectOption) =>
-                                            c.value === field.value
+                                            c.value === field.value,
                                         )}
                                         onChange={(val) =>
                                           field.onChange(val?.value)
@@ -1041,7 +1164,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                               onClick={(e) => {
                                 e.preventDefault();
                                 invoiceItemForm.handleSubmit(
-                                  handleAddInvoiceItem
+                                  handleAddInvoiceItem,
                                 )();
                               }}
                               size='sm'
