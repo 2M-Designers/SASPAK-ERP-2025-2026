@@ -4,7 +4,7 @@
  * Supports both GD-I (Page 1) and GD-II (Page 2/continuation sheets)
  */
 
-import * as XLSX from "xlsx";
+import * as ExcelJS from "exceljs";
 
 export interface GDItem {
   itemNo: number;
@@ -46,58 +46,54 @@ export interface GDItem {
 /**
  * Parse official GD Excel files (both .xls and .xlsx formats)
  */
-export function parseGDOfficialFormat(file: File): Promise<GDItem[]> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+export async function parseGDOfficialFormat(file: File): Promise<GDItem[]> {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = new ExcelJS.Workbook();
 
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: "array" });
+    // Load the workbook
+    await workbook.xlsx.load(arrayBuffer);
 
-        const items: GDItem[] = [];
+    const items: GDItem[] = [];
 
-        // Process all sheets
-        workbook.SheetNames.forEach((sheetName) => {
-          const worksheet = workbook.Sheets[sheetName];
-          const sheetItems = extractItemsFromSheet(worksheet);
-          items.push(...sheetItems);
-        });
+    // Process all worksheets
+    workbook.worksheets.forEach((worksheet) => {
+      const sheetItems = extractItemsFromSheet(worksheet);
+      items.push(...sheetItems);
+    });
 
-        console.log(`Parsed ${items.length} items from GD file`);
+    console.log(`Parsed ${items.length} items from GD file`);
 
-        if (items.length === 0) {
-          reject(
-            new Error("No items found in GD file. Please check the format."),
-          );
-          return;
-        }
+    if (items.length === 0) {
+      throw new Error("No items found in GD file. Please check the format.");
+    }
 
-        resolve(items);
-      } catch (error) {
-        console.error("Parse error:", error);
-        reject(new Error(`Failed to parse GD file: ${error}`));
-      }
-    };
-
-    reader.onerror = () => {
-      reject(new Error("Failed to read file"));
-    };
-
-    reader.readAsArrayBuffer(file);
-  });
+    return items;
+  } catch (error) {
+    console.error("Parse error:", error);
+    throw new Error(`Failed to parse GD file: ${error}`);
+  }
 }
 
 /**
  * Extract items from a worksheet
  */
-function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
+function extractItemsFromSheet(worksheet: ExcelJS.Worksheet): GDItem[] {
   const items: GDItem[] = [];
 
   // Convert sheet to array of arrays for easier processing
-  const sheetData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+  const sheetData: any[][] = [];
+  worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+    const rowData: any[] = [];
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      rowData.push(cell.value);
+    });
+    sheetData.push(rowData);
+  });
 
-  console.log(`Processing sheet with ${sheetData.length} rows`);
+  console.log(
+    `Processing sheet "${worksheet.name}" with ${sheetData.length} rows`,
+  );
 
   let currentItem: Partial<GDItem> | null = null;
   let itemHeaderFound = false;
@@ -126,8 +122,6 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
     if (!itemHeaderFound) continue;
 
     // Step 2: Detect item number row
-    // Look for: numeric value (as string or number) in first few columns AND "(a)Unit Type" text
-    // Exclude: rows with 6+ numeric values (those are value rows, not item rows)
     const firstValue = row[0] || row[1];
     const firstValueNum =
       typeof firstValue === "number"
@@ -157,7 +151,6 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
       }
 
       // Check if this row or next row has unit type indicator
-      // But exclude if the SRO text is in the first column itself (field label like "49.SRO / Test Report")
       const firstColStr = String(row[0] || "").toUpperCase();
       const isSroInFirstCol =
         firstColStr.includes("SRO") ||
@@ -168,7 +161,7 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
         !isSroInFirstCol &&
         (rowStr.includes("UNIT TYPE") ||
           rowStr.includes("SRO1640") ||
-          rowStr.includes("SRO ") || // Actual SRO numbers
+          rowStr.includes("SRO ") ||
           (i + 1 < sheetData.length &&
             sheetData[i + 1].join(" ").toUpperCase().includes("KG")));
 
@@ -184,9 +177,8 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
         currentItem = initializeItem();
         currentItem.itemNo = firstValueNum;
 
-        // Try to extract SRO from this row (but not from first column)
+        // Try to extract SRO from this row
         for (let j = 2; j < row.length; j++) {
-          // Start from column 2, not 0
           const cell = row[j];
           if (cell && String(cell).toUpperCase().includes("SRO1640")) {
             currentItem.sroNumber = String(cell);
@@ -198,12 +190,11 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
       }
     }
 
-    // Step 3: Parse quantity row (KG, PCS, U, MT, etc.)
+    // Step 3: Parse quantity row
     if (currentItem && !currentItem.unitType) {
       const unitTypes = ["KG", "PCS", "U", "MT", "UNIT", "UNITS"];
       for (const ut of unitTypes) {
         if (rowStr.includes(ut)) {
-          // Found unit type row
           console.log(`Found quantity row at ${i + 1}`);
 
           // Extract data from this row
@@ -220,7 +211,7 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
               currentItem.unitType = cellStr.replace(/S$/, "");
             }
 
-            // Quantity (number with decimals, usually 4 decimal places)
+            // Quantity
             const numVal =
               typeof cell === "number"
                 ? cell
@@ -245,7 +236,7 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
               currentItem.coCode = cellStr;
             }
 
-            // HS Code (format: 8517.7100 or similar)
+            // HS Code
             if (typeof cell === "string" && /^\d{4}\.\d{4}/.test(cell)) {
               currentItem.hsCode = cell;
             } else if (
@@ -253,7 +244,6 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
               /^\d{8}/.test(cell) &&
               cell.length === 8
             ) {
-              // Sometimes HS code stored as string without decimal
               currentItem.hsCode =
                 cell.substring(0, 4) + "." + cell.substring(4);
             } else if (
@@ -261,7 +251,6 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
               cell > 1000 &&
               cell < 100000
             ) {
-              // Sometimes HS code loses decimal formatting
               const hsStr = cell.toString();
               if (hsStr.length >= 7) {
                 currentItem.hsCode =
@@ -292,11 +281,9 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
 
     // Step 4: Parse description row
     if (currentItem && !currentItem.itemDescription) {
-      // Description is usually a long text (> 30 characters)
       for (const cell of row) {
         if (cell && typeof cell === "string" && cell.length > 30) {
           const cellUpper = cell.toUpperCase();
-          // Avoid header texts
           if (
             !cellUpper.includes("ITEM DESCRIPTION") &&
             !cellUpper.includes("UNIT VALUE") &&
@@ -310,14 +297,13 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
       }
     }
 
-    // Step 5: Parse levy rows (CD, ST, RD, etc.)
+    // Step 5: Parse levy rows
     if (currentItem) {
       const levyMatch = rowStr.match(/^\s*(CD|ST|RD|ASD|AST|ACD|IT)\s/);
       if (levyMatch) {
         const levyType = levyMatch[1];
         console.log(`Found levy type: ${levyType}`);
 
-        // Find rate (small number, usually < 100) and payable (larger number)
         let rate = 0;
         let payable = 0;
 
@@ -337,7 +323,6 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
           }
         }
 
-        // Store in appropriate fields
         switch (levyType) {
           case "CD":
             currentItem.rateCd = rate;
@@ -371,15 +356,12 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
       }
     }
 
-    // Step 6: Parse unit values row (Field 43)
-    // This row has: Declared, Assessed values repeated 3 times
+    // Step 6: Parse unit values row
     if (
       currentItem &&
       rowStr.includes("DECLARED") &&
       rowStr.includes("ASSESSED")
     ) {
-      // The actual values are usually 2-3 rows down (skip empty rows and levy rows)
-      // Look ahead up to 5 rows to find the row with 6 numeric values
       for (let lookAhead = 1; lookAhead <= 5; lookAhead++) {
         if (i + lookAhead >= sheetData.length) break;
 
@@ -394,7 +376,6 @@ function extractItemsFromSheet(worksheet: XLSX.WorkSheet): GDItem[] {
           )
           .filter((n: number) => !isNaN(n) && n > 0);
 
-        // We need exactly 6 values: Decl Unit, Assd Unit, Decl Total, Assd Total, Decl Custom, Assd Custom
         if (numbers.length >= 6) {
           currentItem.declaredUnitValue = numbers[0];
           currentItem.assessedUnitValue = numbers[1];

@@ -27,7 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Upload, Download, Plus, Pencil, Trash2, FileText } from "lucide-react";
-import * as XLSX from "xlsx";
+import * as ExcelJS from "exceljs";
 import { parseGDOfficialFormat, type GDItem } from "./gdOfficialFormatParser";
 
 export default function GDInfoTab({
@@ -96,151 +96,253 @@ export default function GDInfoTab({
     form.setValue("landing", landingValue.toFixed(2));
   }, [goodsDeclarations, form.watch("insurance"), form]);
 
-  // Download Excel Template
-  const downloadTemplate = () => {
-    const template = [
-      {
-        "Item No": 1,
-        "Unit Type": "PCS",
-        Quantity: 100,
-        "CO Code": "China",
-        "SRO Number": "SRO-001",
-        "HS Code": "8471.30",
-        "Item Description": "Sample item description",
-        "Declared Unit Value": 100.0,
-        "Assessed Unit Value": 100.0,
-        "Total Declared Value": 10000.0,
-        "Total Assessed Value": 10000.0,
-        "Custom Declared Value (PKR)": 2822500.0,
-        "Custom Assessed Value (PKR)": 2822500.0,
-        "Levy CD": 0,
-        "Levy ST": 0,
-        "Levy RD": 0,
-        "Levy ASD": 0,
-        "Levy IT": 0,
-        "Rate CD (%)": 3.75,
-        "Rate ST (%)": 18.0,
-        "Rate RD (%)": 5.0,
-        "Rate ASD (%)": 3.0,
-        "Rate IT (%)": 6.0,
-        "Payable CD": 105843.75,
-        "Payable ST": 508185.0,
-        "Payable RD": 141233.0,
-        "Payable ASD": 84872.0,
-        "Payable IT": 113431.0,
-      },
-    ];
+  // Download Excel Template using exceljs
+  const downloadTemplate = async () => {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("GD Template");
 
-    const ws = XLSX.utils.json_to_sheet(template);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "GD Template");
+      // Define headers
+      const headers = [
+        "Item No",
+        "Unit Type",
+        "Quantity",
+        "CO Code",
+        "SRO Number",
+        "HS Code",
+        "Item Description",
+        "Declared Unit Value",
+        "Assessed Unit Value",
+        "Total Declared Value",
+        "Total Assessed Value",
+        "Custom Declared Value (PKR)",
+        "Custom Assessed Value (PKR)",
+        "Levy CD",
+        "Levy ST",
+        "Levy RD",
+        "Levy ASD",
+        "Levy IT",
+        "Rate CD (%)",
+        "Rate ST (%)",
+        "Rate RD (%)",
+        "Rate ASD (%)",
+        "Rate IT (%)",
+        "Payable CD",
+        "Payable ST",
+        "Payable RD",
+        "Payable ASD",
+        "Payable IT",
+      ];
 
-    // Set column widths
-    ws["!cols"] = [
-      { wch: 10 },
-      { wch: 15 },
-      { wch: 12 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 40 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 20 },
-      { wch: 20 },
-      { wch: 25 },
-      { wch: 25 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 15 },
-    ];
+      // Add headers
+      worksheet.addRow(headers);
 
-    XLSX.writeFile(wb, "GD_Detail_Template.xlsx");
+      // Style header row
+      const headerRow = worksheet.getRow(1);
+      headerRow.font = { bold: true };
+      headerRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE0E0E0" },
+      };
+      headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
-    toast({
-      title: "Template Downloaded",
-      description: "Excel template downloaded successfully",
-    });
+      // Add sample data
+      worksheet.addRow([
+        1,
+        "PCS",
+        100,
+        "China",
+        "SRO-001",
+        "8471.30",
+        "Sample item description",
+        100.0,
+        100.0,
+        10000.0,
+        10000.0,
+        2822500.0,
+        2822500.0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3.75,
+        18.0,
+        5.0,
+        3.0,
+        6.0,
+        105843.75,
+        508185.0,
+        141233.0,
+        84872.0,
+        113431.0,
+      ]);
+
+      // Set column widths
+      worksheet.columns = [
+        { width: 10 }, // Item No
+        { width: 15 }, // Unit Type
+        { width: 12 }, // Quantity
+        { width: 15 }, // CO Code
+        { width: 15 }, // SRO Number
+        { width: 15 }, // HS Code
+        { width: 40 }, // Item Description
+        { width: 18 }, // Declared Unit Value
+        { width: 18 }, // Assessed Unit Value
+        { width: 20 }, // Total Declared Value
+        { width: 20 }, // Total Assessed Value
+        { width: 25 }, // Custom Declared Value (PKR)
+        { width: 25 }, // Custom Assessed Value (PKR)
+        { width: 12 }, // Levy CD
+        { width: 12 }, // Levy ST
+        { width: 12 }, // Levy RD
+        { width: 12 }, // Levy ASD
+        { width: 12 }, // Levy IT
+        { width: 12 }, // Rate CD (%)
+        { width: 12 }, // Rate ST (%)
+        { width: 12 }, // Rate RD (%)
+        { width: 12 }, // Rate ASD (%)
+        { width: 12 }, // Rate IT (%)
+        { width: 15 }, // Payable CD
+        { width: 15 }, // Payable ST
+        { width: 15 }, // Payable RD
+        { width: 15 }, // Payable ASD
+        { width: 15 }, // Payable IT
+      ];
+
+      // Generate the Excel file
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "GD_Detail_Template.xlsx";
+      link.click();
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Template Downloaded",
+        description: "Excel template downloaded successfully",
+      });
+    } catch (error) {
+      console.error("Error generating template:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to generate template",
+      });
+    }
   };
 
-  // Upload Excel File
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload Excel File - You can keep this using xlsx or replace with exceljs
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = new Uint8Array(event.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(arrayBuffer);
 
-        const mappedData = jsonData.map((row: any, index: number) => ({
-          id: -(Math.floor(Date.now() / 1000) + index), // Int32-safe negative ID
-          jobId: 0,
-          unitType: row["Unit Type"] || "",
-          quantity: parseFloat(row["Quantity"]) || 0,
-          cocode: row["CO Code"] || "",
-          sronumber: row["SRO Number"] || "",
-          hscode: row["HS Code"] || "",
-          itemDescription: row["Item Description"] || "",
-          declaredUnitValue: parseFloat(row["Declared Unit Value"]) || 0,
-          assessedUnitValue: parseFloat(row["Assessed Unit Value"]) || 0,
-          totalDeclaredValue: parseFloat(row["Total Declared Value"]) || 0,
-          totalAssessedValue: parseFloat(row["Total Assessed Value"]) || 0,
-          customDeclaredValue:
-            parseFloat(row["Custom Declared Value (PKR)"]) || 0,
-          customAssessedValue:
-            parseFloat(row["Custom Assessed Value (PKR)"]) || 0,
-          levyCd: parseFloat(row["Levy CD"]) || 0,
-          levySt: parseFloat(row["Levy ST"]) || 0,
-          levyRd: parseFloat(row["Levy RD"]) || 0,
-          levyAsd: parseFloat(row["Levy ASD"]) || 0,
-          levyIt: parseFloat(row["Levy IT"]) || 0,
-          rateCd: parseFloat(row["Rate CD (%)"]) || 0,
-          rateSt: parseFloat(row["Rate ST (%)"]) || 0,
-          rateRd: parseFloat(row["Rate RD (%)"]) || 0,
-          rateAsd: parseFloat(row["Rate ASD (%)"]) || 0,
-          rateIt: parseFloat(row["Rate IT (%)"]) || 0,
-          payableCd: parseFloat(row["Payable CD"]) || 0,
-          payableSt: parseFloat(row["Payable ST"]) || 0,
-          payableRd: parseFloat(row["Payable RD"]) || 0,
-          payableAsd: parseFloat(row["Payable ASD"]) || 0,
-          payableIt: parseFloat(row["Payable IT"]) || 0,
-          version: 0,
-        }));
+      const worksheet = workbook.worksheets[0];
+      const jsonData: any[] = [];
 
-        setGoodsDeclarations([...goodsDeclarations, ...mappedData]);
+      // Convert worksheet to JSON
+      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        if (rowNumber === 1) return; // Skip header row
 
-        toast({
-          title: "Success",
-          description: `${mappedData.length} items imported successfully`,
+        const rowData: any = {};
+        headers.forEach((header, index) => {
+          const cell = row.getCell(index + 1);
+          rowData[header] = cell.value;
         });
-      } catch (error) {
-        console.error("Error parsing Excel:", error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to parse Excel file. Please check the format.",
-        });
-      }
-    };
+        jsonData.push(rowData);
+      });
 
-    reader.readAsArrayBuffer(file);
+      const headers = [
+        "Item No",
+        "Unit Type",
+        "Quantity",
+        "CO Code",
+        "SRO Number",
+        "HS Code",
+        "Item Description",
+        "Declared Unit Value",
+        "Assessed Unit Value",
+        "Total Declared Value",
+        "Total Assessed Value",
+        "Custom Declared Value (PKR)",
+        "Custom Assessed Value (PKR)",
+        "Levy CD",
+        "Levy ST",
+        "Levy RD",
+        "Levy ASD",
+        "Levy IT",
+        "Rate CD (%)",
+        "Rate ST (%)",
+        "Rate RD (%)",
+        "Rate ASD (%)",
+        "Rate IT (%)",
+        "Payable CD",
+        "Payable ST",
+        "Payable RD",
+        "Payable ASD",
+        "Payable IT",
+      ];
+
+      const mappedData = jsonData.map((row: any, index: number) => ({
+        id: -(Math.floor(Date.now() / 1000) + index), // Int32-safe negative ID
+        jobId: 0,
+        unitType: row["Unit Type"] || "",
+        quantity: parseFloat(row["Quantity"]) || 0,
+        cocode: row["CO Code"] || "",
+        sronumber: row["SRO Number"] || "",
+        hscode: row["HS Code"] || "",
+        itemDescription: row["Item Description"] || "",
+        declaredUnitValue: parseFloat(row["Declared Unit Value"]) || 0,
+        assessedUnitValue: parseFloat(row["Assessed Unit Value"]) || 0,
+        totalDeclaredValue: parseFloat(row["Total Declared Value"]) || 0,
+        totalAssessedValue: parseFloat(row["Total Assessed Value"]) || 0,
+        customDeclaredValue:
+          parseFloat(row["Custom Declared Value (PKR)"]) || 0,
+        customAssessedValue:
+          parseFloat(row["Custom Assessed Value (PKR)"]) || 0,
+        levyCd: parseFloat(row["Levy CD"]) || 0,
+        levySt: parseFloat(row["Levy ST"]) || 0,
+        levyRd: parseFloat(row["Levy RD"]) || 0,
+        levyAsd: parseFloat(row["Levy ASD"]) || 0,
+        levyIt: parseFloat(row["Levy IT"]) || 0,
+        rateCd: parseFloat(row["Rate CD (%)"]) || 0,
+        rateSt: parseFloat(row["Rate ST (%)"]) || 0,
+        rateRd: parseFloat(row["Rate RD (%)"]) || 0,
+        rateAsd: parseFloat(row["Rate ASD (%)"]) || 0,
+        rateIt: parseFloat(row["Rate IT (%)"]) || 0,
+        payableCd: parseFloat(row["Payable CD"]) || 0,
+        payableSt: parseFloat(row["Payable ST"]) || 0,
+        payableRd: parseFloat(row["Payable RD"]) || 0,
+        payableAsd: parseFloat(row["Payable ASD"]) || 0,
+        payableIt: parseFloat(row["Payable IT"]) || 0,
+        version: 0,
+      }));
+
+      setGoodsDeclarations([...goodsDeclarations, ...mappedData]);
+
+      toast({
+        title: "Success",
+        description: `${mappedData.length} items imported successfully`,
+      });
+    } catch (error) {
+      console.error("Error parsing Excel:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to parse Excel file. Please check the format.",
+      });
+    }
+
     e.target.value = ""; // Reset input
   };
 
@@ -437,28 +539,6 @@ export default function GDInfoTab({
             <Input id='gddate' type='date' {...form.register("gddate")} />
           </div>
 
-          {/* Row 2 
-          <div className='space-y-2'>
-            <Label htmlFor='gdclearedUs'>GD Cleared U/S</Label>
-            <Input
-              id='gdclearedUs'
-              type='text'
-              placeholder='e.g., 80/81 etc'
-              {...form.register("gdclearedUs")}
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <Label htmlFor='gdcharges'>GD Charges (PKR)</Label>
-            <Input
-              id='gdcharges'
-              type='number'
-              step='0.01'
-              placeholder='0.00'
-              {...form.register("gdcharges", { valueAsNumber: true })}
-            />
-          </div>*/}
-
           <div className='space-y-2'>
             <Label htmlFor='jobInvoiceExchRate'>
               Exchange Rate{" "}
@@ -472,45 +552,6 @@ export default function GDInfoTab({
               {...form.register("jobInvoiceExchRate", { valueAsNumber: true })}
             />
           </div>
-
-          {/* Row 3: Security 
-          <div className='space-y-2'>
-            <Label htmlFor='gdsecurityType'>Security Type</Label>
-            <Select
-              value={form.watch("gdsecurityType") || ""}
-              onValueChange={(value) => form.setValue("gdsecurityType", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select Security Type' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='Bank Guarantee'>Bank Guarantee</SelectItem>
-                <SelectItem value='Cash Deposit'>Cash Deposit</SelectItem>
-                <SelectItem value='Bond'>Bond</SelectItem>
-                <SelectItem value='None'>None</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className='space-y-2'>
-            <Label htmlFor='gdsecurityValue'>Security Value</Label>
-            <Input
-              id='gdsecurityValue'
-              type='number'
-              step='0.01'
-              placeholder='0.00'
-              {...form.register("gdsecurityValue")}
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <Label htmlFor='gdsecurityExpiryDate'>Security Expiry Date</Label>
-            <Input
-              id='gdsecurityExpiryDate'
-              type='date'
-              {...form.register("gdsecurityExpiryDate")}
-            />
-          </div>*/}
 
           {/* Row 4: Financial Calculations */}
           <div className='space-y-2'>
