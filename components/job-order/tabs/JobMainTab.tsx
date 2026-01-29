@@ -62,6 +62,10 @@ export default function JobMainTab(props: JobMainTabProps) {
     consigneeId,
   } = props;
 
+  // Watch form values instead of using props
+  const shipperValue = form.watch("shipperPartyId");
+  const consigneeValue = form.watch("consigneePartyId");
+
   return (
     <TabsContent value='main' className='mt-0'>
       <Card>
@@ -513,8 +517,9 @@ export default function JobMainTab(props: JobMainTabProps) {
               />
             </div>
           </div>
+
           {/* Billing Parties Info Row - Read Only - Shows when both shipper and consignee are selected */}
-          {shipperId && consigneeId && (
+          {shipperValue && consigneeValue && (
             <div className='grid grid-cols-12 gap-2 mb-3 items-center'>
               <div className='col-span-2'>
                 <FormLabel className='text-xs'>Billing Parties</FormLabel>

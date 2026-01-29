@@ -114,8 +114,9 @@ export default function JobOrderForm({
   const [currentInvoiceItems, setCurrentInvoiceItems] = useState<
     InvoiceItemFormValues[]
   >([]);
-  const [goodsDeclarations, setGoodsDeclarations] = useState<any[]>([]); // For GD tab data
-  const [dispatchRecords, setDispatchRecords] = useState<any[]>([]); // For Dispatch tab data
+  const [goodsDeclarations, setGoodsDeclarations] = useState<any[]>([]);
+  const [dispatchRecords, setDispatchRecords] = useState<any[]>([]);
+  const [detentionRecords, setDetentionRecords] = useState<any[]>([]);
 
   // Form visibility
   const [showFclForm, setShowFclForm] = useState(false);
@@ -139,6 +140,39 @@ export default function JobOrderForm({
       console.log("Invoices data:", JSON.stringify(invoices, null, 2));
     }
   }, [invoices]);
+
+  // ✅ NEW: Prevent Enter key from submitting form
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent Enter key from submitting form when pressed in input fields
+      if (
+        e.key === "Enter" &&
+        (e.target as HTMLElement).tagName !== "TEXTAREA" &&
+        (e.target as HTMLElement).tagName !== "BUTTON"
+      ) {
+        // Check if the target is an input or select element
+        const target = e.target as HTMLElement;
+        if (
+          target.tagName === "INPUT" ||
+          target.tagName === "SELECT" ||
+          target.getAttribute("role") === "combobox"
+        ) {
+          e.preventDefault();
+
+          // Show a subtle toast notification
+          toast({
+            title: "Keyboard Navigation Tip",
+            description:
+              "Press Tab to move to next field. Use the Save button to submit.",
+            duration: 2500,
+          });
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [toast]);
 
   // ============================================
   // MAIN FORM - ALIGNED WITH NEW SCHEMA
@@ -493,14 +527,11 @@ export default function JobOrderForm({
         invoiceStatus: invoice.invoiceStatus || "",
         version: invoice.version || 0,
 
-        // ✅ UPDATED: Load nested JobInvoiceCommodities directly from invoice
-        // ✅ Handle both camelCase and PascalCase field names from API
         items: (
           invoice.jobInvoiceCommodities ||
           invoice.JobInvoiceCommodities ||
           []
         ).map((commodity: any) => {
-          // Try to get the actual HS code from multiple possible locations
           const hsCode =
             commodity.hscode?.code ||
             commodity.Hscode?.Code ||
@@ -526,7 +557,7 @@ export default function JobOrderForm({
               commodity.JobInvoiceCommodityId ||
               0,
             hsCodeId,
-            hsCode: hsCode || hsCodeId?.toString() || "", // Fallback to ID if code not found
+            hsCode: hsCode || hsCodeId?.toString() || "",
             description: commodity.description || commodity.Description || "",
             originId: commodity.originId || commodity.OriginId || undefined,
             quantity: commodity.quantity || commodity.Quantity || 0,
@@ -551,7 +582,7 @@ export default function JobOrderForm({
       setGoodsDeclarations(jobData.jobGoodsDeclarations);
     }
 
-    // Populate dispatch records (JobEquipmentHandingOvers)
+    // Populate dispatch records
     if (
       jobData.jobEquipmentHandingOvers &&
       Array.isArray(jobData.jobEquipmentHandingOvers)
@@ -570,12 +601,39 @@ export default function JobOrderForm({
           topayAmountLc: dispatch.topayAmountLc || 0,
           dispatchDate: formatDateForForm(dispatch.dispatchDate),
           version: dispatch.version || 0,
-          // LCL/Air specific fields
           packageType: dispatch.packageType || undefined,
           quantity: dispatch.quantity || undefined,
         }),
       );
       setDispatchRecords(transformedDispatch);
+    }
+
+    // Populate detention records
+    if (
+      jobData.jobEquipmentDetentionDetails &&
+      Array.isArray(jobData.jobEquipmentDetentionDetails)
+    ) {
+      const transformedDetention = jobData.jobEquipmentDetentionDetails.map(
+        (detention: any) => ({
+          jobEquipmentDetentionDetailId:
+            detention.jobEquipmentDetentionDetailId || 0,
+          jobId: detention.jobId || 0,
+          containerNumber: detention.containerNumber || "",
+          containerTypeId: detention.containerTypeId || undefined,
+          containerSizeId: detention.containerSizeId || undefined,
+          netWeight: detention.netWeight || 0,
+          transport: detention.transport || "",
+          emptyDate: formatDateForForm(detention.emptyDate),
+          eirReceivedDate: formatDateForForm(detention.eirReceivedDate),
+          condition: detention.condition || "",
+          rentDays: detention.rentDays || 0,
+          rentAmount: detention.rentAmount || 0,
+          damageAmount: detention.damageAmount || 0,
+          dirtyAmount: detention.dirtyAmount || 0,
+          version: detention.version || 0,
+        }),
+      );
+      setDetentionRecords(transformedDetention);
     }
 
     toast({
@@ -669,6 +727,31 @@ export default function JobOrderForm({
   }, [invoiceItemForm]);
 
   // ============================================
+  // ✅ NEW: HANDLE FORM SUBMISSION WITH NATIVE CONFIRMATION
+  // ============================================
+  const handleFormSubmit = (values: any) => {
+    // Show native browser confirmation with keyboard tips
+    const confirmed = window.confirm(
+      "⚠️ CONFIRM SAVE\n\n" +
+        "Are you sure you want to save this job order?\n\n" +
+        "💡 Keyboard Navigation Tips:\n" +
+        "• Press Tab to move between fields\n" +
+        "• Use the Save button to submit the form\n• Press Shift+Tab to move backwards\n\n" +
+        "Click OK to save, or Cancel to continue editing.",
+    );
+
+    if (confirmed) {
+      onSubmit(values);
+    } else {
+      toast({
+        title: "Save Cancelled",
+        description: "You can continue editing the job order.",
+        variant: "default",
+      });
+    }
+  };
+
+  // ============================================
   // ON SUBMIT - ALIGNED WITH NEW SCHEMA
   // ============================================
   const onSubmit = async (values: any) => {
@@ -678,7 +761,7 @@ export default function JobOrderForm({
       const companyId = parseInt(localStorage.getItem("companyId") || "1");
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-      // ✅ NEW: For UPDATE operations, fetch latest data to get current version numbers
+      // For UPDATE operations, fetch latest data to get current version numbers
       let latestVersions: any = {};
       if (type === "edit" && values.jobId) {
         console.log("=== FETCHING LATEST VERSIONS ===");
@@ -689,7 +772,6 @@ export default function JobOrderForm({
           if (response.ok) {
             const latestData = await response.json();
 
-            // Extract version numbers
             latestVersions = {
               jobVersion: latestData.version || 0,
               invoices: new Map(),
@@ -697,6 +779,7 @@ export default function JobOrderForm({
               equipments: new Map(),
               goodsDeclarations: new Map(),
               dispatchRecords: new Map(),
+              detentionRecords: new Map(),
             };
 
             // Map invoice versions
@@ -705,7 +788,6 @@ export default function JobOrderForm({
                 const invId = inv.jobInvoiceId;
                 latestVersions.invoices.set(invId, inv.version || 0);
 
-                // Map commodity versions within each invoice
                 if (inv.jobInvoiceCommodities) {
                   inv.jobInvoiceCommodities.forEach((comm: any) => {
                     const commId =
@@ -746,6 +828,18 @@ export default function JobOrderForm({
               });
             }
 
+            // Map detention records versions
+            if (latestData.jobEquipmentDetentionDetails) {
+              latestData.jobEquipmentDetentionDetails.forEach(
+                (detention: any) => {
+                  latestVersions.detentionRecords.set(
+                    detention.jobEquipmentDetentionDetailId,
+                    detention.version || 0,
+                  );
+                },
+              );
+            }
+
             console.log("Latest versions fetched:", {
               job: latestVersions.jobVersion,
               invoices: Array.from(latestVersions.invoices.entries()),
@@ -756,6 +850,9 @@ export default function JobOrderForm({
               ),
               dispatchRecords: Array.from(
                 latestVersions.dispatchRecords.entries(),
+              ),
+              detentionRecords: Array.from(
+                latestVersions.detentionRecords.entries(),
               ),
             });
           } else {
@@ -779,9 +876,7 @@ export default function JobOrderForm({
         );
       }
 
-      // Map invoices - Field names corrected to match API
-      // ✅ UPDATED: Now includes nested jobInvoiceCommodities
-      // ✅ Use latest version numbers for UPDATE operations
+      // Map invoices
       const jobInvoices = invoices.map((invoice) => {
         const invoiceId = invoice.invoiceId || 0;
         const latestInvoiceVersion =
@@ -818,12 +913,8 @@ export default function JobOrderForm({
             ? new Date(invoice.fiExpiryDate).toISOString()
             : null,
           invoiceStatus: invoice.invoiceStatus || null,
-          version: latestInvoiceVersion, // ✅ Use latest version
+          version: latestInvoiceVersion,
 
-          // ✅ NEW: Map invoice items to nested JobInvoiceCommodities
-          // ✅ Always calculate totals from current values, don't rely on stored totalValue
-          // ✅ Use latest version numbers for commodities
-          // ✅ Hscode object required for validation but must not trigger EF tracking
           jobInvoiceCommodities: (invoice.items || []).map((item) => {
             const commodityId = item.invoiceItemId || 0;
             const latestCommodityVersion =
@@ -833,7 +924,6 @@ export default function JobOrderForm({
                   0)
                 : item.version || 0;
 
-            // Determine if HS Code is selected (must be > 0)
             const hasHsCode = item.hsCodeId && item.hsCodeId > 0;
 
             return {
@@ -841,7 +931,6 @@ export default function JobOrderForm({
               JobInvoiceId: invoiceId,
               Description: item.description || "",
               HscodeId: hasHsCode ? item.hsCodeId : null,
-              // ✅ Always send Hscode object with Code field (empty string if not selected)
               Hscode: {
                 Code: hasHsCode ? item.hsCode || item.hsCodeId?.toString() : "",
               },
@@ -853,7 +942,7 @@ export default function JobOrderForm({
               AssessableValue: item.assessableValue || 0,
               TotalValueAv: (item.quantity || 0) * (item.assessableValue || 0),
               TotalValueDv: (item.quantity || 0) * (item.dutiableValue || 0),
-              Version: latestCommodityVersion, // ✅ Use latest version
+              Version: latestCommodityVersion,
             };
           }),
         };
@@ -882,7 +971,6 @@ export default function JobOrderForm({
       }
 
       // Map containers
-      // ✅ Use latest version numbers for UPDATE operations
       const jobEquipments = fclContainers.map((container) => {
         const equipmentId = container.jobEquipmentId || 0;
         const latestEquipmentVersion =
@@ -925,18 +1013,14 @@ export default function JobOrderForm({
             ? new Date(container.gateInDate).toISOString()
             : null,
           status: container.status || null,
-          version: latestEquipmentVersion, // ✅ Use latest version
+          version: latestEquipmentVersion,
         };
       });
 
       // Build JobGoodsDeclarations
-      // For CREATE: API requires at least one record, send dummy if no real data
-      // For UPDATE: Only send if we have real data from the state
-      // ✅ Use latest version numbers for UPDATE operations
       let jobGoodsDeclarations: any[] = [];
 
       if (goodsDeclarations.length > 0) {
-        // Has real data from GD tab or loaded from API - send as-is
         jobGoodsDeclarations = goodsDeclarations.map((gd: any) => {
           const gdId = gd.id || 0;
           const latestGdVersion =
@@ -974,12 +1058,10 @@ export default function JobOrderForm({
             payableRd: gd.payableRd || 0,
             payableAsd: gd.payableAsd || 0,
             payableIt: gd.payableIt || 0,
-            version: latestGdVersion, // ✅ Use latest version
+            version: latestGdVersion,
           };
         });
       } else if (type === "add") {
-        // CREATE mode with no GD data - send dummy record with unique negative ID
-        // Using negative timestamp to ensure uniqueness and avoid conflicts with real IDs
         const uniqueId = -Math.floor(Date.now() / 1000);
 
         jobGoodsDeclarations = [
@@ -1017,10 +1099,8 @@ export default function JobOrderForm({
           },
         ];
       }
-      // For UPDATE mode with no GD data: send empty array (existing records remain unchanged)
 
       // Build JobEquipmentHandingOvers (Dispatch Records)
-      // ✅ Use latest version numbers for UPDATE operations
       const jobEquipmentHandingOvers = dispatchRecords.map((dispatch: any) => {
         const dispatchId = dispatch.jobEquipmentHandingOverId || 0;
         const latestDispatchVersion =
@@ -1044,12 +1124,46 @@ export default function JobOrderForm({
           dispatchDate: dispatch.dispatchDate
             ? new Date(dispatch.dispatchDate).toISOString()
             : null,
-          version: latestDispatchVersion, // ✅ Use latest version
-          // LCL/Air specific fields
+          version: latestDispatchVersion,
           packageType: dispatch.packageType || null,
           quantity: dispatch.quantity || null,
         };
       });
+
+      // Build JobEquipmentDetentionDetails (Completion Records)
+      const jobEquipmentDetentionDetails = detentionRecords.map(
+        (detention: any) => {
+          const detentionId = detention.jobEquipmentDetentionDetailId || 0;
+          const latestDetentionVersion =
+            type === "edit" && detentionId > 0
+              ? (latestVersions.detentionRecords?.get(detentionId) ??
+                detention.version ??
+                0)
+              : detention.version || 0;
+
+          return {
+            jobEquipmentDetentionDetailId: detentionId,
+            jobId: values.jobId || 0,
+            containerNumber: detention.containerNumber || "",
+            containerTypeId: detention.containerTypeId || null,
+            containerSizeId: detention.containerSizeId || null,
+            netWeight: detention.netWeight || 0,
+            transport: detention.transport || null,
+            emptyDate: detention.emptyDate
+              ? new Date(detention.emptyDate).toISOString()
+              : null,
+            eirReceivedDate: detention.eirReceivedDate
+              ? new Date(detention.eirReceivedDate).toISOString()
+              : null,
+            condition: detention.condition || null,
+            rentDays: detention.rentDays || 0,
+            rentAmount: detention.rentAmount || 0,
+            damageAmount: detention.damageAmount || 0,
+            dirtyAmount: detention.dirtyAmount || 0,
+            version: latestDetentionVersion,
+          };
+        },
+      );
 
       // Build complete payload matching new schema
       const payload: any = {
@@ -1196,14 +1310,14 @@ export default function JobOrderForm({
 
         // Child Records
         jobEquipments: jobEquipments,
-        jobInvoices: jobInvoices, // ✅ Now includes nested jobInvoiceCommodities
-        jobEquipmentHandingOvers: jobEquipmentHandingOvers, // ✅ Dispatch records
-        // JobGoodsDeclarations: Required for CREATE, optional for UPDATE
+        jobInvoices: jobInvoices,
+        jobEquipmentHandingOvers: jobEquipmentHandingOvers,
+        jobEquipmentDetentionDetails: jobEquipmentDetentionDetails,
         ...(type === "add" || jobGoodsDeclarations.length > 0
           ? { jobGoodsDeclarations: jobGoodsDeclarations }
           : {}),
 
-        // Version - Use latest fetched version for UPDATE
+        // Version
         version:
           type === "edit"
             ? (latestVersions.jobVersion ?? values.version ?? 0)
@@ -1220,43 +1334,7 @@ export default function JobOrderForm({
       console.log("Mode:", type);
       console.log("JobId:", payload.jobId);
       console.log("Job Version:", payload.version);
-      console.log("CustomerReferenceNumber:", values.customerReferenceNumber);
-      console.log(
-        "CustomerReferenceNumber in payload:",
-        payload.customerReferenceNumber,
-      );
-      console.log("JobInvoices count:", jobInvoices.length);
-      if (jobInvoices.length > 0) {
-        console.log("First invoice version:", jobInvoices[0].version);
-        if (
-          jobInvoices[0].jobInvoiceCommodities &&
-          jobInvoices[0].jobInvoiceCommodities.length > 0
-        ) {
-          console.log(
-            "First commodity version:",
-            jobInvoices[0].jobInvoiceCommodities[0].Version,
-          );
-        }
-        console.log("JobInvoices:", JSON.stringify(jobInvoices, null, 2));
-      }
-      if (jobEquipments.length > 0) {
-        console.log("First equipment version:", jobEquipments[0].version);
-      }
-      console.log("JobGoodsDeclarations count:", jobGoodsDeclarations.length);
-      if (jobGoodsDeclarations.length > 0) {
-        console.log(
-          "JobGoodsDeclarations IDs:",
-          jobGoodsDeclarations.map((gd: any) => gd.id),
-        );
-        console.log("First GD version:", jobGoodsDeclarations[0].version);
-      }
-      console.log(
-        "JobGoodsDeclarations included in payload:",
-        payload.hasOwnProperty("jobGoodsDeclarations"),
-      );
       console.log("Complete Payload:", JSON.stringify(payload, null, 2));
-
-      //const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
       const response = await fetch(`${baseUrl}Job`, {
         method: type === "edit" ? "PUT" : "POST",
@@ -1268,12 +1346,10 @@ export default function JobOrderForm({
         const errorData = await response.text();
         console.error("API Error Response:", errorData);
 
-        // Try to parse as JSON for better error message
         try {
           const errorJson = JSON.parse(errorData);
           console.error("Parsed Error:", JSON.stringify(errorJson, null, 2));
 
-          // Check for version conflict
           if (
             errorData.toLowerCase().includes("version") &&
             errorData.toLowerCase().includes("conflict")
@@ -1284,7 +1360,6 @@ export default function JobOrderForm({
             );
           }
 
-          // Extract specific error messages if available
           if (errorJson.errors) {
             const errorMessages = Object.entries(errorJson.errors)
               .map(
@@ -1299,7 +1374,6 @@ export default function JobOrderForm({
             errorJson.title || errorJson.message || "Failed to save job",
           );
         } catch (parseError) {
-          // If parseError is the version conflict error we threw, re-throw it
           if (
             parseError instanceof Error &&
             parseError.message.includes("Version conflict")
@@ -1371,7 +1445,7 @@ export default function JobOrderForm({
     shippingType,
     mode,
     documentType,
-    freightType: form.watch("freightType"), // Add current freight type value
+    freightType: form.watch("freightType"),
     fclContainers,
     setFclContainers,
     fclForm,
@@ -1395,6 +1469,8 @@ export default function JobOrderForm({
     setGoodsDeclarations,
     dispatchRecords,
     setDispatchRecords,
+    detentionRecords,
+    setDetentionRecords,
     insuranceType,
     setInsuranceType,
     toast,
@@ -1438,7 +1514,8 @@ export default function JobOrderForm({
         </div>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)}>
+          {/* ✅ Changed from onSubmit to handleFormSubmit to show confirmation */}
+          <form onSubmit={form.handleSubmit(handleFormSubmit)}>
             {/* Loading Indicator */}
             {isLoadingJobData && (
               <div className='flex justify-center items-center p-8 bg-white rounded-lg border'>
@@ -1456,12 +1533,13 @@ export default function JobOrderForm({
                 onValueChange={setActiveTab}
                 className='w-full'
               >
-                <TabsList className='grid w-full grid-cols-6 mb-3'>
+                <TabsList className='grid w-full grid-cols-7 mb-3'>
                   <TabsTrigger value='main'>Job Order</TabsTrigger>
                   <TabsTrigger value='shipping'>Shipping</TabsTrigger>
                   <TabsTrigger value='invoice'>Invoice</TabsTrigger>
                   <TabsTrigger value='gd'>GD Info</TabsTrigger>
                   <TabsTrigger value='dispatch'>Dispatch</TabsTrigger>
+                  <TabsTrigger value='detention'>Detention</TabsTrigger>
                   <TabsTrigger value='completion'>Completion</TabsTrigger>
                 </TabsList>
 

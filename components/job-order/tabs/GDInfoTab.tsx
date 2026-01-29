@@ -551,7 +551,7 @@ export default function GDInfoTab({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value='1percent'>1% of AV</SelectItem>
-                  <SelectItem value='custom'>Custom</SelectItem>
+                  <SelectItem value='custom'>Rs.</SelectItem>
                 </SelectContent>
               </Select>
               <Input

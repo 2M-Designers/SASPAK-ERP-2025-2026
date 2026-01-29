@@ -21,7 +21,7 @@ import {
 import Select from "react-select";
 import { Plus, Save, Edit, Trash2, Package, Upload } from "lucide-react";
 import { compactSelectStyles } from "../utils/styles";
-import { useEffect } from "react";
+import { useEffect, useState } from "react"; // Added useState
 
 // Define types
 interface SelectOption {
@@ -127,6 +127,31 @@ export default function InvoiceTab(props: InvoiceTabProps) {
     toast,
   } = props;
 
+  // State to track if this is the first invoice being added
+  const [isFirstInvoice, setIsFirstInvoice] = useState<boolean>(true);
+  // State to store LC and FI details from first invoice
+  const [commonLcDetails, setCommonLcDetails] = useState<{
+    lcNumber?: string;
+    lcDate?: string;
+    lcIssuedByBankId?: number;
+    lcValue: number;
+    lcCurrencyId?: number;
+    lcExchangeRate: number;
+    fiNumber?: string;
+    fiDate?: string;
+    fiExpiryDate?: string;
+  }>({
+    lcNumber: "",
+    lcDate: "",
+    lcIssuedByBankId: undefined,
+    lcValue: 0,
+    lcCurrencyId: undefined,
+    lcExchangeRate: 0,
+    fiNumber: "",
+    fiDate: "",
+    fiExpiryDate: "",
+  });
+
   // Auto-calculate invoice item totalValue
   useEffect(() => {
     const subscription = invoiceItemForm.watch(
@@ -146,12 +171,24 @@ export default function InvoiceTab(props: InvoiceTabProps) {
     return () => subscription.unsubscribe();
   }, [invoiceItemForm]);
 
-  // Debug: Log props on mount and when invoices change
+  // Reset isFirstInvoice when invoices array becomes empty
   useEffect(() => {
-    console.log("=== INVOICE TAB PROPS ===");
-    console.log("Invoices received:", invoices.length);
-    console.log("setInvoices type:", typeof setInvoices);
-  }, [invoices]);
+    if (invoices.length === 0) {
+      setIsFirstInvoice(true);
+      // Also reset common details when all invoices are deleted
+      setCommonLcDetails({
+        lcNumber: "",
+        lcDate: "",
+        lcIssuedByBankId: undefined,
+        lcValue: 0,
+        lcCurrencyId: undefined,
+        lcExchangeRate: 0,
+        fiNumber: "",
+        fiDate: "",
+        fiExpiryDate: "",
+      });
+    }
+  }, [invoices.length]);
 
   // Handler functions
   const handleAddInvoiceItem = (data: InvoiceItem) => {
@@ -178,14 +215,14 @@ export default function InvoiceTab(props: InvoiceTabProps) {
       return;
     }
 
-    if (!data.assessableValue || data.assessableValue <= 0) {
+    /*if (!data.assessableValue || data.assessableValue <= 0) {
       toast({
         variant: "destructive",
         title: "Validation Error",
         description: "Please enter an assessable value greater than 0",
       });
       return;
-    }
+    }*/
 
     if (editingInvoiceItem !== null) {
       const updated = [...currentInvoiceItems];
@@ -267,9 +304,54 @@ export default function InvoiceTab(props: InvoiceTabProps) {
       );
       setInvoices(newInvoices);
       toast({ title: "Success", description: "Invoice added" });
+
+      // If this is the first invoice, store its LC and FI details
+      if (isFirstInvoice) {
+        console.log("First invoice added, storing LC and FI details");
+        setCommonLcDetails({
+          lcNumber: data.lcNumber,
+          lcDate: data.lcDate,
+          lcIssuedByBankId: data.lcIssuedByBankId,
+          lcValue: data.lcValue,
+          lcCurrencyId: data.lcCurrencyId,
+          lcExchangeRate: data.lcExchangeRate,
+          fiNumber: data.fiNumber,
+          fiDate: data.fiDate,
+          fiExpiryDate: data.fiExpiryDate,
+        });
+        setIsFirstInvoice(false);
+      }
     }
 
-    invoiceForm.reset({ lcValue: 0, lcExchangeRate: 0, version: 0, items: [] });
+    // Reset form but preserve LC/FI details for next invoice if not first
+    const resetData: any = {
+      lcNumber: undefined,
+      lcDate: undefined,
+      lcIssuedByBankId: undefined,
+      lcValue: 0,
+      lcCurrencyId: undefined,
+      lcExchangeRate: 0,
+      fiNumber: undefined,
+      fiDate: undefined,
+      fiExpiryDate: undefined,
+      version: 0,
+      items: [],
+    };
+
+    // If we're not editing and it's not the first invoice, keep LC/FI details
+    if (editingInvoice === null && !isFirstInvoice) {
+      resetData.lcNumber = commonLcDetails.lcNumber;
+      resetData.lcDate = commonLcDetails.lcDate;
+      resetData.lcIssuedByBankId = commonLcDetails.lcIssuedByBankId;
+      resetData.lcValue = commonLcDetails.lcValue;
+      resetData.lcCurrencyId = commonLcDetails.lcCurrencyId;
+      resetData.lcExchangeRate = commonLcDetails.lcExchangeRate;
+      resetData.fiNumber = commonLcDetails.fiNumber;
+      resetData.fiDate = commonLcDetails.fiDate;
+      resetData.fiExpiryDate = commonLcDetails.fiExpiryDate;
+    }
+
+    invoiceForm.reset(resetData);
     setCurrentInvoiceItems([]);
     setShowInvoiceForm(false);
     setEditingInvoice(null);
@@ -305,6 +387,43 @@ export default function InvoiceTab(props: InvoiceTabProps) {
     });
   };
 
+  // Function to handle "Add Invoice" button click
+  const handleAddInvoiceClick = () => {
+    setShowInvoiceForm(!showInvoiceForm);
+    setEditingInvoice(null);
+
+    // Prepare reset data
+    const resetData: any = {
+      lcNumber: undefined,
+      lcDate: undefined,
+      lcIssuedByBankId: undefined,
+      lcValue: 0,
+      lcCurrencyId: undefined,
+      lcExchangeRate: 0,
+      fiNumber: undefined,
+      fiDate: undefined,
+      fiExpiryDate: undefined,
+      version: 0,
+      items: [],
+    };
+
+    // If we have common LC/FI details (not first invoice), pre-populate them
+    if (!isFirstInvoice) {
+      resetData.lcNumber = commonLcDetails.lcNumber;
+      resetData.lcDate = commonLcDetails.lcDate;
+      resetData.lcIssuedByBankId = commonLcDetails.lcIssuedByBankId;
+      resetData.lcValue = commonLcDetails.lcValue;
+      resetData.lcCurrencyId = commonLcDetails.lcCurrencyId;
+      resetData.lcExchangeRate = commonLcDetails.lcExchangeRate;
+      resetData.fiNumber = commonLcDetails.fiNumber;
+      resetData.fiDate = commonLcDetails.fiDate;
+      resetData.fiExpiryDate = commonLcDetails.fiExpiryDate;
+    }
+
+    invoiceForm.reset(resetData);
+    setCurrentInvoiceItems([]);
+  };
+
   return (
     <TabsContent value='invoice' className='mt-0'>
       <Card>
@@ -315,17 +434,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
           <Button
             type='button'
             size='sm'
-            onClick={() => {
-              setShowInvoiceForm(!showInvoiceForm);
-              setEditingInvoice(null);
-              invoiceForm.reset({
-                lcValue: 0,
-                lcExchangeRate: 0,
-                version: 0,
-                items: [],
-              });
-              setCurrentInvoiceItems([]);
-            }}
+            onClick={handleAddInvoiceClick}
             className='h-7 text-xs'
           >
             <Plus className='h-3 w-3 mr-1' />
@@ -402,8 +511,8 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                             <TableHead className='text-xs'>Origin</TableHead>
                             <TableHead className='text-xs'>Qty</TableHead>
                             <TableHead className='text-xs'>DV</TableHead>
-                            <TableHead className='text-xs'>AV</TableHead>
-                            <TableHead className='text-xs'>Total</TableHead>
+                            {/*<TableHead className='text-xs'>AV</TableHead>
+                            <TableHead className='text-xs'>Total</TableHead>*/}
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -428,12 +537,12 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                 <TableCell className='text-xs'>
                                   {item.dutiableValue.toFixed(2)}
                                 </TableCell>
-                                <TableCell className='text-xs'>
+                                {/*<TableCell className='text-xs'>
                                   {item.assessableValue.toFixed(2)}
                                 </TableCell>
                                 <TableCell className='text-xs font-medium'>
                                   {item.totalValue.toFixed(2)}
-                                </TableCell>
+                                </TableCell>*/}
                               </TableRow>
                             ),
                           )}
@@ -452,6 +561,9 @@ export default function InvoiceTab(props: InvoiceTabProps) {
               <CardHeader className='py-2 px-3 bg-green-50'>
                 <CardTitle className='text-sm'>
                   {editingInvoice !== null ? "Edit Invoice" : "New Invoice"}
+                  {!isFirstInvoice &&
+                    editingInvoice === null &&
+                    " (LC/FI details pre-filled from first invoice)"}
                 </CardTitle>
               </CardHeader>
               <CardContent className='p-4'>
@@ -460,6 +572,9 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                   <div className='bg-gray-50 p-3 rounded'>
                     <div className='text-xs font-semibold text-gray-700 mb-2'>
                       Invoice Information
+                      <span className='text-xs font-normal text-gray-500 ml-2'>
+                        (Unique for each invoice)
+                      </span>
                     </div>
                     <div className='grid grid-cols-3 gap-3'>
                       <FormField
@@ -580,6 +695,11 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                   <div className='bg-blue-50 p-3 rounded'>
                     <div className='text-xs font-semibold text-gray-700 mb-2'>
                       LC (Letter of Credit) Details
+                      <span className='text-xs font-normal text-gray-500 ml-2'>
+                        {!isFirstInvoice &&
+                          editingInvoice === null &&
+                          "(Pre-filled from first invoice)"}
+                      </span>
                     </div>
                     <div className='grid grid-cols-4 gap-3'>
                       <FormField
@@ -691,7 +811,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                         )}
                       />
 
-                      <FormField
+                      {/*<FormField
                         control={invoiceForm.control}
                         name='lcExchangeRate'
                         render={({ field }) => (
@@ -714,7 +834,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                             </FormControl>
                           </FormItem>
                         )}
-                      />
+                      />*/}
                     </div>
                   </div>
 
@@ -722,6 +842,11 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                   <div className='bg-purple-50 p-3 rounded'>
                     <div className='text-xs font-semibold text-gray-700 mb-2'>
                       FI (Form E) Details
+                      <span className='text-xs font-normal text-gray-500 ml-2'>
+                        {!isFirstInvoice &&
+                          editingInvoice === null &&
+                          "(Pre-filled from first invoice)"}
+                      </span>
                     </div>
                     <div className='grid grid-cols-3 gap-3'>
                       <FormField
@@ -791,7 +916,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                         Invoice Commodities ({currentInvoiceItems.length} items)
                       </div>
                       <div className='flex gap-2'>
-                        <Button
+                        {/*<Button
                           type='button'
                           size='sm'
                           onClick={() => {
@@ -806,7 +931,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                         >
                           <Upload className='h-3 w-3 mr-1' />
                           Import Excel
-                        </Button>
+                        </Button>*/}
                         <Button
                           type='button'
                           size='sm'
@@ -824,7 +949,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                           className='h-7 text-xs'
                         >
                           <Package className='h-3 w-3 mr-1' />
-                          Add Commodity
+                          Add Item
                         </Button>
                       </div>
                     </div>
@@ -841,8 +966,8 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                             <TableHead className='text-xs'>Origin</TableHead>
                             <TableHead className='text-xs'>Qty</TableHead>
                             <TableHead className='text-xs'>DV</TableHead>
-                            <TableHead className='text-xs'>AV</TableHead>
-                            <TableHead className='text-xs'>Total</TableHead>
+                            {/*<TableHead className='text-xs'>AV</TableHead>
+                            <TableHead className='text-xs'>Total</TableHead>*/}
                             <TableHead className='text-xs'>Actions</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -868,12 +993,12 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                 <TableCell className='text-xs'>
                                   {item.dutiableValue.toFixed(2)}
                                 </TableCell>
-                                <TableCell className='text-xs'>
+                                {/*<TableCell className='text-xs'>
                                   {item.assessableValue.toFixed(2)}
                                 </TableCell>
                                 <TableCell className='text-xs font-medium'>
                                   {item.totalValue.toFixed(2)}
-                                </TableCell>
+                                </TableCell>*/}
                                 <TableCell>
                                   <div className='flex gap-1'>
                                     <Button
@@ -1108,7 +1233,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                 )}
                               />
 
-                              <FormField
+                              {/*<FormField
                                 control={invoiceItemForm.control}
                                 name='assessableValue'
                                 render={({ field }) => (
@@ -1131,9 +1256,9 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                     </FormControl>
                                   </FormItem>
                                 )}
-                              />
+                              />*/}
 
-                              <FormField
+                              {/*<FormField
                                 control={invoiceItemForm.control}
                                 name='totalValue'
                                 render={({ field }) => (
@@ -1154,7 +1279,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                     </FormControl>
                                   </FormItem>
                                 )}
-                              />
+                              />*/}
                             </div>
                           </div>
 
