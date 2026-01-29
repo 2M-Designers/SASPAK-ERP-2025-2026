@@ -1,8 +1,16 @@
-import React, { useState, useEffect } from "react";
+"use client";
+
 import { TabsContent } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -10,611 +18,550 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Calendar, AlertCircle, Info } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
 
-interface DetentionRecord {
-  jobEquipmentDetentionDetailId?: number;
-  jobId?: number;
-  containerNumber: string;
-  containerTypeId?: number;
-  containerSizeId?: number;
-  netWeight: number;
-  transport?: string;
-  emptyDate?: string;
-  eirReceivedDate?: string;
-  condition?: string;
-  rentDays: number;
-  rentAmount: number;
-  damageAmount: number;
-  dirtyAmount: number;
-  version?: number;
-}
+// RMS Channel Options with colors
+const RMS_CHANNEL_OPTIONS = [
+  { value: "GREEN", label: "Green", color: "bg-green-500 text-white" },
+  {
+    value: "YELLOW_YELLOW",
+    label: "Yellow-Yellow",
+    color: "bg-yellow-400 text-black",
+  },
+  {
+    value: "YELLOW_RED",
+    label: "Yellow-Red",
+    color: "bg-orange-500 text-white",
+  },
+  { value: "RED", label: "Red", color: "bg-red-500 text-white" },
+];
 
-export default function CompletionTab({
-  form,
-  fclContainers = [],
-  containerTypes = [],
-  containerSizes = [],
-  detentionRecords = [],
-  setDetentionRecords,
-  toast,
-}: any) {
-  // Master fields state
-  const [depositor, setDepositor] = useState<string>("");
-  const [depositAmount, setDepositAmount] = useState<number>(0);
-  const [advanceRent, setAdvanceRent] = useState<number>(0);
-  const [uptoDate, setUptoDate] = useState<string>("");
+// Security Type Options (80, 81, 82, 83)
+const SECURITY_TYPE_OPTIONS = [
+  { value: "80", label: "80" },
+  { value: "81", label: "81" },
+  { value: "82", label: "82" },
+  { value: "83", label: "83" },
+];
 
-  // Additional fields state
-  const [caseSubmittedDate, setCaseSubmittedDate] = useState<string>("");
-  const [rentInvoiceDate, setRentInvoiceDate] = useState<string>("");
-  const [refundReceivedDate, setRefundReceivedDate] = useState<string>("");
+// Clearance Delay Type Options
+const CLEARANCE_DELAY_TYPES = [
+  { value: "GROUNDING", label: "Grounding" },
+  { value: "EXAMINATION", label: "Examination" },
+  { value: "GROUP", label: "Group" },
+  { value: "NOC", label: "NOC" },
+];
 
-  // Initialize detention records from containers
+// Dispatch Delay Type Options
+const DISPATCH_DELAY_TYPES = [
+  { value: "FI", label: "FI (Form I)" },
+  { value: "OBL", label: "OBL (Original Bill of Lading)" },
+  { value: "CLEARANCE", label: "Clearance" },
+];
+
+export default function CompletionTab({ form, shippingType }: any) {
+  const [clearanceDelayTypes, setClearanceDelayTypes] = useState<string[]>([]);
+  const [dispatchDelayTypes, setDispatchDelayTypes] = useState<string[]>([]);
+
+  // Watch relevant dates for automatic calculation
+  const gateOutDate = form.watch("gateOutDate");
+  const gdDate = form.watch("gddate");
+  const vesselArrival = form.watch("vesselArrival");
+
+  // Calculate Clearance Delay Days automatically
   useEffect(() => {
-    if (fclContainers.length > 0) {
-      const existingIds = new Set(
-        detentionRecords.map((r: DetentionRecord) => r.containerNumber),
-      );
-
-      const newRecords = fclContainers
-        .filter((container: any) => !existingIds.has(container.containerNo))
-        .map((container: any) => ({
-          containerNumber: container.containerNo,
-          containerTypeId: container.containerTypeId,
-          containerSizeId: container.containerSizeId,
-          netWeight: container.tareWeight || 0,
-          transport: "",
-          emptyDate: "",
-          eirReceivedDate: "",
-          condition: "",
-          rentDays: 0,
-          rentAmount: 0,
-          damageAmount: 0,
-          dirtyAmount: 0,
-        }));
-
-      if (newRecords.length > 0) {
-        setDetentionRecords([...detentionRecords, ...newRecords]);
+    if (gateOutDate && gdDate) {
+      try {
+        const gateOut = new Date(gateOutDate);
+        const gd = new Date(gdDate);
+        const diffTime = gateOut.getTime() - gd.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        form.setValue("delayInClearanceDays", Math.max(0, diffDays));
+      } catch (error) {
+        console.error("Error calculating clearance delay:", error);
       }
     }
-  }, [fclContainers]);
+  }, [gateOutDate, gdDate, form]);
 
-  // Update a specific field in a detention record
-  const updateDetentionRecord = (
-    index: number,
-    field: keyof DetentionRecord,
-    value: any,
-  ) => {
-    const updatedRecords = [...detentionRecords];
-    updatedRecords[index] = {
-      ...updatedRecords[index],
-      [field]: value,
-    };
+  // Calculate Dispatch Delay Days automatically
+  useEffect(() => {
+    // Get earliest dispatch date from dispatch records
+    const dispatchRecords = form.watch("dispatchRecords") || [];
+    if (dispatchRecords.length > 0 && vesselArrival) {
+      try {
+        const dispatchDates = dispatchRecords
+          .map((r: any) => r.dispatchDate)
+          .filter(Boolean)
+          .map((d: string) => new Date(d));
 
-    // Auto-calculate rent days if empty date changes
-    if (field === "emptyDate" && uptoDate) {
-      const rentDays = calculateRentDays(value, uptoDate);
-      updatedRecords[index].rentDays = rentDays;
-    }
-
-    setDetentionRecords(updatedRecords);
-  };
-
-  // Calculate rent days between two dates
-  const calculateRentDays = (emptyDate: string, uptoDate: string): number => {
-    if (!emptyDate || !uptoDate) return 0;
-
-    const empty = new Date(emptyDate);
-    const upto = new Date(uptoDate);
-    const diffTime = upto.getTime() - empty.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    return diffDays > 0 ? diffDays : 0;
-  };
-
-  // Recalculate all rent days when upto date changes
-  const handleUptoDateChange = (newUptoDate: string) => {
-    setUptoDate(newUptoDate);
-
-    if (newUptoDate) {
-      const updatedRecords = detentionRecords.map((record: DetentionRecord) => {
-        if (record.emptyDate) {
-          return {
-            ...record,
-            rentDays: calculateRentDays(record.emptyDate, newUptoDate),
-          };
+        if (dispatchDates.length > 0) {
+          const earliestDispatch = new Date(
+            Math.min(...dispatchDates.map((d: Date) => d.getTime())),
+          );
+          const arrival = new Date(vesselArrival);
+          const diffTime = earliestDispatch.getTime() - arrival.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          form.setValue("delayInDispatchDays", Math.max(0, diffDays));
         }
-        return record;
-      });
-      setDetentionRecords(updatedRecords);
+      } catch (error) {
+        console.error("Error calculating dispatch delay:", error);
+      }
     }
+  }, [vesselArrival, form]);
+
+  // Handle multi-select for clearance delay types
+  const handleClearanceDelayTypeToggle = (value: string) => {
+    const updated = clearanceDelayTypes.includes(value)
+      ? clearanceDelayTypes.filter((t) => t !== value)
+      : [...clearanceDelayTypes, value];
+
+    setClearanceDelayTypes(updated);
+    form.setValue("delayInClearanceType", updated.join(","));
   };
 
-  // Get container type label
-  const getContainerTypeLabel = (typeId: number | undefined) => {
-    if (!typeId) return "";
-    const type = containerTypes.find((t: any) => t.value === typeId);
-    return type?.label || "";
+  // Handle multi-select for dispatch delay types
+  const handleDispatchDelayTypeToggle = (value: string) => {
+    const updated = dispatchDelayTypes.includes(value)
+      ? dispatchDelayTypes.filter((t) => t !== value)
+      : [...dispatchDelayTypes, value];
+
+    setDispatchDelayTypes(updated);
+    form.setValue("delayInDispatchType", updated.join(","));
   };
 
-  // Get container size label
-  const getContainerSizeLabel = (sizeId: number | undefined) => {
-    if (!sizeId) return "";
-    const size = containerSizes.find((s: any) => s.value === sizeId);
-    return size?.label || "";
-  };
+  // Load existing multi-select values
+  useEffect(() => {
+    const clearanceTypes = form.watch("delayInClearanceType");
+    if (clearanceTypes) {
+      setClearanceDelayTypes(
+        clearanceTypes
+          .split(",")
+          .map((t: string) => t.trim())
+          .filter(Boolean),
+      );
+    }
 
-  // Calculate totals
-  const totals = {
-    containers: detentionRecords.length,
-    totalRent: detentionRecords.reduce(
-      (sum: number, r: DetentionRecord) => sum + (r.rentAmount || 0),
-      0,
-    ),
-    totalDamage: detentionRecords.reduce(
-      (sum: number, r: DetentionRecord) => sum + (r.damageAmount || 0),
-      0,
-    ),
-    totalDirty: detentionRecords.reduce(
-      (sum: number, r: DetentionRecord) => sum + (r.dirtyAmount || 0),
-      0,
-    ),
-  };
+    const dispatchTypes = form.watch("delayInDispatchType");
+    if (dispatchTypes) {
+      setDispatchDelayTypes(
+        dispatchTypes
+          .split(",")
+          .map((t: string) => t.trim())
+          .filter(Boolean),
+      );
+    }
+  }, []);
 
-  // Calculate financial summary
-  const totalPayable =
-    totals.totalRent + totals.totalDamage + totals.totalDirty;
-  const securityDeposit = depositAmount;
-  const balanceReceivable = totalPayable - securityDeposit - advanceRent;
+  // Get selected RMS channel for color badge
+  const selectedRmsChannel = form.watch("rmsChannel");
+  const rmsChannelOption = RMS_CHANNEL_OPTIONS.find(
+    (opt) => opt.value === selectedRmsChannel,
+  );
 
-  // Depositor options
-  const depositorOptions = [
-    "Billing Parties",
-    "Transporter",
-    "SASPAK",
-    "Forwarder",
-    "Depositor",
-    "Free Deposit",
-  ];
-
-  // Condition options
-  const conditionOptions = ["Good", "Fair", "Poor", "Damaged", "Dirty"];
+  // Check if shipping type is LCL
+  const isLCL = shippingType === "LCL" || shippingType === "AIR";
 
   return (
     <TabsContent value='completion' className='space-y-4'>
-      {/* Header Card */}
       <Card>
-        <CardHeader className='py-3 px-4 bg-blue-50'>
-          <CardTitle className='text-base text-center'>
-            Container Detention Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className='p-4'>
-          {/* Info Banner */}
-          <div className='bg-blue-50 p-4 rounded-lg border border-blue-200 mb-4'>
-            <div className='flex items-start gap-2'>
-              <Info className='h-5 w-5 text-blue-600 mt-0.5' />
-              <div>
-                <h3 className='font-semibold text-blue-900 mb-1'>
-                  Container Detention Management
-                </h3>
-                <p className='text-sm text-blue-700'>
-                  Track container detention charges, deposits, and refunds. Grid
-                  auto-populates from containers in Shipping Tab.
-                </p>
+        <CardContent className='pt-6'>
+          <div className='space-y-6'>
+            {/* Header */}
+            <div className='flex items-center justify-between'>
+              <h3 className='text-lg font-semibold text-gray-900'>
+                Completion Details
+              </h3>
+              <Badge variant='outline' className='text-xs'>
+                Job Completion Status
+              </Badge>
+            </div>
+
+            {/* GD Cleared U/S Section */}
+            <div className='grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200'>
+              <FormField
+                control={form.control}
+                name='gdClearedUs'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      GD Cleared U/S{" "}
+                      <span className='text-xs text-gray-500'>
+                        (Security Type)
+                      </span>
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder='Select type (80, 81, etc.)' />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {SECURITY_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='gdSecurityValue'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Value</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='Enter security value'
+                        {...field}
+                        value={field.value || ""}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='gdSecurityExpiryDate'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Expiry Date</FormLabel>
+                    <FormControl>
+                      <Input type='date' {...field} value={field.value || ""} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* RMS Channel */}
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+              <FormField
+                control={form.control}
+                name='rmsChannel'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className='flex items-center gap-2'>
+                      RMS Channel
+                      {rmsChannelOption && (
+                        <Badge className={`${rmsChannelOption.color} ml-2`}>
+                          {rmsChannelOption.label}
+                        </Badge>
+                      )}
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder='Select RMS channel' />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {RMS_CHANNEL_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            <div className='flex items-center gap-2'>
+                              <div
+                                className={`w-3 h-3 rounded-full ${option.color}`}
+                              ></div>
+                              <span>{option.label}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Destuffing On - Only for LCL */}
+              <FormField
+                control={form.control}
+                name='destuffingOn'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className='flex items-center gap-2'>
+                      Destuffing On
+                      <Badge variant='secondary' className='text-xs'>
+                        Only for LCL
+                      </Badge>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type='date'
+                        {...field}
+                        value={field.value || ""}
+                        disabled={!isLCL}
+                        className={!isLCL ? "bg-gray-100" : ""}
+                      />
+                    </FormControl>
+                    {!isLCL && (
+                      <p className='text-xs text-gray-500 flex items-center gap-1'>
+                        <Info className='h-3 w-3' />
+                        Available only for LCL/Air shipments
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* GD Assign to Gate Out Date */}
+            <FormField
+              control={form.control}
+              name='gdAssignToGateOutDate'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>GD Assign to Gate Out Date</FormLabel>
+                  <FormControl>
+                    <Input type='date' {...field} value={field.value || ""} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Delay in Clearance Section */}
+            <div className='space-y-4 p-4 bg-orange-50 rounded-lg border border-orange-200'>
+              <div className='flex items-center gap-2'>
+                <AlertCircle className='h-5 w-5 text-orange-600' />
+                <h4 className='font-semibold text-gray-900'>
+                  Delay in Clearance
+                </h4>
               </div>
-            </div>
-          </div>
 
-          {/* Master Fields */}
-          <div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-4'>
-            <div className='space-y-2'>
-              <Label>Depositor</Label>
-              <Select value={depositor} onValueChange={setDepositor}>
-                <SelectTrigger>
-                  <SelectValue placeholder='Select Depositor' />
-                </SelectTrigger>
-                <SelectContent>
-                  {depositorOptions.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className='text-xs text-gray-500'>
-                Billing Parties/Transporter/SASPAK/Forwarder/Depositor/Free
-                Deposit
-              </p>
-            </div>
-
-            <div className='space-y-2'>
-              <Label>Deposit Amount (PKR)</Label>
-              <Input
-                type='number'
-                step='0.01'
-                placeholder='0.00'
-                value={depositAmount || ""}
-                onChange={(e) =>
-                  setDepositAmount(parseFloat(e.target.value) || 0)
-                }
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>Advance Rent (PKR)</Label>
-              <Input
-                type='number'
-                step='0.01'
-                placeholder='0.00'
-                value={advanceRent || ""}
-                onChange={(e) =>
-                  setAdvanceRent(parseFloat(e.target.value) || 0)
-                }
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>Upto Date</Label>
-              <Input
-                type='date'
-                value={uptoDate || ""}
-                onChange={(e) => handleUptoDateChange(e.target.value)}
-              />
-              <p className='text-xs text-gray-500'>Auto-calculates rent days</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Detention Records Table */}
-      <Card>
-        <CardHeader className='py-3 px-4 border-b'>
-          <div className='flex items-center justify-between'>
-            <h3 className='text-lg font-semibold'>Container Detention Grid</h3>
-            <Badge variant='outline'>
-              {detentionRecords.length} Container(s)
-            </Badge>
-          </div>
-          {fclContainers.length === 0 && (
-            <p className='text-sm text-amber-600 mt-2'>
-              ⚠️ No containers found. Add containers in Shipping Tab first.
-            </p>
-          )}
-        </CardHeader>
-        <CardContent className='p-0'>
-          {detentionRecords.length === 0 ? (
-            <div className='p-8 text-center text-gray-500'>
-              <Info className='h-12 w-12 mx-auto mb-4 text-gray-400' />
-              <p className='text-lg font-medium mb-2'>No Containers</p>
-              <p className='text-sm'>
-                Add containers in Shipping Tab to track detention details
-              </p>
-            </div>
-          ) : (
-            <div className='overflow-x-auto'>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className='w-[50px]'>#</TableHead>
-                    <TableHead className='min-w-[130px]'>
-                      Container No.
-                    </TableHead>
-                    <TableHead className='min-w-[80px]'>Type</TableHead>
-                    <TableHead className='min-w-[80px]'>Size</TableHead>
-                    <TableHead className='min-w-[100px]'>Weight (kg)</TableHead>
-                    <TableHead className='min-w-[150px]'>Transport</TableHead>
-                    <TableHead className='min-w-[140px]'>Empty Date</TableHead>
-                    <TableHead className='min-w-[140px]'>
-                      EIR Received
-                    </TableHead>
-                    <TableHead className='min-w-[120px]'>Condition</TableHead>
-                    <TableHead className='min-w-[100px]'>Rent Days</TableHead>
-                    <TableHead className='min-w-[120px]'>Rent Amount</TableHead>
-                    <TableHead className='min-w-[120px]'>Damage</TableHead>
-                    <TableHead className='min-w-[120px]'>Dirty</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {detentionRecords.map(
-                    (record: DetentionRecord, index: number) => (
-                      <TableRow key={index}>
-                        <TableCell className='font-medium'>
-                          {index + 1}
-                        </TableCell>
-
-                        {/* Read-only container details */}
-                        <TableCell className='font-mono text-sm'>
-                          {record.containerNumber}
-                        </TableCell>
-                        <TableCell>
-                          {getContainerTypeLabel(record.containerTypeId)}
-                        </TableCell>
-                        <TableCell>
-                          {getContainerSizeLabel(record.containerSizeId)}
-                        </TableCell>
-                        <TableCell className='text-right'>
-                          {record.netWeight.toFixed(2)}
-                        </TableCell>
-
-                        {/* Editable fields */}
-                        <TableCell>
-                          <Input
-                            className='h-9'
-                            placeholder='Transport name'
-                            value={record.transport || ""}
-                            onChange={(e) =>
-                              updateDetentionRecord(
-                                index,
-                                "transport",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </TableCell>
-
-                        <TableCell>
-                          <Input
-                            type='date'
-                            className='h-9'
-                            value={record.emptyDate || ""}
-                            onChange={(e) =>
-                              updateDetentionRecord(
-                                index,
-                                "emptyDate",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </TableCell>
-
-                        <TableCell>
-                          <Input
-                            type='date'
-                            className='h-9'
-                            value={record.eirReceivedDate || ""}
-                            onChange={(e) =>
-                              updateDetentionRecord(
-                                index,
-                                "eirReceivedDate",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </TableCell>
-
-                        <TableCell>
-                          <Select
-                            value={record.condition || ""}
-                            onValueChange={(value) =>
-                              updateDetentionRecord(index, "condition", value)
-                            }
-                          >
-                            <SelectTrigger className='h-9'>
-                              <SelectValue placeholder='Select' />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {conditionOptions.map((option) => (
-                                <SelectItem key={option} value={option}>
-                                  {option}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-
-                        <TableCell className='text-right'>
-                          <Input
-                            type='number'
-                            className='h-9'
-                            value={record.rentDays || 0}
-                            onChange={(e) =>
-                              updateDetentionRecord(
-                                index,
-                                "rentDays",
-                                parseInt(e.target.value) || 0,
-                              )
-                            }
-                          />
-                        </TableCell>
-
-                        <TableCell>
-                          <Input
-                            type='number'
-                            step='0.01'
-                            className='h-9'
-                            placeholder='0.00'
-                            value={record.rentAmount || ""}
-                            onChange={(e) =>
-                              updateDetentionRecord(
-                                index,
-                                "rentAmount",
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                          />
-                        </TableCell>
-
-                        <TableCell>
-                          <Input
-                            type='number'
-                            step='0.01'
-                            className='h-9'
-                            placeholder='0.00'
-                            value={record.damageAmount || ""}
-                            onChange={(e) =>
-                              updateDetentionRecord(
-                                index,
-                                "damageAmount",
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                          />
-                        </TableCell>
-
-                        <TableCell>
-                          <Input
-                            type='number'
-                            step='0.01'
-                            className='h-9'
-                            placeholder='0.00'
-                            value={record.dirtyAmount || ""}
-                            onChange={(e) =>
-                              updateDetentionRecord(
-                                index,
-                                "dirtyAmount",
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ),
+              <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                {/* Days (Auto-calculated) */}
+                <FormField
+                  control={form.control}
+                  name='delayInClearanceDays'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Days{" "}
+                        <span className='text-xs text-gray-500'>
+                          (Gate Out - GD Date)
+                        </span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          {...field}
+                          value={field.value || 0}
+                          readOnly
+                          className='bg-gray-100'
+                        />
+                      </FormControl>
+                      <p className='text-xs text-gray-500'>Auto-calculated</p>
+                      <FormMessage />
+                    </FormItem>
                   )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+                />
 
-          {/* Summary Footer */}
-          {detentionRecords.length > 0 && (
-            <div className='p-4 border-t bg-gray-50'>
-              <div className='grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4'>
-                <div>
-                  <span className='text-gray-600'>Total Containers:</span>{" "}
-                  <span className='font-semibold'>{totals.containers}</span>
-                </div>
-                <div>
-                  <span className='text-gray-600'>Total Rent:</span>{" "}
-                  <span className='font-semibold'>
-                    PKR{" "}
-                    {totals.totalRent.toLocaleString("en-PK", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                <div>
-                  <span className='text-gray-600'>Total Damage:</span>{" "}
-                  <span className='font-semibold'>
-                    PKR{" "}
-                    {totals.totalDamage.toLocaleString("en-PK", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                <div>
-                  <span className='text-gray-600'>Total Dirty:</span>{" "}
-                  <span className='font-semibold'>
-                    PKR{" "}
-                    {totals.totalDirty.toLocaleString("en-PK", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                <div className='col-span-2 md:col-span-3 border-t pt-2'>
-                  <span className='text-gray-600'>Total Payable:</span>{" "}
-                  <span className='font-bold text-lg'>
-                    PKR{" "}
-                    {totalPayable.toLocaleString("en-PK", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-              </div>
+                {/* Reason */}
+                <FormField
+                  control={form.control}
+                  name='delayInClearanceReason'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Reason of Delay</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder='Enter reason'
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              {/* Financial Summary */}
-              <div className='bg-white p-4 rounded border'>
-                <h4 className='font-semibold mb-3'>Financial Summary</h4>
-                <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm'>
-                  <div>
-                    <div className='text-gray-600'>Total Payable:</div>
-                    <div className='font-semibold'>
-                      PKR{" "}
-                      {totalPayable.toLocaleString("en-PK", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </div>
+                {/* Type (Multi-select) */}
+                <FormItem>
+                  <FormLabel>
+                    Type{" "}
+                    <span className='text-xs text-gray-500'>
+                      (Multi-select)
+                    </span>
+                  </FormLabel>
+                  <div className='space-y-2 border rounded-md p-3 bg-white'>
+                    {CLEARANCE_DELAY_TYPES.map((type) => (
+                      <div
+                        key={type.value}
+                        className='flex items-center space-x-2'
+                      >
+                        <Checkbox
+                          id={`clearance-${type.value}`}
+                          checked={clearanceDelayTypes.includes(type.value)}
+                          onCheckedChange={() =>
+                            handleClearanceDelayTypeToggle(type.value)
+                          }
+                        />
+                        <label
+                          htmlFor={`clearance-${type.value}`}
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer'
+                        >
+                          {type.label}
+                        </label>
+                      </div>
+                    ))}
                   </div>
-                  <div>
-                    <div className='text-gray-600'>Security Deposit:</div>
-                    <div className='font-semibold'>
-                      PKR{" "}
-                      {securityDeposit.toLocaleString("en-PK", {
-                        minimumFractionDigits: 2,
-                      })}
+                  {clearanceDelayTypes.length > 0 && (
+                    <div className='flex flex-wrap gap-1 mt-2'>
+                      {clearanceDelayTypes.map((type) => (
+                        <Badge
+                          key={type}
+                          variant='secondary'
+                          className='text-xs'
+                        >
+                          {
+                            CLEARANCE_DELAY_TYPES.find((t) => t.value === type)
+                              ?.label
+                          }
+                        </Badge>
+                      ))}
                     </div>
-                  </div>
-                  <div>
-                    <div className='text-gray-600'>Advance Rent:</div>
-                    <div className='font-semibold'>
-                      PKR{" "}
-                      {advanceRent.toLocaleString("en-PK", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </div>
-                  </div>
-                  <div className='bg-blue-50 p-2 rounded'>
-                    <div className='text-blue-900 font-medium'>
-                      Balance Receivable:
-                    </div>
-                    <div className='font-bold text-blue-900 text-lg'>
-                      PKR{" "}
-                      {balanceReceivable.toLocaleString("en-PK", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </div>
-                  </div>
-                </div>
+                  )}
+                </FormItem>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Additional Fields */}
-      <Card>
-        <CardHeader className='py-3 px-4 border-b'>
-          <h3 className='text-lg font-semibold'>Additional Information</h3>
-        </CardHeader>
-        <CardContent className='p-4'>
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-            <div className='space-y-2'>
-              <Label>Case Submitted to Line on</Label>
-              <Input
-                type='date'
-                value={caseSubmittedDate || ""}
-                onChange={(e) => setCaseSubmittedDate(e.target.value)}
-              />
+            {/* Delay in Dispatch Section */}
+            <div className='space-y-4 p-4 bg-red-50 rounded-lg border border-red-200'>
+              <div className='flex items-center gap-2'>
+                <AlertCircle className='h-5 w-5 text-red-600' />
+                <h4 className='font-semibold text-gray-900'>
+                  Delay in Dispatch
+                </h4>
+              </div>
+
+              <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                {/* Days (Auto-calculated) */}
+                <FormField
+                  control={form.control}
+                  name='delayInDispatchDays'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Days{" "}
+                        <span className='text-xs text-gray-500'>
+                          (Earliest Dispatch - Arrival)
+                        </span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          {...field}
+                          value={field.value || 0}
+                          readOnly
+                          className='bg-gray-100'
+                        />
+                      </FormControl>
+                      <p className='text-xs text-gray-500'>Auto-calculated</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Reason */}
+                <FormField
+                  control={form.control}
+                  name='delayInDispatchReason'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Reason of Delay</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder='Enter reason'
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Type (Multi-select) */}
+                <FormItem>
+                  <FormLabel>
+                    Type{" "}
+                    <span className='text-xs text-gray-500'>
+                      (Multi-select)
+                    </span>
+                  </FormLabel>
+                  <div className='space-y-2 border rounded-md p-3 bg-white'>
+                    {DISPATCH_DELAY_TYPES.map((type) => (
+                      <div
+                        key={type.value}
+                        className='flex items-center space-x-2'
+                      >
+                        <Checkbox
+                          id={`dispatch-${type.value}`}
+                          checked={dispatchDelayTypes.includes(type.value)}
+                          onCheckedChange={() =>
+                            handleDispatchDelayTypeToggle(type.value)
+                          }
+                        />
+                        <label
+                          htmlFor={`dispatch-${type.value}`}
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer'
+                        >
+                          {type.label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                  {dispatchDelayTypes.length > 0 && (
+                    <div className='flex flex-wrap gap-1 mt-2'>
+                      {dispatchDelayTypes.map((type) => (
+                        <Badge
+                          key={type}
+                          variant='secondary'
+                          className='text-xs'
+                        >
+                          {
+                            DISPATCH_DELAY_TYPES.find((t) => t.value === type)
+                              ?.label
+                          }
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </FormItem>
+              </div>
             </div>
 
-            <div className='space-y-2'>
-              <Label>Rent Invoice Issued on</Label>
-              <Input
-                type='date'
-                value={rentInvoiceDate || ""}
-                onChange={(e) => setRentInvoiceDate(e.target.value)}
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>Refund/Balance Received on</Label>
-              <Input
-                type='date'
-                value={refundReceivedDate || ""}
-                onChange={(e) => setRefundReceivedDate(e.target.value)}
-              />
-            </div>
+            {/* Remarks */}
+            <FormField
+              control={form.control}
+              name='completionRemarks'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Remarks</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder='Enter any completion remarks or notes...'
+                      className='min-h-[100px]'
+                      {...field}
+                      value={field.value || ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
         </CardContent>
       </Card>

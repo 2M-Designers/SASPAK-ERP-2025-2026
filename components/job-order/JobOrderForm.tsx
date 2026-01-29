@@ -17,6 +17,7 @@ import ShippingTab from "./tabs/ShippingTab";
 import InvoiceTab from "./tabs/InvoiceTab";
 import GDTab from "./tabs/GDInfoTab";
 import DispatchTab from "./tabs/DispatchTab";
+import DetentionTab from "./tabs/DetentionTab";
 import CompletionTab from "./tabs/CompletionTab";
 
 // Import schemas and types
@@ -296,6 +297,21 @@ export default function JobOrderForm({
       remarks: "",
       dispatchNotes: "",
 
+      // ✅ ADD COMPLETION TAB DEFAULTS:
+      gdClearedUs: "",
+      gdSecurityValue: "",
+      gdSecurityExpiryDate: "",
+      rmsChannel: "",
+      destuffingOn: "",
+      gdAssignToGateOutDate: "",
+      delayInClearanceDays: 0,
+      delayInClearanceReason: "",
+      delayInClearanceType: "",
+      delayInDispatchDays: 0,
+      delayInDispatchReason: "",
+      delayInDispatchType: "",
+      completionRemarks: "",
+
       ...defaultState,
     },
   });
@@ -470,6 +486,23 @@ export default function JobOrderForm({
       // Remarks
       remarks: jobData.remarks || "",
       dispatchNotes: jobData.dispatchNotes || "",
+
+      // ✅ ADD COMPLETION TAB FIELDS:
+      gdClearedUs: jobData.gdClearedUs || "",
+      gdSecurityValue: jobData.gdSecurityValue || jobData.gdsecurityValue || "",
+      gdSecurityExpiryDate: formatDateForForm(
+        jobData.gdSecurityExpiryDate || jobData.gdsecurityExpiryDate,
+      ),
+      rmsChannel: jobData.rmsChannel || "",
+      destuffingOn: formatDateForForm(jobData.destuffingOn),
+      gdAssignToGateOutDate: formatDateForForm(jobData.gdAssignToGateOutDate),
+      delayInClearanceDays: jobData.delayInClearanceDays || 0,
+      delayInClearanceReason: jobData.delayInClearanceReason || "",
+      delayInClearanceType: jobData.delayInClearanceType || "",
+      delayInDispatchDays: jobData.delayInDispatchDays || 0,
+      delayInDispatchReason: jobData.delayInDispatchReason || "",
+      delayInDispatchType: jobData.delayInDispatchType || "",
+      completionRemarks: jobData.completionRemarks || "",
     });
 
     // Populate containers
@@ -1308,6 +1341,27 @@ export default function JobOrderForm({
         remarks: values.remarks || null,
         dispatchNotes: values.dispatchNotes || null,
 
+        // ✅ ADD COMPLETION TAB FIELDS TO PAYLOAD:
+        gdClearedUs: values.gdClearedUs || null,
+        gdSecurityValue: values.gdSecurityValue || null,
+        gdSecurityExpiryDate: values.gdSecurityExpiryDate
+          ? new Date(values.gdSecurityExpiryDate).toISOString()
+          : null,
+        rmsChannel: values.rmsChannel || null,
+        destuffingOn: values.destuffingOn
+          ? new Date(values.destuffingOn).toISOString()
+          : null,
+        gdAssignToGateOutDate: values.gdAssignToGateOutDate
+          ? new Date(values.gdAssignToGateOutDate).toISOString()
+          : null,
+        delayInClearanceDays: values.delayInClearanceDays || 0,
+        delayInClearanceReason: values.delayInClearanceReason || null,
+        delayInClearanceType: values.delayInClearanceType || null,
+        delayInDispatchDays: values.delayInDispatchDays || 0,
+        delayInDispatchReason: values.delayInDispatchReason || null,
+        delayInDispatchType: values.delayInDispatchType || null,
+        completionRemarks: values.completionRemarks || null,
+
         // Child Records
         jobEquipments: jobEquipments,
         jobInvoices: jobInvoices,
@@ -1549,6 +1603,7 @@ export default function JobOrderForm({
                 <InvoiceTab {...sharedProps} />
                 <GDTab {...sharedProps} />
                 <DispatchTab {...sharedProps} />
+                <DetentionTab {...sharedProps} />
                 <CompletionTab {...sharedProps} />
               </Tabs>
             )}

@@ -39,9 +39,7 @@ export default function GDInfoTab({
 }: any) {
   const [isGDDialogOpen, setIsGDDialogOpen] = useState(false);
   const [editingGDIndex, setEditingGDIndex] = useState<number | null>(null);
-  const [insuranceType, setInsuranceType] = useState<"1percent" | "custom">(
-    "custom",
-  );
+  const [insuranceType, setInsuranceType] = useState<"1percent" | "Rs">("Rs");
   const [currentGD, setCurrentGD] = useState<any>({
     id: 0,
     unitType: "",
@@ -439,7 +437,7 @@ export default function GDInfoTab({
             <Input id='gddate' type='date' {...form.register("gddate")} />
           </div>
 
-          {/* Row 2 */}
+          {/* Row 2 
           <div className='space-y-2'>
             <Label htmlFor='gdclearedUs'>GD Cleared U/S</Label>
             <Input
@@ -459,7 +457,7 @@ export default function GDInfoTab({
               placeholder='0.00'
               {...form.register("gdcharges", { valueAsNumber: true })}
             />
-          </div>
+          </div>*/}
 
           <div className='space-y-2'>
             <Label htmlFor='jobInvoiceExchRate'>
@@ -475,7 +473,7 @@ export default function GDInfoTab({
             />
           </div>
 
-          {/* Row 3: Security */}
+          {/* Row 3: Security 
           <div className='space-y-2'>
             <Label htmlFor='gdsecurityType'>Security Type</Label>
             <Select
@@ -512,7 +510,7 @@ export default function GDInfoTab({
               type='date'
               {...form.register("gdsecurityExpiryDate")}
             />
-          </div>
+          </div>*/}
 
           {/* Row 4: Financial Calculations */}
           <div className='space-y-2'>
@@ -539,7 +537,7 @@ export default function GDInfoTab({
               <Select
                 value={insuranceType}
                 onValueChange={(value) => {
-                  setInsuranceType(value as "1percent" | "custom");
+                  setInsuranceType(value as "1percent" | "Rs");
                   if (value === "1percent") {
                     const totalAV = calculateTotalAssessedValue();
                     form.setValue("insurance", (totalAV * 0.01).toFixed(2));
@@ -551,7 +549,7 @@ export default function GDInfoTab({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value='1percent'>1% of AV</SelectItem>
-                  <SelectItem value='custom'>Rs.</SelectItem>
+                  <SelectItem value='Rs'>Rs.</SelectItem>
                 </SelectContent>
               </Select>
               <Input

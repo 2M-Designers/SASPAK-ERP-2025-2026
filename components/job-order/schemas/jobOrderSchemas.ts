@@ -119,6 +119,35 @@ export const jobMasterSchema = z.object({
   // Remarks
   remarks: z.string().optional(),
   dispatchNotes: z.string().optional(),
+
+  // ✅ ADD THESE COMPLETION TAB FIELDS:
+
+  // GD Cleared U/S Section
+  gdClearedUs: z.string().optional(), // Security Type (80, 81, 82, 83)
+  gdSecurityValue: z.string().optional(), // Already exists as gdsecurityValue
+  gdSecurityExpiryDate: z.string().optional(), // Already exists as gdsecurityExpiryDate
+
+  // RMS Channel
+  rmsChannel: z.string().optional(), // GREEN, YELLOW_YELLOW, YELLOW_RED, RED
+
+  // Destuffing (LCL only)
+  destuffingOn: z.string().optional(), // Date
+
+  // GD Assignment
+  gdAssignToGateOutDate: z.string().optional(), // Date
+
+  // Delay in Clearance
+  delayInClearanceDays: z.number().min(0).default(0), // Auto-calculated
+  delayInClearanceReason: z.string().optional(), // Text
+  delayInClearanceType: z.string().optional(), // CSV: GROUNDING,EXAMINATION,etc.
+
+  // Delay in Dispatch
+  delayInDispatchDays: z.number().min(0).default(0), // Auto-calculated
+  delayInDispatchReason: z.string().optional(), // Text
+  delayInDispatchType: z.string().optional(), // CSV: FI,OBL,CLEARANCE
+
+  // Remarks
+  completionRemarks: z.string().optional(), // Textarea
 });
 
 // ============================================
