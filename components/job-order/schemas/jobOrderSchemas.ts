@@ -6,15 +6,15 @@ import * as z from "zod";
 export const jobMasterSchema = z.object({
   // System Fields
   jobId: z.number().optional(),
-  companyId: z.number().default(1),
+  companyId: z.number().default(0),
   version: z.number().optional(),
 
   // Basic Information
   jobNumber: z.string().optional(),
-  jobDate: z.string().default(new Date().toISOString().split("T")[0]),
+  jobDate: z.string().default(new Date().toISOString()),
   customerReferenceNumber: z.string().optional(),
   indexNo: z.string().optional(),
-  status: z.string().default("DRAFT"),
+  status: z.string().default(""),
 
   // Scope Flags
   isFreightForwarding: z.boolean().default(false),
@@ -31,19 +31,19 @@ export const jobMasterSchema = z.object({
   freightType: z.string().optional(),
 
   // Process Owner
-  processOwnerId: z.number().optional(),
+  processOwnerId: z.number().default(0),
 
   // Party IDs (ALL 10 PARTIES)
-  shipperPartyId: z.number().optional(),
-  consigneePartyId: z.number().optional(),
-  notifyParty1Id: z.number().optional(),
-  notifyParty2Id: z.number().optional(),
-  principalId: z.number().optional(),
-  overseasAgentId: z.number().optional(),
-  transporterPartyId: z.number().optional(),
-  depositorPartyId: z.number().optional(),
-  carrierPartyId: z.number().optional(),
-  terminalPartyId: z.number().optional(),
+  shipperPartyId: z.number().default(0),
+  consigneePartyId: z.number().default(0),
+  notifyParty1Id: z.number().default(0),
+  notifyParty2Id: z.number().default(0),
+  principalId: z.number().default(0),
+  overseasAgentId: z.number().default(0),
+  transporterPartyId: z.number().default(0),
+  depositorPartyId: z.number().default(0),
+  carrierPartyId: z.number().default(0),
+  terminalPartyId: z.number().default(0),
 
   // Document Numbers
   houseDocumentNumber: z.string().optional(),
@@ -52,9 +52,9 @@ export const jobMasterSchema = z.object({
   masterDocumentDate: z.string().optional(),
 
   // Location IDs
-  originPortId: z.number().optional(),
-  destinationPortId: z.number().optional(),
-  placeOfDeliveryId: z.number().optional(),
+  originPortId: z.number().default(0),
+  destinationPortId: z.number().default(0),
+  placeOfDeliveryId: z.number().default(0),
 
   // Vessel Information
   vesselName: z.string().optional(),
@@ -89,7 +89,6 @@ export const jobMasterSchema = z.object({
   jobInvoiceExchRate: z.number().min(0).default(0),
   insurance: z.string().optional(),
   landing: z.string().optional(),
-  freightCharges: z.number().min(0).default(0).optional(),
 
   // PO (Payment Order) Fields
   poReceivedOn: z.string().optional(),
@@ -100,16 +99,24 @@ export const jobMasterSchema = z.object({
   poSecurityDeposite: z.number().min(0).default(0),
   poSasadvance: z.number().min(0).default(0),
 
-  // GD (Goods Declaration) Fields - Note the lowercase naming
+  // GD (Goods Declaration) Fields
   gdnumber: z.string().optional(),
   gdType: z.string().optional(),
   gddate: z.string().optional(),
   gdcharges: z.number().min(0).default(0),
   gdclearedUs: z.string().optional(),
   gdsecurityType: z.string().optional(),
-  gdsecurityValue: z.string().optional(), // Note: This is a STRING, not number
+  gdsecurityValue: z.string().optional(),
   gdsecurityExpiryDate: z.string().optional(),
-  psqcaSamples: z.string().optional(), // PSQCA Samples status
+
+  // Completion Fields
+  rmschannel: z.string().optional(), // Note: lowercase 'channel'
+  gdassignToGateOut: z.string().optional(),
+  destuffingOn: z.string().optional(),
+  delayInClearance: z.string().optional(), // Days as string?
+  reasonOfDelayInClearance: z.string().optional(),
+  delayInDispatch: z.string().optional(), // Days as string?
+  reasonOfDelayInDispatch: z.string().optional(),
 
   // Case & Rent Tracking
   caseSubmittedToLineOn: z.string().optional(),
@@ -118,40 +125,21 @@ export const jobMasterSchema = z.object({
 
   // Remarks
   remarks: z.string().optional(),
-  dispatchNotes: z.string().optional(),
 
-  // ✅ ADD THESE COMPLETION TAB FIELDS:
+  // Note: dispatchNotes removed as not in DB schema
 
-  // GD Cleared U/S Section
-  gdClearedUs: z.string().optional(), // Security Type (80, 81, 82, 83)
-  gdSecurityValue: z.string().optional(), // Already exists as gdsecurityValue
-  gdSecurityExpiryDate: z.string().optional(), // Already exists as gdsecurityExpiryDate
-
-  // RMS Channel
-  rmsChannel: z.string().optional(), // GREEN, YELLOW_YELLOW, YELLOW_RED, RED
-
-  // Destuffing (LCL only)
-  destuffingOn: z.string().optional(), // Date
-
-  // GD Assignment
-  gdAssignToGateOutDate: z.string().optional(), // Date
-
-  // Delay in Clearance
-  delayInClearanceDays: z.number().min(0).default(0), // Auto-calculated
-  delayInClearanceReason: z.string().optional(), // Text
-  delayInClearanceType: z.string().optional(), // CSV: GROUNDING,EXAMINATION,etc.
-
-  // Delay in Dispatch
-  delayInDispatchDays: z.number().min(0).default(0), // Auto-calculated
-  delayInDispatchReason: z.string().optional(), // Text
-  delayInDispatchType: z.string().optional(), // CSV: FI,OBL,CLEARANCE
-
-  // Remarks
-  completionRemarks: z.string().optional(), // Textarea
+  // Arrays for related data
+  jobCharges: z.array(z.any()).optional(),
+  jobCommodities: z.array(z.any()).optional(),
+  jobEquipmentDetentionDetails: z.array(z.any()).optional(),
+  jobEquipmentHandingOvers: z.array(z.any()).optional(),
+  jobEquipments: z.array(z.any()).optional(),
+  jobGoodsDeclarations: z.array(z.any()).optional(),
+  jobInvoices: z.array(z.any()).optional(),
 });
 
 // ============================================
-// FCL CONTAINER SCHEMA - MATCHES JobEquipment TABLE
+// FCL CONTAINER SCHEMA - MATCHES JobEquipments TABLE
 // ============================================
 
 // Container Number Validation Pattern
@@ -169,11 +157,10 @@ export const fclContainerSchema = z.object({
   containerNo: z
     .string()
     .min(1, "Container number is required")
-    .regex(containerNoPattern, "Format: ABCU-123456-7 or ABCU1234567"),
+    .regex(containerNoPattern, "Format: ABCU-123456-7"),
   containerSizeId: z.number().optional(),
   containerTypeId: z.number().optional(),
 
-  // CRITICAL: Field is called 'tareWeight' in database, not 'weight'
   tareWeight: z.number().min(0, "Weight must be positive").default(0),
 
   sealNo: z.string().optional(),
@@ -181,7 +168,7 @@ export const fclContainerSchema = z.object({
   // EIR (Equipment Interchange Receipt) Fields
   eirReceivedOn: z.string().optional(),
   eirSubmitted: z.boolean().default(false),
-  eirDocumentId: z.number().optional(),
+  eirDocumentId: z.number().default(0),
 
   // Rent Fields
   rentInvoiceIssuedOn: z.string().optional(),
@@ -203,6 +190,10 @@ export const fclContainerSchema = z.object({
 
   // Status
   status: z.string().optional(),
+
+  // Package fields for LCL/Air
+  noOfPackages: z.number().min(0).default(0),
+  packageType: z.string().optional(),
 });
 
 // ============================================
@@ -224,7 +215,7 @@ export const jobCommoditySchema = z.object({
 });
 
 // ============================================
-// JOB CHARGE SCHEMA - NEW
+// JOB CHARGE SCHEMA - UPDATED
 // ============================================
 export const jobChargeSchema = z.object({
   jobChargeId: z.number().optional(),
@@ -249,7 +240,7 @@ export const jobChargeSchema = z.object({
 });
 
 // ============================================
-// JOB EQUIPMENT DETENTION DETAIL SCHEMA - NEW
+// JOB EQUIPMENT DETENTION DETAIL SCHEMA - UPDATED
 // ============================================
 export const jobEquipmentDetentionDetailSchema = z.object({
   jobEquipmentDetentionDetailId: z.number().optional(),
@@ -258,19 +249,19 @@ export const jobEquipmentDetentionDetailSchema = z.object({
   containerSizeId: z.number().optional(),
   containerTypeId: z.number().optional(),
   netWeight: z.number().min(0).default(0),
-  transporterPartyId: z.number().optional(),
+  transporterPartyId: z.number().default(0),
   emptyDate: z.string().optional(),
   eirReceivedOn: z.string().optional(),
   condition: z.string().optional(),
   rentDays: z.number().min(0).default(0),
   rentAmountLc: z.number().min(0).default(0),
-  damage: z.string().optional(),
-  dirty: z.string().optional(),
+  damage: z.string().optional(), // Note: string, not number
+  dirty: z.string().optional(), // Note: string, not number
   version: z.number().optional(),
 });
 
 // ============================================
-// JOB EQUIPMENT HANDING OVER SCHEMA - NEW
+// JOB EQUIPMENT HANDING OVER SCHEMA - UPDATED
 // ============================================
 export const jobEquipmentHandingOverSchema = z.object({
   jobEquipmentHandingOverId: z.number().optional(),
@@ -279,16 +270,17 @@ export const jobEquipmentHandingOverSchema = z.object({
   containerSizeId: z.number().optional(),
   containerTypeId: z.number().optional(),
   netWeight: z.number().min(0).default(0),
-  transporterPartyId: z.number().optional(),
-  destinationLocationId: z.number().optional(),
+  transporterPartyId: z.number().default(0),
+  destinationLocationId: z.number().default(0),
   buyingAmountLc: z.number().min(0).default(0),
   topayAmountLc: z.number().min(0).default(0),
   dispatchDate: z.string().optional(),
+  containerReturnTerminalId: z.number().default(0), // ✅ NEW FIELD
   version: z.number().optional(),
 });
 
 // ============================================
-// JOB GOODS DECLARATION SCHEMA - NEW
+// JOB GOODS DECLARATION SCHEMA - UPDATED
 // ============================================
 export const jobGoodsDeclarationSchema = z.object({
   id: z.number().optional(),
@@ -297,7 +289,7 @@ export const jobGoodsDeclarationSchema = z.object({
   quantity: z.number().min(0).default(0),
   cocode: z.string().optional(),
   sronumber: z.string().optional(),
-  hscode: z.string().optional(),
+  hscode: z.string().optional(), // lowercase
   itemDescription: z.string().optional(),
   declaredUnitValue: z.number().min(0).default(0),
   assessedUnitValue: z.number().min(0).default(0),
@@ -324,89 +316,160 @@ export const jobGoodsDeclarationSchema = z.object({
 });
 
 // ============================================
-// JOB INVOICE COMMODITY SCHEMA - ✅ NEW FOR NESTED COMMODITIES
+// JOB INVOICE COMMODITY SCHEMA - UPDATED
 // ============================================
 export const jobInvoiceCommoditySchema = z.object({
   jobInvoiceCommodityId: z.number().optional(),
   jobInvoiceId: z.number().optional(),
   description: z.string().min(1, "Description required"),
-  hscodeId: z.number().optional(), // Note: lowercase 's' in API
+  hscodeId: z.number().optional(), // lowercase 'scode'
   originId: z.number().optional(),
   quantity: z.number().min(0).default(0),
   dutiableValue: z.number().min(0).default(0),
   assessableValue: z.number().min(0).default(0),
-  totalValueAv: z.number().min(0).default(0), // Total based on AV
-  totalValueDv: z.number().min(0).default(0), // Total based on DV
+  totalValueAv: z.number().min(0).default(0),
+  totalValueDv: z.number().min(0).default(0),
   version: z.number().optional(),
 });
 
 // ============================================
-// JOB INVOICE SCHEMA - ✅ UPDATED WITH NESTED COMMODITIES
+// JOB INVOICE SCHEMA - UPDATED
 // ============================================
 export const jobInvoiceSchema = z.object({
   jobInvoiceId: z.number().optional(),
   jobId: z.number().optional(),
   invoiceNumber: z.string().optional(),
   invoiceDate: z.string().optional(),
-  issuedBy: z.string().optional(), // Note: API uses 'issuedBy', not 'invoiceIssuedByPartyId'
+  issuedBy: z.string().optional(), // ✅ Matches DB: 'issuedBy'
   shippingTerm: z.string().optional(),
 
   // LC (Letter of Credit) Fields
   lcNumber: z.string().optional(),
   lcValue: z.number().min(0).default(0),
   lcDate: z.string().optional(),
-  lcIssuedBy: z.string().optional(), // Note: API uses 'lcIssuedBy', not 'lcIssuedByBankId'
-  lcCurrencyid: z.number().optional(), // Note: lowercase 'id'
+  lcIssuedBy: z.string().optional(), // ✅ Matches DB: 'lcIssuedBy'
+  lcCurrencyid: z.number().optional(), // ✅ lowercase 'id' as in DB
   lcExchangeRate: z.number().min(0).default(0),
 
-  // FL (Form L) Fields
-  flNumber: z.string().optional(), // Note: 'fl' not 'fi'
+  // FL (Form L) Fields - Note: 'fl' not 'fi' in DB
+  flNumber: z.string().optional(),
   flDate: z.string().optional(),
   expiryDate: z.string().optional(),
 
   invoiceStatus: z.string().optional(),
   version: z.number().optional(),
 
-  // ✅ ADDED: Nested commodities array
+  // Nested commodities array
   jobInvoiceCommodities: z.array(jobInvoiceCommoditySchema).optional(),
 });
 
 // ============================================
-// INVOICE ITEM SCHEMA - FOR FORM COMPATIBILITY
+// INVOICE ITEM SCHEMA - FOR FORM COMPATIBILITY (FRONTEND ONLY)
 // ============================================
 export const invoiceItemSchema = z.object({
   invoiceItemId: z.number().optional(), // Maps to jobInvoiceCommodityId
   jobInvoiceId: z.number().optional(),
-  hsCodeId: z.number().optional(),
+  hsCodeId: z.number().optional(), // Will map to hscodeId
   hsCode: z.string().min(1, "HS Code required"),
   description: z.string().min(1, "Description required"),
   originId: z.number().optional(),
   quantity: z.number().min(0).default(0),
   dutiableValue: z.number().min(0).default(0),
   assessableValue: z.number().min(0).default(0),
-  totalValue: z.number().min(0).default(0), // Will be split into AV and DV
+  totalValue: z.number().min(0).default(0),
   version: z.number().optional(),
 });
 
-// For backward compatibility with existing invoice form
+// For backward compatibility with existing invoice form (FRONTEND ONLY)
 export const invoiceSchema = z.object({
   invoiceId: z.number().optional(),
   invoiceNumber: z.string().optional(),
   invoiceDate: z.string().optional(),
-  invoiceIssuedByPartyId: z.number().optional(),
+  invoiceIssuedByPartyId: z.number().optional(), // Will map to issuedBy string
   shippingTerm: z.string().optional(),
   lcNumber: z.string().optional(),
   lcDate: z.string().optional(),
-  lcIssuedByBankId: z.number().optional(),
+  lcIssuedByBankId: z.number().optional(), // Will map to lcIssuedBy string
   lcValue: z.number().min(0).default(0),
-  lcCurrencyId: z.number().optional(),
+  lcCurrencyId: z.number().optional(), // Will map to lcCurrencyid
   lcExchangeRate: z.number().min(0).default(0),
-  fiNumber: z.string().optional(),
-  fiDate: z.string().optional(),
-  fiExpiryDate: z.string().optional(),
+  fiNumber: z.string().optional(), // Will map to flNumber
+  fiDate: z.string().optional(), // Will map to flDate
+  fiExpiryDate: z.string().optional(), // Will map to expiryDate
   invoiceStatus: z.string().optional(),
   version: z.number().optional(),
   items: z.array(invoiceItemSchema).default([]),
+});
+
+// ============================================
+// HELPER FUNCTIONS FOR DATA MAPPING
+// ============================================
+
+// Map frontend invoice to database schema
+export const mapInvoiceToDb = (invoice: any) => ({
+  jobInvoiceId: invoice.invoiceId,
+  invoiceNumber: invoice.invoiceNumber,
+  invoiceDate: invoice.invoiceDate,
+  issuedBy:
+    invoice.invoiceIssuedByPartyId?.toString() || invoice.issuedBy || "",
+  shippingTerm: invoice.shippingTerm,
+  lcNumber: invoice.lcNumber,
+  lcValue: invoice.lcValue,
+  lcDate: invoice.lcDate,
+  lcIssuedBy: invoice.lcIssuedByBankId?.toString() || invoice.lcIssuedBy || "",
+  lcCurrencyid: invoice.lcCurrencyId,
+  lcExchangeRate: invoice.lcExchangeRate,
+  flNumber: invoice.fiNumber,
+  flDate: invoice.fiDate,
+  expiryDate: invoice.fiExpiryDate,
+  invoiceStatus: invoice.invoiceStatus || "DRAFT",
+  version: invoice.version || 0,
+  jobInvoiceCommodities:
+    invoice.items?.map((item: any) => ({
+      jobInvoiceCommodityId: item.invoiceItemId,
+      description: item.description,
+      hscodeId: item.hsCodeId,
+      originId: item.originId,
+      quantity: item.quantity,
+      dutiableValue: item.dutiableValue,
+      assessableValue: item.assessableValue,
+      totalValueAv: item.totalValue, // Assuming totalValue is based on AV
+      totalValueDv: item.dutiableValue * item.quantity, // Calculate DV total
+      version: item.version || 0,
+    })) || [],
+});
+
+// Map database invoice to frontend schema
+export const mapInvoiceFromDb = (dbInvoice: any) => ({
+  invoiceId: dbInvoice.jobInvoiceId,
+  invoiceNumber: dbInvoice.invoiceNumber,
+  invoiceDate: dbInvoice.invoiceDate,
+  invoiceIssuedByPartyId: parseInt(dbInvoice.issuedBy) || undefined,
+  shippingTerm: dbInvoice.shippingTerm,
+  lcNumber: dbInvoice.lcNumber,
+  lcDate: dbInvoice.lcDate,
+  lcIssuedByBankId: parseInt(dbInvoice.lcIssuedBy) || undefined,
+  lcValue: dbInvoice.lcValue,
+  lcCurrencyId: dbInvoice.lcCurrencyid,
+  lcExchangeRate: dbInvoice.lcExchangeRate,
+  fiNumber: dbInvoice.flNumber,
+  fiDate: dbInvoice.flDate,
+  fiExpiryDate: dbInvoice.expiryDate,
+  invoiceStatus: dbInvoice.invoiceStatus,
+  version: dbInvoice.version,
+  items:
+    dbInvoice.jobInvoiceCommodities?.map((item: any) => ({
+      invoiceItemId: item.jobInvoiceCommodityId,
+      hsCodeId: item.hscodeId,
+      hsCode: item.hscode?.code || "",
+      description: item.description,
+      originId: item.originId,
+      quantity: item.quantity,
+      dutiableValue: item.dutiableValue,
+      assessableValue: item.assessableValue,
+      totalValue: item.totalValueAv || item.totalValueDv || 0,
+      version: item.version,
+    })) || [],
 });
 
 // ============================================

@@ -20,7 +20,7 @@ import DispatchTab from "./tabs/DispatchTab";
 import DetentionTab from "./tabs/DetentionTab";
 import CompletionTab from "./tabs/CompletionTab";
 
-// Import schemas and types
+// Import schemas and types - UPDATED TO MATCH NEW SCHEMA
 import {
   jobMasterSchema,
   fclContainerSchema,
@@ -30,6 +30,20 @@ import {
   type FclContainerFormValues,
   type InvoiceFormValues,
   type InvoiceItemFormValues,
+  // ✅ ADD NEW SCHEMAS
+  jobCommoditySchema,
+  jobChargeSchema,
+  jobEquipmentDetentionDetailSchema,
+  jobEquipmentHandingOverSchema,
+  jobGoodsDeclarationSchema,
+  type JobCommodityFormValues,
+  type JobChargeFormValues,
+  type JobEquipmentDetentionDetailFormValues,
+  type JobEquipmentHandingOverFormValues,
+  type JobGoodsDeclarationFormValues,
+  // ✅ ADD MAPPING FUNCTIONS
+  mapInvoiceToDb,
+  mapInvoiceFromDb,
 } from "./schemas/jobOrderSchemas";
 
 // Import API fetch functions
@@ -107,26 +121,42 @@ export default function JobOrderForm({
   const [loadingFreightTypes, setLoadingFreightTypes] = useState(false);
   const [loadingBLStatuses, setLoadingBLStatuses] = useState(false);
 
-  // Child records
+  // Child records - UPDATED TO MATCH SCHEMA
   const [fclContainers, setFclContainers] = useState<FclContainerFormValues[]>(
     [],
   );
   const [invoices, setInvoices] = useState<InvoiceFormValues[]>([]);
+  const [jobCommodities, setJobCommodities] = useState<
+    JobCommodityFormValues[]
+  >([]);
+  const [jobCharges, setJobCharges] = useState<JobChargeFormValues[]>([]);
   const [currentInvoiceItems, setCurrentInvoiceItems] = useState<
     InvoiceItemFormValues[]
   >([]);
-  const [goodsDeclarations, setGoodsDeclarations] = useState<any[]>([]);
-  const [dispatchRecords, setDispatchRecords] = useState<any[]>([]);
-  const [detentionRecords, setDetentionRecords] = useState<any[]>([]);
+  const [goodsDeclarations, setGoodsDeclarations] = useState<
+    JobGoodsDeclarationFormValues[]
+  >([]);
+  const [dispatchRecords, setDispatchRecords] = useState<
+    JobEquipmentHandingOverFormValues[]
+  >([]);
+  const [detentionRecords, setDetentionRecords] = useState<
+    JobEquipmentDetentionDetailFormValues[]
+  >([]);
 
   // Form visibility
   const [showFclForm, setShowFclForm] = useState(false);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showInvoiceItemForm, setShowInvoiceItemForm] = useState(false);
+  const [showJobCommodityForm, setShowJobCommodityForm] = useState(false);
+  const [showJobChargeForm, setShowJobChargeForm] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<number | null>(null);
   const [editingInvoiceItem, setEditingInvoiceItem] = useState<number | null>(
     null,
   );
+  const [editingJobCommodity, setEditingJobCommodity] = useState<number | null>(
+    null,
+  );
+  const [editingJobCharge, setEditingJobCharge] = useState<number | null>(null);
 
   // Insurance state
   const [insuranceType, setInsuranceType] = useState<"1percent" | "custom">(
@@ -176,7 +206,7 @@ export default function JobOrderForm({
   }, [toast]);
 
   // ============================================
-  // MAIN FORM - ALIGNED WITH NEW SCHEMA
+  // MAIN FORM - UPDATED TO MATCH NEW SCHEMA
   // ============================================
   const form = useForm<JobMasterFormValues>({
     resolver: zodResolver(jobMasterSchema),
@@ -191,7 +221,7 @@ export default function JobOrderForm({
       jobDate: new Date().toISOString().split("T")[0],
       customerReferenceNumber: "",
       indexNo: "",
-      status: "DRAFT",
+      status: "", // Changed from "DRAFT" to empty string
 
       // Scope Flags
       isFreightForwarding: false,
@@ -200,27 +230,27 @@ export default function JobOrderForm({
       isOther: false,
 
       // Operation Details
-      operationType: undefined,
-      operationMode: undefined,
-      jobSubType: undefined,
-      jobLoadType: undefined,
-      jobDocumentType: undefined,
-      freightType: undefined,
+      operationType: "",
+      operationMode: "",
+      jobSubType: "",
+      jobLoadType: "",
+      jobDocumentType: "",
+      freightType: "",
 
       // Process Owner
-      processOwnerId: undefined,
+      processOwnerId: 0,
 
-      // Party IDs (ALL 10)
-      shipperPartyId: undefined,
-      consigneePartyId: undefined,
-      notifyParty1Id: undefined,
-      notifyParty2Id: undefined,
-      principalId: undefined,
-      overseasAgentId: undefined,
-      transporterPartyId: undefined,
-      depositorPartyId: undefined,
-      carrierPartyId: undefined,
-      terminalPartyId: undefined,
+      // Party IDs (ALL 10) - SET TO 0 INSTEAD OF undefined
+      shipperPartyId: 0,
+      consigneePartyId: 0,
+      notifyParty1Id: 0,
+      notifyParty2Id: 0,
+      principalId: 0,
+      overseasAgentId: 0,
+      transporterPartyId: 0,
+      depositorPartyId: 0,
+      carrierPartyId: 0,
+      terminalPartyId: 0,
 
       // Document Numbers
       houseDocumentNumber: "",
@@ -229,9 +259,9 @@ export default function JobOrderForm({
       masterDocumentDate: "",
 
       // Location IDs
-      originPortId: undefined,
-      destinationPortId: undefined,
-      placeOfDeliveryId: undefined,
+      originPortId: 0,
+      destinationPortId: 0,
+      placeOfDeliveryId: 0,
 
       // Vessel Information
       vesselName: "",
@@ -260,13 +290,12 @@ export default function JobOrderForm({
       // Description & Documentation
       jobDescription: "",
       igmNumber: "",
-      blstatus: undefined,
+      blstatus: "",
 
       // Financial
       jobInvoiceExchRate: 0,
       insurance: "",
       landing: "",
-      freightCharges: 0,
 
       // PO Fields
       poReceivedOn: "",
@@ -286,7 +315,15 @@ export default function JobOrderForm({
       gdsecurityType: "",
       gdsecurityValue: "",
       gdsecurityExpiryDate: "",
-      psqcaSamples: "",
+
+      // ✅ ADD COMPLETION FIELDS FROM SCHEMA:
+      rmschannel: "", // Note: lowercase 'channel'
+      gdassignToGateOut: "",
+      destuffingOn: "",
+      delayInClearance: "", // Days as string
+      reasonOfDelayInClearance: "",
+      delayInDispatch: "", // Days as string
+      reasonOfDelayInDispatch: "",
 
       // Case & Rent
       caseSubmittedToLineOn: "",
@@ -295,22 +332,8 @@ export default function JobOrderForm({
 
       // Remarks
       remarks: "",
-      dispatchNotes: "",
 
-      // ✅ ADD COMPLETION TAB DEFAULTS:
-      gdClearedUs: "",
-      gdSecurityValue: "",
-      gdSecurityExpiryDate: "",
-      rmsChannel: "",
-      destuffingOn: "",
-      gdAssignToGateOutDate: "",
-      delayInClearanceDays: 0,
-      delayInClearanceReason: "",
-      delayInClearanceType: "",
-      delayInDispatchDays: 0,
-      delayInDispatchReason: "",
-      delayInDispatchType: "",
-      completionRemarks: "",
+      // ✅ REMOVED: dispatchNotes (not in schema)
 
       ...defaultState,
     },
@@ -331,6 +354,8 @@ export default function JobOrderForm({
       refundFc: 0,
       refundLc: 0,
       eirSubmitted: false,
+      noOfPackages: 0,
+      packageType: "",
     },
   });
 
@@ -346,6 +371,33 @@ export default function JobOrderForm({
       dutiableValue: 0,
       assessableValue: 0,
       totalValue: 0,
+    },
+  });
+
+  const jobCommodityForm = useForm<JobCommodityFormValues>({
+    resolver: zodResolver(jobCommoditySchema),
+    defaultValues: {
+      grossWeight: 0,
+      netWeight: 0,
+      volumeCbm: 0,
+      declaredValueFc: 0,
+      declaredValueLc: 0,
+    },
+  });
+
+  const jobChargeForm = useForm<JobChargeFormValues>({
+    resolver: zodResolver(jobChargeSchema),
+    defaultValues: {
+      exchangeRate: 0,
+      priceFc: 0,
+      priceLc: 0,
+      amountFc: 0,
+      amountLc: 0,
+      taxPercentage: 0,
+      taxFc: 0,
+      taxLc: 0,
+      isReimbursable: false,
+      isVendorCost: false,
     },
   });
 
@@ -365,7 +417,7 @@ export default function JobOrderForm({
   };
 
   // ============================================
-  // POPULATE FORM - ALIGNED WITH NEW SCHEMA
+  // POPULATE FORM - UPDATED TO MATCH NEW SCHEMA
   // ============================================
   const populateForm = (jobData: any) => {
     form.reset({
@@ -379,7 +431,7 @@ export default function JobOrderForm({
       jobDate: formatDateForForm(jobData.jobDate),
       customerReferenceNumber: jobData.customerReferenceNumber || "",
       indexNo: jobData.indexNo || "",
-      status: jobData.status || "DRAFT",
+      status: jobData.status || "", // Changed from "DRAFT" to empty string
 
       // Scope Flags
       isFreightForwarding: jobData.isFreightForwarding || false,
@@ -388,27 +440,27 @@ export default function JobOrderForm({
       isOther: jobData.isOther || false,
 
       // Operation Details
-      operationType: jobData.operationType || undefined,
-      operationMode: jobData.operationMode || undefined,
-      jobSubType: jobData.jobSubType || undefined,
-      jobLoadType: jobData.jobLoadType || undefined,
-      jobDocumentType: jobData.jobDocumentType || undefined,
-      freightType: jobData.freightType || undefined,
+      operationType: jobData.operationType || "",
+      operationMode: jobData.operationMode || "",
+      jobSubType: jobData.jobSubType || "",
+      jobLoadType: jobData.jobLoadType || "",
+      jobDocumentType: jobData.jobDocumentType || "",
+      freightType: jobData.freightType || "",
 
       // Process Owner
-      processOwnerId: jobData.processOwnerId || undefined,
+      processOwnerId: jobData.processOwnerId || 0,
 
       // Party IDs (ALL 10)
-      shipperPartyId: jobData.shipperPartyId || undefined,
-      consigneePartyId: jobData.consigneePartyId || undefined,
-      notifyParty1Id: jobData.notifyParty1Id || undefined,
-      notifyParty2Id: jobData.notifyParty2Id || undefined,
-      principalId: jobData.principalId || undefined,
-      overseasAgentId: jobData.overseasAgentId || undefined,
-      transporterPartyId: jobData.transporterPartyId || undefined,
-      depositorPartyId: jobData.depositorPartyId || undefined,
-      carrierPartyId: jobData.carrierPartyId || undefined,
-      terminalPartyId: jobData.terminalPartyId || undefined,
+      shipperPartyId: jobData.shipperPartyId || 0,
+      consigneePartyId: jobData.consigneePartyId || 0,
+      notifyParty1Id: jobData.notifyParty1Id || 0,
+      notifyParty2Id: jobData.notifyParty2Id || 0,
+      principalId: jobData.principalId || 0,
+      overseasAgentId: jobData.overseasAgentId || 0,
+      transporterPartyId: jobData.transporterPartyId || 0,
+      depositorPartyId: jobData.depositorPartyId || 0,
+      carrierPartyId: jobData.carrierPartyId || 0,
+      terminalPartyId: jobData.terminalPartyId || 0,
 
       // Document Numbers
       houseDocumentNumber: jobData.houseDocumentNumber || "",
@@ -417,9 +469,9 @@ export default function JobOrderForm({
       masterDocumentDate: formatDateForForm(jobData.masterDocumentDate),
 
       // Location IDs
-      originPortId: jobData.originPortId || undefined,
-      destinationPortId: jobData.destinationPortId || undefined,
-      placeOfDeliveryId: jobData.placeOfDeliveryId || undefined,
+      originPortId: jobData.originPortId || 0,
+      destinationPortId: jobData.destinationPortId || 0,
+      placeOfDeliveryId: jobData.placeOfDeliveryId || 0,
 
       // Vessel Information
       vesselName: jobData.vesselName || "",
@@ -448,13 +500,12 @@ export default function JobOrderForm({
       // Description & Documentation
       jobDescription: jobData.jobDescription || "",
       igmNumber: jobData.igmNumber || "",
-      blstatus: jobData.blstatus || undefined,
+      blstatus: jobData.blstatus || "",
 
       // Financial
       jobInvoiceExchRate: jobData.jobInvoiceExchRate || 0,
       insurance: jobData.insurance || "",
       landing: jobData.landing || "",
-      freightCharges: jobData.freightCharges || 0,
 
       // PO Fields
       poReceivedOn: formatDateForForm(jobData.poReceivedOn),
@@ -474,7 +525,15 @@ export default function JobOrderForm({
       gdsecurityType: jobData.gdsecurityType || "",
       gdsecurityValue: jobData.gdsecurityValue || "",
       gdsecurityExpiryDate: formatDateForForm(jobData.gdsecurityExpiryDate),
-      psqcaSamples: jobData.psqcaSamples || "",
+
+      // ✅ ADD COMPLETION FIELDS:
+      rmschannel: jobData.rmschannel || "",
+      gdassignToGateOut: formatDateForForm(jobData.gdassignToGateOut),
+      destuffingOn: formatDateForForm(jobData.destuffingOn),
+      delayInClearance: jobData.delayInClearance || "",
+      reasonOfDelayInClearance: jobData.reasonOfDelayInClearance || "",
+      delayInDispatch: jobData.delayInDispatch || "",
+      reasonOfDelayInDispatch: jobData.reasonOfDelayInDispatch || "",
 
       // Case & Rent
       caseSubmittedToLineOn: formatDateForForm(jobData.caseSubmittedToLineOn),
@@ -485,24 +544,8 @@ export default function JobOrderForm({
 
       // Remarks
       remarks: jobData.remarks || "",
-      dispatchNotes: jobData.dispatchNotes || "",
 
-      // ✅ ADD COMPLETION TAB FIELDS:
-      gdClearedUs: jobData.gdClearedUs || "",
-      gdSecurityValue: jobData.gdSecurityValue || jobData.gdsecurityValue || "",
-      gdSecurityExpiryDate: formatDateForForm(
-        jobData.gdSecurityExpiryDate || jobData.gdsecurityExpiryDate,
-      ),
-      rmsChannel: jobData.rmsChannel || "",
-      destuffingOn: formatDateForForm(jobData.destuffingOn),
-      gdAssignToGateOutDate: formatDateForForm(jobData.gdAssignToGateOutDate),
-      delayInClearanceDays: jobData.delayInClearanceDays || 0,
-      delayInClearanceReason: jobData.delayInClearanceReason || "",
-      delayInClearanceType: jobData.delayInClearanceType || "",
-      delayInDispatchDays: jobData.delayInDispatchDays || 0,
-      delayInDispatchReason: jobData.delayInDispatchReason || "",
-      delayInDispatchType: jobData.delayInDispatchType || "",
-      completionRemarks: jobData.completionRemarks || "",
+      // ✅ REMOVED: dispatchNotes (not in schema)
     });
 
     // Populate containers
@@ -517,7 +560,7 @@ export default function JobOrderForm({
           sealNo: equipment.sealNo || "",
           eirReceivedOn: formatDateForForm(equipment.eirReceivedOn),
           eirSubmitted: equipment.eirSubmitted || false,
-          eirDocumentId: equipment.eirDocumentId || undefined,
+          eirDocumentId: equipment.eirDocumentId || 0,
           rentInvoiceIssuedOn: formatDateForForm(equipment.rentInvoiceIssuedOn),
           containerRentFc: equipment.containerRentFc || 0,
           containerRentLc: equipment.containerRentLc || 0,
@@ -529,6 +572,8 @@ export default function JobOrderForm({
           gateOutDate: formatDateForForm(equipment.gateOutDate),
           gateInDate: formatDateForForm(equipment.gateInDate),
           status: equipment.status || "",
+          noOfPackages: equipment.noOfPackages || 0,
+          packageType: equipment.packageType || "",
           version: equipment.version || 0,
         }),
       );
@@ -536,75 +581,62 @@ export default function JobOrderForm({
       setFclContainers(transformedContainers);
     }
 
-    // Populate invoices
+    // Populate invoices using mapping function
     if (jobData.jobInvoices && Array.isArray(jobData.jobInvoices)) {
-      const transformedInvoices = jobData.jobInvoices.map((invoice: any) => ({
-        invoiceId: invoice.jobInvoiceId || 0,
-        invoiceNumber: invoice.invoiceNumber || "",
-        invoiceDate: formatDateForForm(invoice.invoiceDate),
-        invoiceIssuedByPartyId: invoice.issuedBy
-          ? parseInt(invoice.issuedBy)
-          : undefined,
-        shippingTerm: invoice.shippingTerm || "",
-        lcNumber: invoice.lcNumber || "",
-        lcValue: invoice.lcValue || 0,
-        lcDate: formatDateForForm(invoice.lcDate),
-        lcIssuedByBankId: invoice.lcIssuedBy
-          ? parseInt(invoice.lcIssuedBy)
-          : undefined,
-        lcCurrencyId: invoice.lcCurrencyid || undefined,
-        lcExchangeRate: invoice.lcExchangeRate || 0,
-        fiNumber: invoice.flNumber || "",
-        fiDate: formatDateForForm(invoice.flDate),
-        fiExpiryDate: formatDateForForm(invoice.expiryDate),
-        invoiceStatus: invoice.invoiceStatus || "",
-        version: invoice.version || 0,
-
-        items: (
-          invoice.jobInvoiceCommodities ||
-          invoice.JobInvoiceCommodities ||
-          []
-        ).map((commodity: any) => {
-          const hsCode =
-            commodity.hscode?.code ||
-            commodity.Hscode?.Code ||
-            commodity.hscode?.Code ||
-            commodity.Hscode?.code ||
-            "";
-
-          const hsCodeId =
-            commodity.hscodeId || commodity.HscodeId || undefined;
-
-          console.log("Loading commodity:", {
-            id:
-              commodity.jobInvoiceCommodityId ||
-              commodity.JobInvoiceCommodityId,
-            hsCodeId,
-            hsCode,
-            rawHscode: commodity.Hscode || commodity.hscode,
-          });
-
-          return {
-            invoiceItemId:
-              commodity.jobInvoiceCommodityId ||
-              commodity.JobInvoiceCommodityId ||
-              0,
-            hsCodeId,
-            hsCode: hsCode || hsCodeId?.toString() || "",
-            description: commodity.description || commodity.Description || "",
-            originId: commodity.originId || commodity.OriginId || undefined,
-            quantity: commodity.quantity || commodity.Quantity || 0,
-            dutiableValue:
-              commodity.dutiableValue || commodity.DutiableValue || 0,
-            assessableValue:
-              commodity.assessableValue || commodity.AssessableValue || 0,
-            totalValue: commodity.totalValueAv || commodity.TotalValueAv || 0,
-            version: commodity.version || commodity.Version || 0,
-          };
-        }),
-      }));
+      const transformedInvoices = jobData.jobInvoices.map((invoice: any) =>
+        mapInvoiceFromDb(invoice),
+      );
 
       setInvoices(transformedInvoices);
+    }
+
+    // Populate job commodities
+    if (jobData.jobCommodities && Array.isArray(jobData.jobCommodities)) {
+      const transformedCommodities = jobData.jobCommodities.map(
+        (commodity: any) => ({
+          jobCommodityId: commodity.jobCommodityId || 0,
+          companyId: commodity.companyId || 1,
+          jobId: commodity.jobId || 0,
+          description: commodity.description || "",
+          hsCodeId: commodity.hsCodeId || undefined,
+          grossWeight: commodity.grossWeight || 0,
+          netWeight: commodity.netWeight || 0,
+          volumeCbm: commodity.volumeCbm || 0,
+          declaredValueFc: commodity.declaredValueFc || 0,
+          declaredValueLc: commodity.declaredValueLc || 0,
+          currencyId: commodity.currencyId || undefined,
+          version: commodity.version || 0,
+        }),
+      );
+
+      setJobCommodities(transformedCommodities);
+    }
+
+    // Populate job charges
+    if (jobData.jobCharges && Array.isArray(jobData.jobCharges)) {
+      const transformedCharges = jobData.jobCharges.map((charge: any) => ({
+        jobChargeId: charge.jobChargeId || 0,
+        companyId: charge.companyId || 1,
+        jobId: charge.jobId || 0,
+        chargeId: charge.chargeId || undefined,
+        chargeBasis: charge.chargeBasis || "",
+        jobEquipmentId: charge.jobEquipmentId || undefined,
+        currencyId: charge.currencyId || undefined,
+        exchangeRate: charge.exchangeRate || 0,
+        priceFc: charge.priceFc || 0,
+        priceLc: charge.priceLc || 0,
+        amountFc: charge.amountFc || 0,
+        amountLc: charge.amountLc || 0,
+        taxPercentage: charge.taxPercentage || 0,
+        taxFc: charge.taxFc || 0,
+        taxLc: charge.taxLc || 0,
+        isReimbursable: charge.isReimbursable || false,
+        isVendorCost: charge.isVendorCost || false,
+        remarks: charge.remarks || "",
+        version: charge.version || 0,
+      }));
+
+      setJobCharges(transformedCharges);
     }
 
     // Populate goods declarations
@@ -612,10 +644,43 @@ export default function JobOrderForm({
       jobData.jobGoodsDeclarations &&
       Array.isArray(jobData.jobGoodsDeclarations)
     ) {
-      setGoodsDeclarations(jobData.jobGoodsDeclarations);
+      const transformedGDs = jobData.jobGoodsDeclarations.map((gd: any) => ({
+        id: gd.id || 0,
+        jobId: gd.jobId || 0,
+        unitType: gd.unitType || "",
+        quantity: gd.quantity || 0,
+        cocode: gd.cocode || "",
+        sronumber: gd.sronumber || "",
+        hscode: gd.hscode || "",
+        itemDescription: gd.itemDescription || "",
+        declaredUnitValue: gd.declaredUnitValue || 0,
+        assessedUnitValue: gd.assessedUnitValue || 0,
+        totalDeclaredValue: gd.totalDeclaredValue || 0,
+        totalAssessedValue: gd.totalAssessedValue || 0,
+        customDeclaredValue: gd.customDeclaredValue || 0,
+        customAssessedValue: gd.customAssessedValue || 0,
+        levyCd: gd.levyCd || 0,
+        levySt: gd.levySt || 0,
+        levyRd: gd.levyRd || 0,
+        levyAsd: gd.levyAsd || 0,
+        levyIt: gd.levyIt || 0,
+        rateCd: gd.rateCd || 0,
+        rateSt: gd.rateSt || 0,
+        rateRd: gd.rateRd || 0,
+        rateAsd: gd.rateAsd || 0,
+        rateIt: gd.rateIt || 0,
+        payableCd: gd.payableCd || 0,
+        payableSt: gd.payableSt || 0,
+        payableRd: gd.payableRd || 0,
+        payableAsd: gd.payableAsd || 0,
+        payableIt: gd.payableIt || 0,
+        version: gd.version || 0,
+      }));
+
+      setGoodsDeclarations(transformedGDs);
     }
 
-    // Populate dispatch records
+    // Populate dispatch records (JobEquipmentHandingOvers)
     if (
       jobData.jobEquipmentHandingOvers &&
       Array.isArray(jobData.jobEquipmentHandingOvers)
@@ -628,20 +693,19 @@ export default function JobOrderForm({
           containerTypeId: dispatch.containerTypeId || undefined,
           containerSizeId: dispatch.containerSizeId || undefined,
           netWeight: dispatch.netWeight || 0,
-          transporterPartyId: dispatch.transporterPartyId || undefined,
-          destinationLocationId: dispatch.destinationLocationId || undefined,
+          transporterPartyId: dispatch.transporterPartyId || 0,
+          destinationLocationId: dispatch.destinationLocationId || 0,
           buyingAmountLc: dispatch.buyingAmountLc || 0,
           topayAmountLc: dispatch.topayAmountLc || 0,
           dispatchDate: formatDateForForm(dispatch.dispatchDate),
+          containerReturnTerminalId: dispatch.containerReturnTerminalId || 0, // ✅ NEW FIELD
           version: dispatch.version || 0,
-          packageType: dispatch.packageType || undefined,
-          quantity: dispatch.quantity || undefined,
         }),
       );
       setDispatchRecords(transformedDispatch);
     }
 
-    // Populate detention records
+    // Populate detention records (JobEquipmentDetentionDetails)
     if (
       jobData.jobEquipmentDetentionDetails &&
       Array.isArray(jobData.jobEquipmentDetentionDetails)
@@ -655,14 +719,14 @@ export default function JobOrderForm({
           containerTypeId: detention.containerTypeId || undefined,
           containerSizeId: detention.containerSizeId || undefined,
           netWeight: detention.netWeight || 0,
-          transport: detention.transport || "",
+          transporterPartyId: detention.transporterPartyId || 0,
           emptyDate: formatDateForForm(detention.emptyDate),
-          eirReceivedDate: formatDateForForm(detention.eirReceivedDate),
+          eirReceivedOn: formatDateForForm(detention.eirReceivedOn),
           condition: detention.condition || "",
           rentDays: detention.rentDays || 0,
-          rentAmount: detention.rentAmount || 0,
-          damageAmount: detention.damageAmount || 0,
-          dirtyAmount: detention.dirtyAmount || 0,
+          rentAmountLc: detention.rentAmountLc || 0,
+          damage: detention.damage || "", // ✅ Changed from damageAmount to damage (string)
+          dirty: detention.dirty || "", // ✅ Changed from dirtyAmount to dirty (string)
           version: detention.version || 0,
         }),
       );
@@ -785,7 +849,7 @@ export default function JobOrderForm({
   };
 
   // ============================================
-  // ON SUBMIT - ALIGNED WITH NEW SCHEMA
+  // ON SUBMIT - UPDATED TO MATCH NEW SCHEMA
   // ============================================
   const onSubmit = async (values: any) => {
     try {
@@ -793,6 +857,9 @@ export default function JobOrderForm({
 
       const companyId = parseInt(localStorage.getItem("companyId") || "1");
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+      // ✅ AUTO-GENERATE JOB NUMBER IF EMPTY
+      const jobNumber = values.jobNumber?.trim() || `JOB-${Date.now()}`;
 
       // For UPDATE operations, fetch latest data to get current version numbers
       let latestVersions: any = {};
@@ -808,7 +875,9 @@ export default function JobOrderForm({
             latestVersions = {
               jobVersion: latestData.version || 0,
               invoices: new Map(),
+              invoiceCommodities: new Map(),
               commodities: new Map(),
+              charges: new Map(),
               equipments: new Map(),
               goodsDeclarations: new Map(),
               dispatchRecords: new Map(),
@@ -823,14 +892,33 @@ export default function JobOrderForm({
 
                 if (inv.jobInvoiceCommodities) {
                   inv.jobInvoiceCommodities.forEach((comm: any) => {
-                    const commId =
-                      comm.jobInvoiceCommodityId || comm.JobInvoiceCommodityId;
-                    latestVersions.commodities.set(
+                    const commId = comm.jobInvoiceCommodityId;
+                    latestVersions.invoiceCommodities.set(
                       commId,
-                      comm.version || comm.Version || 0,
+                      comm.version || 0,
                     );
                   });
                 }
+              });
+            }
+
+            // Map commodity versions
+            if (latestData.jobCommodities) {
+              latestData.jobCommodities.forEach((comm: any) => {
+                latestVersions.commodities.set(
+                  comm.jobCommodityId,
+                  comm.version || 0,
+                );
+              });
+            }
+
+            // Map charge versions
+            if (latestData.jobCharges) {
+              latestData.jobCharges.forEach((charge: any) => {
+                latestVersions.charges.set(
+                  charge.jobChargeId,
+                  charge.version || 0,
+                );
               });
             }
 
@@ -876,7 +964,11 @@ export default function JobOrderForm({
             console.log("Latest versions fetched:", {
               job: latestVersions.jobVersion,
               invoices: Array.from(latestVersions.invoices.entries()),
+              invoiceCommodities: Array.from(
+                latestVersions.invoiceCommodities.entries(),
+              ),
               commodities: Array.from(latestVersions.commodities.entries()),
+              charges: Array.from(latestVersions.charges.entries()),
               equipments: Array.from(latestVersions.equipments.entries()),
               goodsDeclarations: Array.from(
                 latestVersions.goodsDeclarations.entries(),
@@ -909,7 +1001,7 @@ export default function JobOrderForm({
         );
       }
 
-      // Map invoices
+      // ✅ USE MAPPING FUNCTION FOR INVOICES
       const jobInvoices = invoices.map((invoice) => {
         const invoiceId = invoice.invoiceId || 0;
         const latestInvoiceVersion =
@@ -917,91 +1009,13 @@ export default function JobOrderForm({
             ? (latestVersions.invoices?.get(invoiceId) ?? invoice.version ?? 0)
             : invoice.version || 0;
 
-        return {
-          jobInvoiceId: invoiceId,
-          jobId: values.jobId || 0,
-          invoiceNumber: invoice.invoiceNumber || "",
-          invoiceDate: invoice.invoiceDate
-            ? new Date(invoice.invoiceDate).toISOString()
-            : null,
-          issuedBy: invoice.invoiceIssuedByPartyId
-            ? invoice.invoiceIssuedByPartyId.toString()
-            : null,
-          shippingTerm: invoice.shippingTerm || null,
-          lcNumber: invoice.lcNumber || null,
-          lcDate: invoice.lcDate
-            ? new Date(invoice.lcDate).toISOString()
-            : null,
-          lcIssuedBy: invoice.lcIssuedByBankId
-            ? invoice.lcIssuedByBankId.toString()
-            : null,
-          lcValue: invoice.lcValue || 0,
-          lcCurrencyid: invoice.lcCurrencyId || null,
-          lcExchangeRate: invoice.lcExchangeRate || 0,
-          flNumber: invoice.fiNumber || null,
-          flDate: invoice.fiDate
-            ? new Date(invoice.fiDate).toISOString()
-            : null,
-          expiryDate: invoice.fiExpiryDate
-            ? new Date(invoice.fiExpiryDate).toISOString()
-            : null,
-          invoiceStatus: invoice.invoiceStatus || null,
+        const mappedInvoice = mapInvoiceToDb({
+          ...invoice,
           version: latestInvoiceVersion,
+        });
 
-          jobInvoiceCommodities: (invoice.items || []).map((item) => {
-            const commodityId = item.invoiceItemId || 0;
-            const latestCommodityVersion =
-              type === "edit" && commodityId > 0
-                ? (latestVersions.commodities?.get(commodityId) ??
-                  item.version ??
-                  0)
-                : item.version || 0;
-
-            const hasHsCode = item.hsCodeId && item.hsCodeId > 0;
-
-            return {
-              JobInvoiceCommodityId: commodityId,
-              JobInvoiceId: invoiceId,
-              Description: item.description || "",
-              HscodeId: hasHsCode ? item.hsCodeId : null,
-              Hscode: {
-                Code: hasHsCode ? item.hsCode || item.hsCodeId?.toString() : "",
-              },
-              OriginId:
-                item.originId && item.originId > 0 ? item.originId : null,
-              Origin: null,
-              Quantity: item.quantity || 0,
-              DutiableValue: item.dutiableValue || 0,
-              AssessableValue: item.assessableValue || 0,
-              TotalValueAv: (item.quantity || 0) * (item.assessableValue || 0),
-              TotalValueDv: (item.quantity || 0) * (item.dutiableValue || 0),
-              Version: latestCommodityVersion,
-            };
-          }),
-        };
+        return mappedInvoice;
       });
-
-      console.log("=== MAPPED INVOICE DEBUG ===");
-      console.log("JobInvoices count:", jobInvoices.length);
-      if (jobInvoices.length > 0) {
-        console.log(
-          "First jobInvoice:",
-          JSON.stringify(jobInvoices[0], null, 2),
-        );
-        console.log(
-          "First jobInvoice commodities count:",
-          jobInvoices[0].jobInvoiceCommodities?.length || 0,
-        );
-        if (
-          jobInvoices[0].jobInvoiceCommodities &&
-          jobInvoices[0].jobInvoiceCommodities.length > 0
-        ) {
-          console.log(
-            "First commodity:",
-            jobInvoices[0].jobInvoiceCommodities[0],
-          );
-        }
-      }
 
       // Map containers
       const jobEquipments = fclContainers.map((container) => {
@@ -1016,6 +1030,8 @@ export default function JobOrderForm({
         return {
           jobEquipmentId: equipmentId,
           companyId: companyId,
+          // Basic Information
+          jobNumber: jobNumber, // ✅ Use the generated/entered job number
           jobId: values.jobId || 0,
           containerNo: container.containerNo || "",
           containerTypeId: container.containerTypeId || null,
@@ -1026,7 +1042,7 @@ export default function JobOrderForm({
             ? new Date(container.eirReceivedOn).toISOString()
             : null,
           eirSubmitted: container.eirSubmitted || false,
-          eirDocumentId: container.eirDocumentId || null,
+          eirDocumentId: container.eirDocumentId || 0,
           rentInvoiceIssuedOn: container.rentInvoiceIssuedOn
             ? new Date(container.rentInvoiceIssuedOn).toISOString()
             : null,
@@ -1046,7 +1062,66 @@ export default function JobOrderForm({
             ? new Date(container.gateInDate).toISOString()
             : null,
           status: container.status || null,
+          noOfPackages: container.noOfPackages || 0,
+          packageType: container.packageType || null,
           version: latestEquipmentVersion,
+        };
+      });
+
+      // Map job commodities
+      const jobCommoditiesPayload = jobCommodities.map((commodity) => {
+        const commodityId = commodity.jobCommodityId || 0;
+        const latestCommodityVersion =
+          type === "edit" && commodityId > 0
+            ? (latestVersions.commodities?.get(commodityId) ??
+              commodity.version ??
+              0)
+            : commodity.version || 0;
+
+        return {
+          jobCommodityId: commodityId,
+          companyId: companyId,
+          jobId: values.jobId || 0,
+          description: commodity.description || "",
+          hsCodeId: commodity.hsCodeId || null,
+          grossWeight: commodity.grossWeight || 0,
+          netWeight: commodity.netWeight || 0,
+          volumeCbm: commodity.volumeCbm || 0,
+          declaredValueFc: commodity.declaredValueFc || 0,
+          declaredValueLc: commodity.declaredValueLc || 0,
+          currencyId: commodity.currencyId || null,
+          version: latestCommodityVersion,
+        };
+      });
+
+      // Map job charges
+      const jobChargesPayload = jobCharges.map((charge) => {
+        const chargeId = charge.jobChargeId || 0;
+        const latestChargeVersion =
+          type === "edit" && chargeId > 0
+            ? (latestVersions.charges?.get(chargeId) ?? charge.version ?? 0)
+            : charge.version || 0;
+
+        return {
+          jobChargeId: chargeId,
+          companyId: companyId,
+          jobId: values.jobId || 0,
+          chargeId: charge.chargeId || null,
+          chargeBasis: charge.chargeBasis || null,
+          jobEquipmentId: charge.jobEquipmentId || null,
+          currencyId: charge.currencyId || null,
+          exchangeRate: charge.exchangeRate || 0,
+          priceFc: charge.priceFc || 0,
+          priceLc: charge.priceLc || 0,
+          amountFc: charge.amountFc || 0,
+          amountLc: charge.amountLc || 0,
+          taxPercentage: charge.taxPercentage || 0,
+          taxFc: charge.taxFc || 0,
+          taxLc: charge.taxLc || 0,
+          isReimbursable: charge.isReimbursable || false,
+          isVendorCost: charge.isVendorCost || false,
+          remarks: charge.remarks || null,
+          version: latestChargeVersion,
         };
       });
 
@@ -1064,12 +1139,12 @@ export default function JobOrderForm({
           return {
             id: gdId,
             jobId: gd.jobId || values.jobId || 0,
-            unitType: gd.unitType || "",
+            unitType: gd.unitType || null,
             quantity: gd.quantity || 0,
-            cocode: gd.cocode || "",
-            sronumber: gd.sronumber || "",
-            hscode: gd.hscode || "",
-            itemDescription: gd.itemDescription || "",
+            cocode: gd.cocode || null,
+            sronumber: gd.sronumber || null,
+            hscode: gd.hscode || null,
+            itemDescription: gd.itemDescription || null,
             declaredUnitValue: gd.declaredUnitValue || 0,
             assessedUnitValue: gd.assessedUnitValue || 0,
             totalDeclaredValue: gd.totalDeclaredValue || 0,
@@ -1101,12 +1176,12 @@ export default function JobOrderForm({
           {
             id: uniqueId,
             jobId: 0,
-            unitType: "",
+            unitType: null,
             quantity: 0,
-            cocode: "",
-            sronumber: "",
-            hscode: "",
-            itemDescription: "",
+            cocode: null,
+            sronumber: null,
+            hscode: null,
+            itemDescription: null,
             declaredUnitValue: 0,
             assessedUnitValue: 0,
             totalDeclaredValue: 0,
@@ -1146,7 +1221,7 @@ export default function JobOrderForm({
         return {
           jobEquipmentHandingOverId: dispatchId,
           jobId: values.jobId || 0,
-          containerNumber: dispatch.containerNumber || "",
+          containerNumber: dispatch.containerNumber || null,
           containerTypeId: dispatch.containerTypeId || null,
           containerSizeId: dispatch.containerSizeId || null,
           netWeight: dispatch.netWeight || 0,
@@ -1157,9 +1232,8 @@ export default function JobOrderForm({
           dispatchDate: dispatch.dispatchDate
             ? new Date(dispatch.dispatchDate).toISOString()
             : null,
+          containerReturnTerminalId: dispatch.containerReturnTerminalId || null, // ✅ NEW FIELD
           version: latestDispatchVersion,
-          packageType: dispatch.packageType || null,
-          quantity: dispatch.quantity || null,
         };
       });
 
@@ -1177,22 +1251,22 @@ export default function JobOrderForm({
           return {
             jobEquipmentDetentionDetailId: detentionId,
             jobId: values.jobId || 0,
-            containerNumber: detention.containerNumber || "",
+            containerNumber: detention.containerNumber || null,
             containerTypeId: detention.containerTypeId || null,
             containerSizeId: detention.containerSizeId || null,
             netWeight: detention.netWeight || 0,
-            transport: detention.transport || null,
+            transporterPartyId: detention.transporterPartyId || null,
             emptyDate: detention.emptyDate
               ? new Date(detention.emptyDate).toISOString()
               : null,
-            eirReceivedDate: detention.eirReceivedDate
-              ? new Date(detention.eirReceivedDate).toISOString()
+            eirReceivedOn: detention.eirReceivedOn
+              ? new Date(detention.eirReceivedOn).toISOString()
               : null,
             condition: detention.condition || null,
             rentDays: detention.rentDays || 0,
-            rentAmount: detention.rentAmount || 0,
-            damageAmount: detention.damageAmount || 0,
-            dirtyAmount: detention.dirtyAmount || 0,
+            rentAmountLc: detention.rentAmountLc || 0,
+            damage: detention.damage || null, // ✅ Changed to string
+            dirty: detention.dirty || null, // ✅ Changed to string
             version: latestDetentionVersion,
           };
         },
@@ -1203,13 +1277,13 @@ export default function JobOrderForm({
         companyId: companyId,
 
         // Basic Information
-        jobNumber: values.jobNumber || "",
+        jobNumber: jobNumber, // ✅ Use the generated/entered job number
         jobDate: values.jobDate
           ? new Date(values.jobDate).toISOString()
           : new Date().toISOString(),
-        customerReferenceNumber: values.customerReferenceNumber || "",
-        indexNo: values.indexNo || "",
-        status: values.status || "DRAFT",
+        customerReferenceNumber: values.customerReferenceNumber || null,
+        indexNo: values.indexNo || null,
+        status: values.status || "", // Changed from "DRAFT" to empty string
 
         // Scope Flags
         isFreightForwarding: values.isFreightForwarding || false,
@@ -1228,7 +1302,7 @@ export default function JobOrderForm({
         // Process Owner
         processOwnerId: values.processOwnerId || null,
 
-        // ALL 10 Party Fields
+        // ALL 10 Party Fields - SET TO NULL INSTEAD OF 0 FOR DATABASE
         shipperPartyId: values.shipperPartyId || null,
         consigneePartyId: values.consigneePartyId || null,
         notifyParty1Id: values.notifyParty1Id || null,
@@ -1300,7 +1374,8 @@ export default function JobOrderForm({
         jobInvoiceExchRate: values.jobInvoiceExchRate || 0,
         insurance: values.insurance || null,
         landing: values.landing || null,
-        freightCharges: values.freightCharges || 0,
+
+        // ✅ REMOVED: freightCharges (not in schema)
 
         // PO Fields
         poReceivedOn: values.poReceivedOn
@@ -1324,7 +1399,22 @@ export default function JobOrderForm({
         gdsecurityExpiryDate: values.gdsecurityExpiryDate
           ? new Date(values.gdsecurityExpiryDate).toISOString()
           : null,
-        psqcaSamples: values.psqcaSamples || null,
+
+        // ✅ ADD COMPLETION FIELDS TO PAYLOAD:
+        rmschannel: values.rmschannel || null,
+        gdassignToGateOut: values.gdassignToGateOut
+          ? new Date(values.gdassignToGateOut).toISOString()
+          : null,
+        destuffingOn: values.destuffingOn
+          ? new Date(values.destuffingOn).toISOString()
+          : null,
+        delayInClearance: values.delayInClearance || null,
+        reasonOfDelayInClearance: values.reasonOfDelayInClearance || null,
+        delayInDispatch: values.delayInDispatch || null,
+        reasonOfDelayInDispatch: values.reasonOfDelayInDispatch || null,
+
+        // ✅ REMOVED: psqcaSamples (not in schema)
+        // ✅ REMOVED: dispatchNotes (not in schema)
 
         // Case & Rent
         caseSubmittedToLineOn: values.caseSubmittedToLineOn
@@ -1339,32 +1429,12 @@ export default function JobOrderForm({
 
         // Remarks
         remarks: values.remarks || null,
-        dispatchNotes: values.dispatchNotes || null,
-
-        // ✅ ADD COMPLETION TAB FIELDS TO PAYLOAD:
-        gdClearedUs: values.gdClearedUs || null,
-        gdSecurityValue: values.gdSecurityValue || null,
-        gdSecurityExpiryDate: values.gdSecurityExpiryDate
-          ? new Date(values.gdSecurityExpiryDate).toISOString()
-          : null,
-        rmsChannel: values.rmsChannel || null,
-        destuffingOn: values.destuffingOn
-          ? new Date(values.destuffingOn).toISOString()
-          : null,
-        gdAssignToGateOutDate: values.gdAssignToGateOutDate
-          ? new Date(values.gdAssignToGateOutDate).toISOString()
-          : null,
-        delayInClearanceDays: values.delayInClearanceDays || 0,
-        delayInClearanceReason: values.delayInClearanceReason || null,
-        delayInClearanceType: values.delayInClearanceType || null,
-        delayInDispatchDays: values.delayInDispatchDays || 0,
-        delayInDispatchReason: values.delayInDispatchReason || null,
-        delayInDispatchType: values.delayInDispatchType || null,
-        completionRemarks: values.completionRemarks || null,
 
         // Child Records
         jobEquipments: jobEquipments,
         jobInvoices: jobInvoices,
+        jobCommodities: jobCommoditiesPayload,
+        jobCharges: jobChargesPayload,
         jobEquipmentHandingOvers: jobEquipmentHandingOvers,
         jobEquipmentDetentionDetails: jobEquipmentDetentionDetails,
         ...(type === "add" || jobGoodsDeclarations.length > 0
@@ -1458,6 +1528,16 @@ export default function JobOrderForm({
     }
   };
 
+  // ✅ NEW: Wrapper function for setFclContainers to match ShippingTabProps interface
+  const handleSetFclContainers = (containers: any[]) => {
+    // Ensure eirDocumentId is always a number (default to 0 if undefined)
+    const normalizedContainers = containers.map((container: any) => ({
+      ...container,
+      eirDocumentId: container.eirDocumentId ?? 0,
+    })) as FclContainerFormValues[];
+    setFclContainers(normalizedContainers);
+  };
+
   // Shared props for all tabs
   const sharedProps = {
     form,
@@ -1501,7 +1581,7 @@ export default function JobOrderForm({
     documentType,
     freightType: form.watch("freightType"),
     fclContainers,
-    setFclContainers,
+    setFclContainers: handleSetFclContainers,
     fclForm,
     showFclForm,
     setShowFclForm,
@@ -1519,6 +1599,21 @@ export default function JobOrderForm({
     setEditingInvoice,
     editingInvoiceItem,
     setEditingInvoiceItem,
+    // ✅ ADD NEW FORM STATES FOR JOB COMMODITIES AND CHARGES
+    jobCommodities,
+    setJobCommodities,
+    jobCommodityForm,
+    showJobCommodityForm,
+    setShowJobCommodityForm,
+    editingJobCommodity,
+    setEditingJobCommodity,
+    jobCharges,
+    setJobCharges,
+    jobChargeForm,
+    showJobChargeForm,
+    setShowJobChargeForm,
+    editingJobCharge,
+    setEditingJobCharge,
     goodsDeclarations,
     setGoodsDeclarations,
     dispatchRecords,
