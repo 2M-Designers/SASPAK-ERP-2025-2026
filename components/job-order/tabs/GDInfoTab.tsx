@@ -26,7 +26,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Upload, Download, Plus, Pencil, Trash2, FileText } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Upload,
+  Download,
+  Plus,
+  Pencil,
+  Trash2,
+  FileText,
+  Info,
+} from "lucide-react";
 import * as ExcelJS from "exceljs";
 import { parseGDOfficialFormat, type GDItem } from "./gdOfficialFormatParser";
 
@@ -35,7 +44,7 @@ export default function GDInfoTab({
   goodsDeclarations,
   setGoodsDeclarations,
   toast,
-  freightType, // Add freightType prop to check if "Collect" from Shipping Tab
+  freightType,
 }: any) {
   const [isGDDialogOpen, setIsGDDialogOpen] = useState(false);
   const [editingGDIndex, setEditingGDIndex] = useState<number | null>(null);
@@ -71,6 +80,66 @@ export default function GDInfoTab({
     payableIt: 0,
   });
 
+  // ✅ NEW: Get current date in YYYY-MM-DD format for max date
+  const getTodayDate = () => {
+    const today = new Date();
+    return today.toISOString().split("T")[0];
+  };
+
+  // ✅ NEW: Format GD Number - KAPS-TYPE-####-DDMMYYYY
+  const formatGDNumber = (
+    prefix: string,
+    type: string,
+    serial: string,
+    date: string,
+  ): string => {
+    if (!type || !serial || !date) return "";
+
+    // Convert date from YYYY-MM-DD to DDMMYYYY
+    const dateParts = date.split("-");
+    if (dateParts.length !== 3) return "";
+
+    const formattedDate = `${dateParts[2]}${dateParts[1]}${dateParts[0]}`; // DDMMYYYY
+
+    return `${prefix}-${type}-${serial}-${formattedDate}`;
+  };
+
+  // ✅ NEW: Auto-generate GD Number when type or date changes
+  React.useEffect(() => {
+    const gdType = form.watch("gdType");
+    const gdDate = form.watch("gddate");
+    const gdNumber = form.watch("gdnumber");
+
+    // Only auto-generate if we have type and date
+    if (gdType && gdDate) {
+      // Extract serial number if GD number already exists and follows format
+      let serial = "1119"; // Default serial
+
+      if (gdNumber) {
+        const parts = gdNumber.split("-");
+        if (parts.length === 4) {
+          serial = parts[2]; // Keep existing serial
+        }
+      }
+
+      const newGDNumber = formatGDNumber("KAPS", gdType, serial, gdDate);
+
+      // Only update if different to avoid infinite loop
+      if (newGDNumber !== gdNumber) {
+        form.setValue("gdnumber", newGDNumber);
+      }
+    }
+  }, [form.watch("gdType"), form.watch("gddate")]);
+
+  // ✅ NEW: Validate GD Number format
+  const validateGDNumberFormat = (value: string): boolean => {
+    if (!value) return true; // Allow empty
+
+    // Format: KAPS-XX-####-DDMMYYYY
+    const pattern = /^[A-Z]{4}-[A-Z]{2}-\d{4}-\d{8}$/;
+    return pattern.test(value);
+  };
+
   // Calculate total assessed value from all items
   const calculateTotalAssessedValue = () => {
     return goodsDeclarations.reduce(
@@ -102,7 +171,6 @@ export default function GDInfoTab({
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet("GD Template");
 
-      // Define headers
       const headers = [
         "Item No",
         "Unit Type",
@@ -134,10 +202,8 @@ export default function GDInfoTab({
         "Payable IT",
       ];
 
-      // Add headers
       worksheet.addRow(headers);
 
-      // Style header row
       const headerRow = worksheet.getRow(1);
       headerRow.font = { bold: true };
       headerRow.fill = {
@@ -147,7 +213,6 @@ export default function GDInfoTab({
       };
       headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
-      // Add sample data
       worksheet.addRow([
         1,
         "PCS",
@@ -179,39 +244,37 @@ export default function GDInfoTab({
         113431.0,
       ]);
 
-      // Set column widths
       worksheet.columns = [
-        { width: 10 }, // Item No
-        { width: 15 }, // Unit Type
-        { width: 12 }, // Quantity
-        { width: 15 }, // CO Code
-        { width: 15 }, // SRO Number
-        { width: 15 }, // HS Code
-        { width: 40 }, // Item Description
-        { width: 18 }, // Declared Unit Value
-        { width: 18 }, // Assessed Unit Value
-        { width: 20 }, // Total Declared Value
-        { width: 20 }, // Total Assessed Value
-        { width: 25 }, // Custom Declared Value (PKR)
-        { width: 25 }, // Custom Assessed Value (PKR)
-        { width: 12 }, // Levy CD
-        { width: 12 }, // Levy ST
-        { width: 12 }, // Levy RD
-        { width: 12 }, // Levy ASD
-        { width: 12 }, // Levy IT
-        { width: 12 }, // Rate CD (%)
-        { width: 12 }, // Rate ST (%)
-        { width: 12 }, // Rate RD (%)
-        { width: 12 }, // Rate ASD (%)
-        { width: 12 }, // Rate IT (%)
-        { width: 15 }, // Payable CD
-        { width: 15 }, // Payable ST
-        { width: 15 }, // Payable RD
-        { width: 15 }, // Payable ASD
-        { width: 15 }, // Payable IT
+        { width: 10 },
+        { width: 15 },
+        { width: 12 },
+        { width: 15 },
+        { width: 15 },
+        { width: 15 },
+        { width: 40 },
+        { width: 18 },
+        { width: 18 },
+        { width: 20 },
+        { width: 20 },
+        { width: 25 },
+        { width: 25 },
+        { width: 12 },
+        { width: 12 },
+        { width: 12 },
+        { width: 12 },
+        { width: 12 },
+        { width: 12 },
+        { width: 12 },
+        { width: 12 },
+        { width: 12 },
+        { width: 12 },
+        { width: 15 },
+        { width: 15 },
+        { width: 15 },
+        { width: 15 },
+        { width: 15 },
       ];
 
-      // Generate the Excel file
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -237,7 +300,6 @@ export default function GDInfoTab({
     }
   };
 
-  // Upload Excel File - You can keep this using xlsx or replace with exceljs
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -249,18 +311,6 @@ export default function GDInfoTab({
 
       const worksheet = workbook.worksheets[0];
       const jsonData: any[] = [];
-
-      // Convert worksheet to JSON
-      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-        if (rowNumber === 1) return; // Skip header row
-
-        const rowData: any = {};
-        headers.forEach((header, index) => {
-          const cell = row.getCell(index + 1);
-          rowData[header] = cell.value;
-        });
-        jsonData.push(rowData);
-      });
 
       const headers = [
         "Item No",
@@ -293,8 +343,19 @@ export default function GDInfoTab({
         "Payable IT",
       ];
 
+      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        if (rowNumber === 1) return;
+
+        const rowData: any = {};
+        headers.forEach((header, index) => {
+          const cell = row.getCell(index + 1);
+          rowData[header] = cell.value;
+        });
+        jsonData.push(rowData);
+      });
+
       const mappedData = jsonData.map((row: any, index: number) => ({
-        id: -(Math.floor(Date.now() / 1000) + index), // Int32-safe negative ID
+        id: -(Math.floor(Date.now() / 1000) + index),
         jobId: 0,
         unitType: row["Unit Type"] || "",
         quantity: parseFloat(row["Quantity"]) || 0,
@@ -343,10 +404,9 @@ export default function GDInfoTab({
       });
     }
 
-    e.target.value = ""; // Reset input
+    e.target.value = "";
   };
 
-  // Upload Official GD Format (Fields 37-48)
   const handleOfficialGDUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -356,9 +416,8 @@ export default function GDInfoTab({
     try {
       const gdItems = await parseGDOfficialFormat(file);
 
-      // Map GDItem to our internal format
       const mappedData = gdItems.map((item: GDItem, index: number) => ({
-        id: -(Math.floor(Date.now() / 1000) + index), // Int32-safe negative ID
+        id: -(Math.floor(Date.now() / 1000) + index),
         jobId: 0,
         unitType: item.unitType,
         quantity: item.quantity,
@@ -406,10 +465,9 @@ export default function GDInfoTab({
       });
     }
 
-    e.target.value = ""; // Reset input
+    e.target.value = "";
   };
 
-  // Add/Edit GD Item
   const handleAddGD = () => {
     setCurrentGD({
       id: 0,
@@ -452,7 +510,6 @@ export default function GDInfoTab({
   };
 
   const handleSaveGD = () => {
-    // Calculate totals if not provided
     const updatedGD = {
       ...currentGD,
       totalDeclaredValue:
@@ -464,12 +521,10 @@ export default function GDInfoTab({
     };
 
     if (editingGDIndex !== null) {
-      // Update existing
       const updated = [...goodsDeclarations];
       updated[editingGDIndex] = updatedGD;
       setGoodsDeclarations(updated);
     } else {
-      // Add new with negative ID
       setGoodsDeclarations([
         ...goodsDeclarations,
         { ...updatedGD, id: -Math.floor(Date.now() / 1000), version: 0 },
@@ -500,18 +555,21 @@ export default function GDInfoTab({
       {/* Master Fields Section */}
       <div className='bg-white p-6 rounded-lg border'>
         <h3 className='text-lg font-semibold mb-4'>GD Master Information</h3>
+
+        {/* ✅ NEW: GD Number Format Info */}
+        <Alert className='mb-4 bg-blue-50 border-blue-200'>
+          <Info className='h-4 w-4 text-blue-600' />
+          <AlertDescription className='text-sm text-blue-800'>
+            <strong>GD Number Format:</strong> KAPS-TYPE-####-DDMMYYYY
+            <br />
+            <span className='text-xs'>
+              Example: KAPS-HC-1119-20122026 (Auto-generated from Type and Date)
+            </span>
+          </AlertDescription>
+        </Alert>
+
         <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
           {/* Row 1 */}
-          <div className='space-y-2'>
-            <Label htmlFor='gdnumber'>GD Number</Label>
-            <Input
-              id='gdnumber'
-              type='text'
-              placeholder='Enter GD Number'
-              {...form.register("gdnumber")}
-            />
-          </div>
-
           <div className='space-y-2'>
             <Label htmlFor='gdType'>
               Type{" "}
@@ -535,8 +593,48 @@ export default function GDInfoTab({
           </div>
 
           <div className='space-y-2'>
-            <Label htmlFor='gddate'>GD Date</Label>
-            <Input id='gddate' type='date' {...form.register("gddate")} />
+            <Label htmlFor='gddate'>
+              GD Date
+              <span className='text-xs text-gray-500 ml-1'>
+                (No future dates)
+              </span>
+            </Label>
+            <Input
+              id='gddate'
+              type='date'
+              max={getTodayDate()}
+              {...form.register("gddate")}
+            />
+            <p className='text-xs text-gray-500'>
+              Maximum date: {new Date().toLocaleDateString()}
+            </p>
+          </div>
+
+          <div className='space-y-2'>
+            <Label htmlFor='gdnumber'>
+              GD Number
+              <span className='text-xs text-gray-500 ml-1'>
+                (Auto-generated)
+              </span>
+            </Label>
+            <Input
+              id='gdnumber'
+              type='text'
+              placeholder='KAPS-HC-1119-20122026'
+              className={
+                form.watch("gdnumber") &&
+                !validateGDNumberFormat(form.watch("gdnumber"))
+                  ? "border-red-500"
+                  : ""
+              }
+              {...form.register("gdnumber")}
+            />
+            {form.watch("gdnumber") &&
+              !validateGDNumberFormat(form.watch("gdnumber")) && (
+                <p className='text-xs text-red-500'>
+                  Invalid format. Expected: KAPS-XX-####-DDMMYYYY
+                </p>
+              )}
           </div>
 
           <div className='space-y-2'>
@@ -624,24 +722,6 @@ export default function GDInfoTab({
             />
             <p className='text-xs text-blue-600'>Auto-calculated</p>
           </div>
-
-          {/* Row 5: PSQCA */}
-          <div className='space-y-2'>
-            <Label htmlFor='psqcaSamples'>PSQCA Samples</Label>
-            <Select
-              value={form.watch("psqcaSamples") || ""}
-              onValueChange={(value) => form.setValue("psqcaSamples", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select Status' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='Submitted'>Submitted</SelectItem>
-                <SelectItem value='Not Required'>Not Required</SelectItem>
-                <SelectItem value='Pending'>Pending</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
         </div>
 
         {/* Summary Display */}
@@ -693,7 +773,6 @@ export default function GDInfoTab({
               Download Template
             </Button>
 
-            {/* Template-based Upload */}
             <label htmlFor='excel-upload'>
               <Button type='button' variant='outline' size='sm' asChild>
                 <span>
@@ -710,7 +789,6 @@ export default function GDInfoTab({
               onChange={handleFileUpload}
             />
 
-            {/* Official GD Format Upload */}
             <label htmlFor='official-gd-upload'>
               <Button type='button' variant='outline' size='sm' asChild>
                 <span>
@@ -735,31 +813,86 @@ export default function GDInfoTab({
           </div>
         </div>
 
-        {/* Table */}
-        <div className='border rounded-lg overflow-auto max-h-96'>
+        {/* ✅ IMPROVED: Better scrollbar visibility and wider table */}
+        <div className='border rounded-lg overflow-x-auto max-h-[600px] styled-scrollbar'>
+          <style jsx>{`
+            .styled-scrollbar::-webkit-scrollbar {
+              width: 14px;
+              height: 14px;
+            }
+            .styled-scrollbar::-webkit-scrollbar-track {
+              background: #f1f1f1;
+              border-radius: 10px;
+            }
+            .styled-scrollbar::-webkit-scrollbar-thumb {
+              background: #888;
+              border-radius: 10px;
+              border: 3px solid #f1f1f1;
+            }
+            .styled-scrollbar::-webkit-scrollbar-thumb:hover {
+              background: #555;
+            }
+            .styled-scrollbar::-webkit-scrollbar-corner {
+              background: #f1f1f1;
+            }
+            /* Firefox */
+            .styled-scrollbar {
+              scrollbar-width: thick;
+              scrollbar-color: #888 #f1f1f1;
+            }
+          `}</style>
+
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className='w-16'>#</TableHead>
-                <TableHead>Unit Type</TableHead>
-                <TableHead>Qty</TableHead>
-                <TableHead>CO Code</TableHead>
-                <TableHead>SRO No</TableHead>
-                <TableHead>HS Code</TableHead>
-                <TableHead className='min-w-[200px]'>Description</TableHead>
-                <TableHead className='text-right'>Decl. Unit Value</TableHead>
-                <TableHead className='text-right'>Assd. Unit Value</TableHead>
-                <TableHead className='text-right'>Total Decl.</TableHead>
-                <TableHead className='text-right'>Total Assd.</TableHead>
-                <TableHead className='text-right'>Custom Decl. (PKR)</TableHead>
-                <TableHead className='text-right'>Custom Assd. (PKR)</TableHead>
-                <TableHead className='text-right'>CD Rate %</TableHead>
-                <TableHead className='text-right'>ST Rate %</TableHead>
-                <TableHead className='text-right'>RD Rate %</TableHead>
-                <TableHead className='text-right'>Payable CD</TableHead>
-                <TableHead className='text-right'>Payable ST</TableHead>
-                <TableHead className='text-right'>Payable RD</TableHead>
-                <TableHead className='w-24'>Actions</TableHead>
+              <TableRow className='bg-gray-100'>
+                <TableHead className='w-16 sticky left-0 bg-gray-100 z-10'>
+                  #
+                </TableHead>
+                <TableHead className='min-w-[100px]'>Unit Type</TableHead>
+                <TableHead className='min-w-[80px] text-right'>Qty</TableHead>
+                <TableHead className='min-w-[120px]'>CO Code</TableHead>
+                <TableHead className='min-w-[120px]'>SRO No</TableHead>
+                <TableHead className='min-w-[120px]'>HS Code</TableHead>
+                <TableHead className='min-w-[250px]'>Description</TableHead>
+                <TableHead className='min-w-[140px] text-right'>
+                  Decl. Unit Value
+                </TableHead>
+                <TableHead className='min-w-[140px] text-right'>
+                  Assd. Unit Value
+                </TableHead>
+                <TableHead className='min-w-[140px] text-right'>
+                  Total Decl.
+                </TableHead>
+                <TableHead className='min-w-[140px] text-right'>
+                  Total Assd.
+                </TableHead>
+                <TableHead className='min-w-[160px] text-right'>
+                  Custom Decl. (PKR)
+                </TableHead>
+                <TableHead className='min-w-[160px] text-right'>
+                  Custom Assd. (PKR)
+                </TableHead>
+                <TableHead className='min-w-[100px] text-right'>
+                  CD Rate %
+                </TableHead>
+                <TableHead className='min-w-[100px] text-right'>
+                  ST Rate %
+                </TableHead>
+                <TableHead className='min-w-[100px] text-right'>
+                  RD Rate %
+                </TableHead>
+                <TableHead className='min-w-[120px] text-right'>
+                  Payable CD
+                </TableHead>
+                <TableHead className='min-w-[120px] text-right'>
+                  Payable ST
+                </TableHead>
+                <TableHead className='min-w-[120px] text-right'>
+                  Payable RD
+                </TableHead>
+                <TableHead className='w-28 sticky right-0 bg-gray-100 z-10'>
+                  Actions
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -767,7 +900,7 @@ export default function GDInfoTab({
                 <TableRow>
                   <TableCell
                     colSpan={20}
-                    className='text-center text-muted-foreground'
+                    className='text-center text-muted-foreground py-8'
                   >
                     No items added. Click Add Item or Upload Excel to get
                     started.
@@ -775,15 +908,17 @@ export default function GDInfoTab({
                 </TableRow>
               ) : (
                 goodsDeclarations.map((gd: any, index: number) => (
-                  <TableRow key={gd.id || index}>
-                    <TableCell>{index + 1}</TableCell>
+                  <TableRow key={gd.id || index} className='hover:bg-gray-50'>
+                    <TableCell className='sticky left-0 bg-white'>
+                      {index + 1}
+                    </TableCell>
                     <TableCell>{gd.unitType}</TableCell>
-                    <TableCell>{gd.quantity}</TableCell>
+                    <TableCell className='text-right'>{gd.quantity}</TableCell>
                     <TableCell>{gd.cocode}</TableCell>
                     <TableCell>{gd.sronumber}</TableCell>
                     <TableCell>{gd.hscode}</TableCell>
                     <TableCell
-                      className='max-w-[200px] truncate'
+                      className='max-w-[250px] truncate'
                       title={gd.itemDescription}
                     >
                       {gd.itemDescription}
@@ -818,7 +953,7 @@ export default function GDInfoTab({
                     <TableCell className='text-right'>
                       {gd.payableRd.toFixed(2)}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className='sticky right-0 bg-white'>
                       <div className='flex gap-1'>
                         <Button
                           type='button'
@@ -898,7 +1033,6 @@ export default function GDInfoTab({
           </DialogHeader>
 
           <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-            {/* Basic Info */}
             <div className='space-y-2'>
               <Label>Unit Type</Label>
               <Input
@@ -968,7 +1102,6 @@ export default function GDInfoTab({
               />
             </div>
 
-            {/* Values */}
             <div className='space-y-2'>
               <Label>Declared Unit Value</Label>
               <Input
@@ -1059,7 +1192,6 @@ export default function GDInfoTab({
               />
             </div>
 
-            {/* Rates */}
             <div className='md:col-span-2 mt-4'>
               <h4 className='font-semibold mb-2'>Tax Rates (%)</h4>
               <div className='grid grid-cols-5 gap-2'>
@@ -1136,7 +1268,6 @@ export default function GDInfoTab({
               </div>
             </div>
 
-            {/* Payables */}
             <div className='md:col-span-2 mt-4'>
               <h4 className='font-semibold mb-2'>Payable Amounts (PKR)</h4>
               <div className='grid grid-cols-5 gap-2'>

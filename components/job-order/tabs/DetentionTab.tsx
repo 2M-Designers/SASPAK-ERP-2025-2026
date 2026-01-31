@@ -19,7 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Info } from "lucide-react";
+import { Info, DollarSign } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface DetentionRecord {
@@ -34,7 +34,9 @@ interface DetentionRecord {
   eirReceivedDate?: string;
   condition?: string;
   rentDays: number;
-  rentAmount: number;
+  rentAmount: number; // ✅ NOW IN USD
+  exchangeRate: number; // ✅ NEW: Exchange rate for this container
+  rentAmountPkr: number; // ✅ NEW: Calculated PKR amount
   damageAmount: number;
   dirtyAmount: number;
   version?: number;
@@ -49,6 +51,7 @@ interface DispatchRecord {
   netWeight: number;
   transporterPartyId?: number;
   destinationLocationId?: number;
+  containerReturnTerminalId?: number;
   buyingAmountLc: number;
   topayAmountLc: number;
   dispatchDate: string;
@@ -70,8 +73,8 @@ export default function DetentionTab({
   detentionRecords = [],
   setDetentionRecords,
   toast,
-  dispatchRecords = [], // ✅ ADDED: Get dispatch records from parent
-  parties = [], // ✅ ADDED: Get parties list to find transporter name
+  dispatchRecords = [],
+  parties = [],
 }: any) {
   // Master fields state
   const [depositor, setDepositor] = useState<string>("");
@@ -90,7 +93,6 @@ export default function DetentionTab({
       return "";
     }
 
-    // Find dispatch record for this container
     const dispatchRecord = dispatchRecords.find(
       (record: DispatchRecord) => record.containerNumber === containerNumber,
     );
@@ -99,7 +101,6 @@ export default function DetentionTab({
       return "";
     }
 
-    // Find party name from parties list
     const transporterParty = parties.find(
       (party: PartyOption) => party.value === dispatchRecord.transporterPartyId,
     );
@@ -117,7 +118,6 @@ export default function DetentionTab({
       const newRecords = fclContainers
         .filter((container: any) => !existingIds.has(container.containerNo))
         .map((container: any) => {
-          // ✅ Get transporter from dispatch records
           const transporterName = getTransporterForContainer(
             container.containerNo,
           );
@@ -127,12 +127,14 @@ export default function DetentionTab({
             containerTypeId: container.containerTypeId,
             containerSizeId: container.containerSizeId,
             netWeight: container.tareWeight || 0,
-            transport: transporterName, // ✅ Pre-fill with transporter from dispatch
+            transport: transporterName,
             emptyDate: "",
             eirReceivedDate: "",
             condition: "",
             rentDays: 0,
-            rentAmount: 0,
+            rentAmount: 0, // USD
+            exchangeRate: 0, // ✅ NEW
+            rentAmountPkr: 0, // ✅ NEW
             damageAmount: 0,
             dirtyAmount: 0,
           };
@@ -142,7 +144,7 @@ export default function DetentionTab({
         setDetentionRecords([...detentionRecords, ...newRecords]);
       }
     }
-  }, [fclContainers, dispatchRecords]); // ✅ Added dispatchRecords dependency
+  }, [fclContainers, dispatchRecords]);
 
   // ✅ Sync transporter when dispatch records change
   useEffect(() => {
@@ -151,7 +153,6 @@ export default function DetentionTab({
         const transporterName = getTransporterForContainer(
           record.containerNumber,
         );
-        // Only update if transporter exists in dispatch but not in detention
         if (transporterName && !record.transport) {
           return {
             ...record,
@@ -162,9 +163,9 @@ export default function DetentionTab({
       });
       setDetentionRecords(updatedRecords);
     }
-  }, [dispatchRecords]); // ✅ Run when dispatch records change
+  }, [dispatchRecords]);
 
-  // Update a specific field in a detention record
+  // ✅ Update a specific field in a detention record with auto-calculation
   const updateDetentionRecord = (
     index: number,
     field: keyof DetentionRecord,
@@ -180,6 +181,15 @@ export default function DetentionTab({
     if (field === "emptyDate" && uptoDate) {
       const rentDays = calculateRentDays(value, uptoDate);
       updatedRecords[index].rentDays = rentDays;
+    }
+
+    // ✅ Auto-calculate PKR rent when USD rent or exchange rate changes
+    if (field === "rentAmount" || field === "exchangeRate") {
+      const usdRent =
+        field === "rentAmount" ? value : updatedRecords[index].rentAmount;
+      const rate =
+        field === "exchangeRate" ? value : updatedRecords[index].exchangeRate;
+      updatedRecords[index].rentAmountPkr = usdRent * rate;
     }
 
     setDetentionRecords(updatedRecords);
@@ -229,11 +239,15 @@ export default function DetentionTab({
     return size?.label || "";
   };
 
-  // Calculate totals
+  // ✅ Calculate totals (now using PKR amounts)
   const totals = {
     containers: detentionRecords.length,
-    totalRent: detentionRecords.reduce(
+    totalRentUsd: detentionRecords.reduce(
       (sum: number, r: DetentionRecord) => sum + (r.rentAmount || 0),
+      0,
+    ),
+    totalRentPkr: detentionRecords.reduce(
+      (sum: number, r: DetentionRecord) => sum + (r.rentAmountPkr || 0),
       0,
     ),
     totalDamage: detentionRecords.reduce(
@@ -246,9 +260,9 @@ export default function DetentionTab({
     ),
   };
 
-  // Calculate financial summary
+  // Calculate financial summary (using PKR)
   const totalPayable =
-    totals.totalRent + totals.totalDamage + totals.totalDirty;
+    totals.totalRentPkr + totals.totalDamage + totals.totalDirty;
   const securityDeposit = depositAmount;
   const balanceReceivable = totalPayable - securityDeposit - advanceRent;
 
@@ -281,13 +295,19 @@ export default function DetentionTab({
               <Info className='h-5 w-5 text-blue-600 mt-0.5' />
               <div>
                 <h3 className='font-semibold text-blue-900 mb-1'>
-                  Container Detention Management
+                  Container Detention Management (FCL Only)
                 </h3>
                 <p className='text-sm text-blue-700'>
                   Track container detention charges, deposits, and refunds. Grid
                   auto-populates from containers in Shipping Tab.
                   <span className='font-semibold ml-1'>
-                    Transport field is pre-filled from Dispatch Tab selections.
+                    Transport field is pre-filled from Dispatch Tab.
+                  </span>
+                  <br />
+                  <DollarSign className='inline h-4 w-4 mr-1' />
+                  <span className='font-semibold'>
+                    Rent amounts are in USD. Enter exchange rate to
+                    auto-calculate PKR amounts.
                   </span>
                 </p>
               </div>
@@ -385,222 +405,312 @@ export default function DetentionTab({
               </p>
             </div>
           ) : (
-            <div className='overflow-x-auto'>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className='w-[50px]'>#</TableHead>
-                    <TableHead className='min-w-[130px]'>
-                      Container No.
-                    </TableHead>
-                    <TableHead className='min-w-[80px]'>Type</TableHead>
-                    <TableHead className='min-w-[80px]'>Size</TableHead>
-                    <TableHead className='min-w-[100px]'>Weight (kg)</TableHead>
-                    <TableHead className='min-w-[150px]'>Transport</TableHead>
-                    <TableHead className='min-w-[140px]'>Empty Date</TableHead>
-                    <TableHead className='min-w-[140px]'>
-                      EIR Received
-                    </TableHead>
-                    <TableHead className='min-w-[120px]'>Condition</TableHead>
-                    <TableHead className='min-w-[100px]'>Rent Days</TableHead>
-                    <TableHead className='min-w-[120px]'>Rent Amount</TableHead>
-                    <TableHead className='min-w-[120px]'>Damage</TableHead>
-                    <TableHead className='min-w-[120px]'>Dirty</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {detentionRecords.map(
-                    (record: DetentionRecord, index: number) => {
-                      // ✅ Get transporter from dispatch for this container
-                      const dispatchTransporter = getTransporterForContainer(
-                        record.containerNumber,
-                      );
+            <>
+              {/* ✅ IMPROVED: Better scrollbar styling */}
+              <style jsx>{`
+                .detention-table-wrapper::-webkit-scrollbar {
+                  width: 14px;
+                  height: 14px;
+                }
+                .detention-table-wrapper::-webkit-scrollbar-track {
+                  background: #f1f1f1;
+                  border-radius: 10px;
+                }
+                .detention-table-wrapper::-webkit-scrollbar-thumb {
+                  background: #888;
+                  border-radius: 10px;
+                  border: 3px solid #f1f1f1;
+                }
+                .detention-table-wrapper::-webkit-scrollbar-thumb:hover {
+                  background: #555;
+                }
+                /* Firefox */
+                .detention-table-wrapper {
+                  scrollbar-width: thick;
+                  scrollbar-color: #888 #f1f1f1;
+                }
+              `}</style>
 
-                      return (
-                        <TableRow key={index}>
-                          <TableCell className='font-medium'>
-                            {index + 1}
-                          </TableCell>
+              <div className='overflow-x-auto detention-table-wrapper max-h-[600px]'>
+                <Table>
+                  <TableHeader>
+                    <TableRow className='bg-gray-50'>
+                      <TableHead className='w-[50px] sticky left-0 bg-gray-50 z-20'>
+                        #
+                      </TableHead>
+                      <TableHead className='min-w-[140px]'>
+                        Container No.
+                      </TableHead>
+                      <TableHead className='min-w-[90px]'>Type</TableHead>
+                      <TableHead className='min-w-[80px]'>Size</TableHead>
+                      <TableHead className='min-w-[110px]'>
+                        Weight (kg)
+                      </TableHead>
+                      <TableHead className='min-w-[180px]'>Transport</TableHead>
+                      <TableHead className='min-w-[150px]'>
+                        Empty Date
+                      </TableHead>
+                      <TableHead className='min-w-[150px]'>
+                        EIR Received
+                      </TableHead>
+                      <TableHead className='min-w-[130px]'>Condition</TableHead>
+                      <TableHead className='min-w-[100px] text-right'>
+                        Rent Days
+                      </TableHead>
+                      <TableHead className='min-w-[140px] text-right bg-blue-50'>
+                        Rent (USD)
+                      </TableHead>
+                      <TableHead className='min-w-[140px] text-right bg-blue-50'>
+                        Exch. Rate
+                      </TableHead>
+                      <TableHead className='min-w-[140px] text-right bg-green-50'>
+                        Rent (PKR)
+                      </TableHead>
+                      <TableHead className='min-w-[130px] text-right'>
+                        Damage (PKR)
+                      </TableHead>
+                      <TableHead className='min-w-[130px] text-right'>
+                        Dirty (PKR)
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {detentionRecords.map(
+                      (record: DetentionRecord, index: number) => {
+                        const dispatchTransporter = getTransporterForContainer(
+                          record.containerNumber,
+                        );
 
-                          {/* Read-only container details */}
-                          <TableCell className='font-mono text-sm'>
-                            {record.containerNumber}
-                          </TableCell>
-                          <TableCell>
-                            {getContainerTypeLabel(record.containerTypeId)}
-                          </TableCell>
-                          <TableCell>
-                            {getContainerSizeLabel(record.containerSizeId)}
-                          </TableCell>
-                          <TableCell className='text-right'>
-                            {record.netWeight.toFixed(2)}
-                          </TableCell>
+                        return (
+                          <TableRow key={index} className='hover:bg-gray-50'>
+                            <TableCell className='font-medium sticky left-0 bg-white z-10'>
+                              {index + 1}
+                            </TableCell>
 
-                          {/* Editable fields */}
-                          <TableCell>
-                            <Input
-                              className='h-9'
-                              placeholder='Transport name'
-                              value={
-                                record.transport || dispatchTransporter || ""
-                              }
-                              onChange={(e) =>
-                                updateDetentionRecord(
-                                  index,
-                                  "transport",
-                                  e.target.value,
-                                )
-                              }
-                              title={
-                                dispatchTransporter
-                                  ? `Pre-filled from Dispatch Tab: ${dispatchTransporter}`
-                                  : "Enter transport name"
-                              }
-                            />
-                            {dispatchTransporter && !record.transport && (
-                              <p className='text-xs text-green-600 mt-1'>
-                                Pre-filled from Dispatch Tab
-                              </p>
-                            )}
-                          </TableCell>
+                            {/* Read-only container details */}
+                            <TableCell className='font-mono text-sm'>
+                              {record.containerNumber}
+                            </TableCell>
+                            <TableCell>
+                              {getContainerTypeLabel(record.containerTypeId)}
+                            </TableCell>
+                            <TableCell>
+                              {getContainerSizeLabel(record.containerSizeId)}
+                            </TableCell>
+                            <TableCell className='text-right'>
+                              {record.netWeight.toFixed(2)}
+                            </TableCell>
 
-                          <TableCell>
-                            <Input
-                              type='date'
-                              className='h-9'
-                              value={record.emptyDate || ""}
-                              onChange={(e) =>
-                                updateDetentionRecord(
-                                  index,
-                                  "emptyDate",
-                                  e.target.value,
-                                )
-                              }
-                            />
-                          </TableCell>
+                            {/* Transport */}
+                            <TableCell>
+                              <Input
+                                className='h-9'
+                                placeholder='Transport name'
+                                value={
+                                  record.transport || dispatchTransporter || ""
+                                }
+                                onChange={(e) =>
+                                  updateDetentionRecord(
+                                    index,
+                                    "transport",
+                                    e.target.value,
+                                  )
+                                }
+                                title={
+                                  dispatchTransporter
+                                    ? `Pre-filled from Dispatch: ${dispatchTransporter}`
+                                    : "Enter transport name"
+                                }
+                              />
+                            </TableCell>
 
-                          <TableCell>
-                            <Input
-                              type='date'
-                              className='h-9'
-                              value={record.eirReceivedDate || ""}
-                              onChange={(e) =>
-                                updateDetentionRecord(
-                                  index,
-                                  "eirReceivedDate",
-                                  e.target.value,
-                                )
-                              }
-                            />
-                          </TableCell>
+                            {/* Empty Date */}
+                            <TableCell>
+                              <Input
+                                type='date'
+                                className='h-9'
+                                value={record.emptyDate || ""}
+                                onChange={(e) =>
+                                  updateDetentionRecord(
+                                    index,
+                                    "emptyDate",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </TableCell>
 
-                          <TableCell>
-                            <Select
-                              value={record.condition || ""}
-                              onValueChange={(value) =>
-                                updateDetentionRecord(index, "condition", value)
-                              }
-                            >
-                              <SelectTrigger className='h-9'>
-                                <SelectValue placeholder='Select' />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {conditionOptions.map((option) => (
-                                  <SelectItem key={option} value={option}>
-                                    {option}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
+                            {/* EIR Received */}
+                            <TableCell>
+                              <Input
+                                type='date'
+                                className='h-9'
+                                value={record.eirReceivedDate || ""}
+                                onChange={(e) =>
+                                  updateDetentionRecord(
+                                    index,
+                                    "eirReceivedDate",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </TableCell>
 
-                          <TableCell className='text-right'>
-                            <Input
-                              type='number'
-                              className='h-9'
-                              value={record.rentDays || 0}
-                              onChange={(e) =>
-                                updateDetentionRecord(
-                                  index,
-                                  "rentDays",
-                                  parseInt(e.target.value) || 0,
-                                )
-                              }
-                            />
-                          </TableCell>
+                            {/* Condition */}
+                            <TableCell>
+                              <Select
+                                value={record.condition || ""}
+                                onValueChange={(value) =>
+                                  updateDetentionRecord(
+                                    index,
+                                    "condition",
+                                    value,
+                                  )
+                                }
+                              >
+                                <SelectTrigger className='h-9'>
+                                  <SelectValue placeholder='Select' />
+                                </SelectTrigger>
+                                <SelectContent className='max-h-[300px] overflow-y-auto z-50'>
+                                  {conditionOptions.map((option) => (
+                                    <SelectItem key={option} value={option}>
+                                      {option}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
 
-                          <TableCell>
-                            <Input
-                              type='number'
-                              step='0.01'
-                              className='h-9'
-                              placeholder='0.00'
-                              value={record.rentAmount || ""}
-                              onChange={(e) =>
-                                updateDetentionRecord(
-                                  index,
-                                  "rentAmount",
-                                  parseFloat(e.target.value) || 0,
-                                )
-                              }
-                            />
-                          </TableCell>
+                            {/* Rent Days */}
+                            <TableCell className='text-right'>
+                              <Input
+                                type='number'
+                                className='h-9 text-right'
+                                value={record.rentDays || 0}
+                                onChange={(e) =>
+                                  updateDetentionRecord(
+                                    index,
+                                    "rentDays",
+                                    parseInt(e.target.value) || 0,
+                                  )
+                                }
+                              />
+                            </TableCell>
 
-                          <TableCell>
-                            <Input
-                              type='number'
-                              step='0.01'
-                              className='h-9'
-                              placeholder='0.00'
-                              value={record.damageAmount || ""}
-                              onChange={(e) =>
-                                updateDetentionRecord(
-                                  index,
-                                  "damageAmount",
-                                  parseFloat(e.target.value) || 0,
-                                )
-                              }
-                            />
-                          </TableCell>
+                            {/* ✅ NEW: Rent Amount (USD) */}
+                            <TableCell className='bg-blue-50'>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-9 text-right font-semibold'
+                                placeholder='0.00'
+                                value={record.rentAmount || ""}
+                                onChange={(e) =>
+                                  updateDetentionRecord(
+                                    index,
+                                    "rentAmount",
+                                    parseFloat(e.target.value) || 0,
+                                  )
+                                }
+                              />
+                            </TableCell>
 
-                          <TableCell>
-                            <Input
-                              type='number'
-                              step='0.01'
-                              className='h-9'
-                              placeholder='0.00'
-                              value={record.dirtyAmount || ""}
-                              onChange={(e) =>
-                                updateDetentionRecord(
-                                  index,
-                                  "dirtyAmount",
-                                  parseFloat(e.target.value) || 0,
-                                )
-                              }
-                            />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    },
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                            {/* ✅ NEW: Exchange Rate */}
+                            <TableCell className='bg-blue-50'>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-9 text-right'
+                                placeholder='0.00'
+                                value={record.exchangeRate || ""}
+                                onChange={(e) =>
+                                  updateDetentionRecord(
+                                    index,
+                                    "exchangeRate",
+                                    parseFloat(e.target.value) || 0,
+                                  )
+                                }
+                              />
+                            </TableCell>
+
+                            {/* ✅ NEW: Rent Amount (PKR) - Auto-calculated */}
+                            <TableCell className='bg-green-50'>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-9 text-right bg-green-50 font-bold'
+                                value={
+                                  record.rentAmountPkr?.toFixed(2) || "0.00"
+                                }
+                                readOnly
+                                title='Auto-calculated: USD Rent × Exchange Rate'
+                              />
+                            </TableCell>
+
+                            {/* Damage Amount */}
+                            <TableCell>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-9 text-right'
+                                placeholder='0.00'
+                                value={record.damageAmount || ""}
+                                onChange={(e) =>
+                                  updateDetentionRecord(
+                                    index,
+                                    "damageAmount",
+                                    parseFloat(e.target.value) || 0,
+                                  )
+                                }
+                              />
+                            </TableCell>
+
+                            {/* Dirty Amount */}
+                            <TableCell>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-9 text-right'
+                                placeholder='0.00'
+                                value={record.dirtyAmount || ""}
+                                onChange={(e) =>
+                                  updateDetentionRecord(
+                                    index,
+                                    "dirtyAmount",
+                                    parseFloat(e.target.value) || 0,
+                                  )
+                                }
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      },
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
 
           {/* Summary Footer */}
           {detentionRecords.length > 0 && (
             <div className='p-4 border-t bg-gray-50'>
-              <div className='grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4'>
+              <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4'>
                 <div>
                   <span className='text-gray-600'>Total Containers:</span>{" "}
                   <span className='font-semibold'>{totals.containers}</span>
                 </div>
-                <div>
-                  <span className='text-gray-600'>Total Rent:</span>{" "}
-                  <span className='font-semibold'>
+                <div className='bg-blue-50 p-2 rounded'>
+                  <span className='text-blue-900'>Total Rent (USD):</span>{" "}
+                  <span className='font-bold text-blue-900'>
+                    ${totals.totalRentUsd.toFixed(2)}
+                  </span>
+                </div>
+                <div className='bg-green-50 p-2 rounded'>
+                  <span className='text-green-900'>Total Rent (PKR):</span>{" "}
+                  <span className='font-bold text-green-900'>
                     PKR{" "}
-                    {totals.totalRent.toLocaleString("en-PK", {
+                    {totals.totalRentPkr.toLocaleString("en-PK", {
                       minimumFractionDigits: 2,
                     })}
                   </span>
@@ -624,7 +734,7 @@ export default function DetentionTab({
                   </span>
                 </div>
                 <div className='col-span-2 md:col-span-3 border-t pt-2'>
-                  <span className='text-gray-600'>Total Payable:</span>{" "}
+                  <span className='text-gray-600'>Total Payable (PKR):</span>{" "}
                   <span className='font-bold text-lg'>
                     PKR{" "}
                     {totalPayable.toLocaleString("en-PK", {
@@ -636,7 +746,7 @@ export default function DetentionTab({
 
               {/* Financial Summary */}
               <div className='bg-white p-4 rounded border'>
-                <h4 className='font-semibold mb-3'>Financial Summary</h4>
+                <h4 className='font-semibold mb-3'>Financial Summary (PKR)</h4>
                 <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm'>
                   <div>
                     <div className='text-gray-600'>Total Payable:</div>

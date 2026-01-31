@@ -255,6 +255,9 @@ export const jobEquipmentDetentionDetailSchema = z.object({
   condition: z.string().optional(),
   rentDays: z.number().min(0).default(0),
   rentAmountLc: z.number().min(0).default(0),
+  rentAmount: z.number().min(0).default(0), // NOW IN USD
+  exchangeRate: z.number().min(0).default(0), // ✅ NEW
+  rentAmountPkr: z.number().min(0).default(0), // ✅ NEW (Auto-calculated)
   damage: z.string().optional(), // Note: string, not number
   dirty: z.string().optional(), // Note: string, not number
   version: z.number().optional(),
@@ -342,6 +345,7 @@ export const jobInvoiceSchema = z.object({
   invoiceDate: z.string().optional(),
   issuedBy: z.string().optional(), // ✅ Matches DB: 'issuedBy'
   shippingTerm: z.string().optional(),
+  goodsType: z.string().optional(),
 
   // LC (Letter of Credit) Fields
   lcNumber: z.string().optional(),
@@ -387,6 +391,7 @@ export const invoiceSchema = z.object({
   invoiceDate: z.string().optional(),
   invoiceIssuedByPartyId: z.number().optional(), // Will map to issuedBy string
   shippingTerm: z.string().optional(),
+  goodsType: z.string().optional(),
   lcNumber: z.string().optional(),
   lcDate: z.string().optional(),
   lcIssuedByBankId: z.number().optional(), // Will map to lcIssuedBy string
@@ -413,6 +418,7 @@ export const mapInvoiceToDb = (invoice: any) => ({
   issuedBy:
     invoice.invoiceIssuedByPartyId?.toString() || invoice.issuedBy || "",
   shippingTerm: invoice.shippingTerm,
+  goodsType: invoice.goodsType,
   lcNumber: invoice.lcNumber,
   lcValue: invoice.lcValue,
   lcDate: invoice.lcDate,
@@ -446,6 +452,7 @@ export const mapInvoiceFromDb = (dbInvoice: any) => ({
   invoiceDate: dbInvoice.invoiceDate,
   invoiceIssuedByPartyId: parseInt(dbInvoice.issuedBy) || undefined,
   shippingTerm: dbInvoice.shippingTerm,
+  goodsType: dbInvoice.goodsType,
   lcNumber: dbInvoice.lcNumber,
   lcDate: dbInvoice.lcDate,
   lcIssuedByBankId: parseInt(dbInvoice.lcIssuedBy) || undefined,

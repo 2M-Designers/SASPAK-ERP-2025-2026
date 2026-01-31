@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, AlertCircle, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 // RMS Channel Options with colors
 const RMS_CHANNEL_OPTIONS = [
@@ -284,6 +285,7 @@ export default function CompletionTab({ form, shippingType }: any) {
               />
 
               {/* Destuffing On - Only for LCL */}
+
               <FormField
                 control={form.control}
                 name='destuffingOn'
@@ -317,20 +319,41 @@ export default function CompletionTab({ form, shippingType }: any) {
             </div>
 
             {/* GD Assign to Gate Out Date */}
-            <FormField
-              control={form.control}
-              name='gdAssignToGateOutDate'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>GD Assign to Gate Out Date</FormLabel>
-                  <FormControl>
-                    <Input type='date' {...field} value={field.value || ""} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+              <FormField
+                control={form.control}
+                name='gdAssignToGateOutDate'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>GD Assign to Gate Out Date</FormLabel>
+                    <FormControl>
+                      <Input type='date' {...field} value={field.value || ""} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
+              {/* Row 5: PSQCA */}
+              <div className='space-y-2'>
+                <Label htmlFor='psqcaSamples'>PSQCA Samples</Label>
+                <Select
+                  value={form.watch("psqcaSamples") || ""}
+                  onValueChange={(value) =>
+                    form.setValue("psqcaSamples", value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder='Select Status' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='Submitted'>Submitted</SelectItem>
+                    <SelectItem value='Not Required'>Not Required</SelectItem>
+                    <SelectItem value='Pending'>Pending</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             {/* Delay in Clearance Section */}
             <div className='space-y-4 p-4 bg-orange-50 rounded-lg border border-orange-200'>
               <div className='flex items-center gap-2'>

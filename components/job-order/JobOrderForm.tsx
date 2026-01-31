@@ -405,6 +405,7 @@ export default function JobOrderForm({
   const shippingType = form.watch("jobSubType");
   const mode = form.watch("operationMode");
   const documentType = form.watch("jobDocumentType");
+  const showDetentionTab = form.watch("jobSubType") === "FCL";
 
   // Helper function to transform API dates to form format (YYYY-MM-DD)
   const formatDateForForm = (isoDate: string | null | undefined) => {
@@ -1688,7 +1689,9 @@ export default function JobOrderForm({
                   <TabsTrigger value='invoice'>Invoice</TabsTrigger>
                   <TabsTrigger value='gd'>GD Info</TabsTrigger>
                   <TabsTrigger value='dispatch'>Dispatch</TabsTrigger>
-                  <TabsTrigger value='detention'>Detention</TabsTrigger>
+                  {showDetentionTab && ( // ✅ CONDITIONAL RENDERING
+                    <TabsTrigger value='detention'>Detention</TabsTrigger>
+                  )}
                   <TabsTrigger value='completion'>Completion</TabsTrigger>
                 </TabsList>
 
@@ -1698,7 +1701,7 @@ export default function JobOrderForm({
                 <InvoiceTab {...sharedProps} />
                 <GDTab {...sharedProps} />
                 <DispatchTab {...sharedProps} />
-                <DetentionTab {...sharedProps} />
+                {showDetentionTab && <DetentionTab {...sharedProps} />}
                 <CompletionTab {...sharedProps} />
               </Tabs>
             )}

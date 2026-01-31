@@ -30,12 +30,13 @@ interface DispatchRecord {
   netWeight: number;
   transporterPartyId?: number;
   destinationLocationId?: number;
+  containerReturnTerminalId?: number; // ✅ NEW: Empty Return field
   buyingAmountLc: number;
   topayAmountLc: number;
   dispatchDate: string;
   version?: number;
-  packageType?: string; // For LCL/Air mode
-  quantity?: number; // For LCL/Air mode
+  packageType?: string;
+  quantity?: number;
 }
 
 export default function DispatchTab({
@@ -54,15 +55,14 @@ export default function DispatchTab({
   const [applyToAllValues, setApplyToAllValues] = useState({
     transporterPartyId: undefined as number | undefined,
     destinationLocationId: undefined as number | undefined,
+    containerReturnTerminalId: undefined as number | undefined, // ✅ NEW
     buyingAmountLc: 0,
     topayAmountLc: 0,
     dispatchDate: "",
   });
 
-  // Initialize dispatch records from containers when tab loads or containers change
   useEffect(() => {
     if (shippingType === "FCL" && fclContainers.length > 0) {
-      // Initialize FCL dispatch records from containers
       const existingIds = new Set(
         dispatchRecords.map((r: DispatchRecord) => r.containerNumber),
       );
@@ -76,6 +76,7 @@ export default function DispatchTab({
           netWeight: container.tareWeight || 0,
           transporterPartyId: undefined,
           destinationLocationId: undefined,
+          containerReturnTerminalId: undefined, // ✅ NEW
           buyingAmountLc: 0,
           topayAmountLc: 0,
           dispatchDate: "",
@@ -87,7 +88,6 @@ export default function DispatchTab({
     }
   }, [fclContainers, shippingType]);
 
-  // Update a specific field in a dispatch record
   const updateDispatchRecord = (
     index: number,
     field: keyof DispatchRecord,
@@ -101,7 +101,6 @@ export default function DispatchTab({
     setDispatchRecords(updatedRecords);
   };
 
-  // Apply values to all records
   const handleApplyToAll = () => {
     if (dispatchRecords.length === 0) {
       toast({
@@ -119,6 +118,10 @@ export default function DispatchTab({
       }),
       ...(applyToAllValues.destinationLocationId && {
         destinationLocationId: applyToAllValues.destinationLocationId,
+      }),
+      ...(applyToAllValues.containerReturnTerminalId && {
+        // ✅ NEW
+        containerReturnTerminalId: applyToAllValues.containerReturnTerminalId,
       }),
       ...(applyToAllValues.buyingAmountLc > 0 && {
         buyingAmountLc: applyToAllValues.buyingAmountLc,
@@ -139,15 +142,15 @@ export default function DispatchTab({
     });
   };
 
-  // Add new LCL/Air package row
   const handleAddPackageRow = () => {
     const newRecord: DispatchRecord = {
-      containerNumber: `PKG-${Date.now()}`, // Temporary ID for package
+      containerNumber: `PKG-${Date.now()}`,
       packageType: "",
       quantity: 0,
       netWeight: 0,
       transporterPartyId: undefined,
       destinationLocationId: undefined,
+      containerReturnTerminalId: undefined, // ✅ NEW
       buyingAmountLc: 0,
       topayAmountLc: 0,
       dispatchDate: "",
@@ -155,7 +158,6 @@ export default function DispatchTab({
     setDispatchRecords([...dispatchRecords, newRecord]);
   };
 
-  // Delete a dispatch record
   const handleDeleteRecord = (index: number) => {
     if (confirm("Are you sure you want to delete this dispatch record?")) {
       setDispatchRecords(
@@ -168,35 +170,30 @@ export default function DispatchTab({
     }
   };
 
-  // Get party label by value (ID)
   const getPartyLabel = (partyId: number | undefined) => {
     if (!partyId) return "";
     const party = parties.find((p: any) => p.value === partyId);
     return party?.label || "";
   };
 
-  // Get location label by value (ID)
   const getLocationLabel = (locationId: number | undefined) => {
     if (!locationId) return "";
     const location = locations.find((l: any) => l.value === locationId);
     return location?.label || "";
   };
 
-  // Get container type label
   const getContainerTypeLabel = (typeId: number | undefined) => {
     if (!typeId) return "";
     const type = containerTypes.find((t: any) => t.value === typeId);
     return type?.label || "";
   };
 
-  // Get container size label
   const getContainerSizeLabel = (sizeId: number | undefined) => {
     if (!sizeId) return "";
     const size = containerSizes.find((s: any) => s.value === sizeId);
     return size?.label || "";
   };
 
-  // Calculate totals
   const totals = {
     containers: dispatchRecords.length,
     totalWeight: dispatchRecords.reduce(
@@ -243,7 +240,7 @@ export default function DispatchTab({
           </Badge>
         </div>
 
-        <div className='grid grid-cols-1 md:grid-cols-5 gap-4 mb-4'>
+        <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-4'>
           <div className='space-y-2'>
             <Label>Transporter</Label>
             <Select
@@ -308,6 +305,45 @@ export default function DispatchTab({
                   ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* ✅ NEW: Empty Return Field */}
+          <div className='space-y-2'>
+            <Label>Empty Return (Terminal)</Label>
+            <Select
+              value={
+                applyToAllValues.containerReturnTerminalId?.toString() || ""
+              }
+              onValueChange={(value) =>
+                setApplyToAllValues({
+                  ...applyToAllValues,
+                  containerReturnTerminalId: parseInt(value),
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder='Select Return Terminal'>
+                  {applyToAllValues.containerReturnTerminalId
+                    ? getLocationLabel(
+                        applyToAllValues.containerReturnTerminalId,
+                      )
+                    : "Select Return Terminal"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {locations
+                  .filter((location: any) => location?.value)
+                  .map((location: any) => (
+                    <SelectItem
+                      key={location.value}
+                      value={location.value.toString()}
+                    >
+                      {location.label || "Unknown"}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <p className='text-xs text-gray-500'>Container return location</p>
           </div>
 
           <div className='space-y-2'>
@@ -394,261 +430,348 @@ export default function DispatchTab({
             </p>
           </div>
         ) : (
-          <div className='overflow-x-auto'>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className='w-[50px]'>#</TableHead>
-                  {isFCL ? (
-                    <>
-                      <TableHead className='min-w-[130px]'>
-                        Container No.
-                      </TableHead>
-                      <TableHead className='min-w-[100px]'>Type</TableHead>
-                      <TableHead className='min-w-[80px]'>Size</TableHead>
-                      <TableHead className='min-w-[100px]'>
-                        Weight (kg)
-                      </TableHead>
-                    </>
-                  ) : (
-                    <>
-                      <TableHead className='min-w-[150px]'>
-                        Package Type
-                      </TableHead>
-                      <TableHead className='min-w-[80px]'>Qty</TableHead>
-                      <TableHead className='min-w-[100px]'>
-                        Weight (kg)
-                      </TableHead>
-                    </>
-                  )}
-                  <TableHead className='min-w-[200px]'>Transporter</TableHead>
-                  <TableHead className='min-w-[200px]'>Destination</TableHead>
-                  <TableHead className='min-w-[120px]'>Buying (PKR)</TableHead>
-                  <TableHead className='min-w-[120px]'>To-Pay (PKR)</TableHead>
-                  <TableHead className='min-w-[140px]'>Dispatch Date</TableHead>
-                  <TableHead className='w-[80px]'>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dispatchRecords.map(
-                  (record: DispatchRecord, index: number) => (
-                    <TableRow key={index}>
-                      <TableCell className='font-medium'>{index + 1}</TableCell>
+          <>
+            {/* ✅ IMPROVED: Better scrollbar and fixed dropdown behavior */}
+            <style jsx>{`
+              .dispatch-table-wrapper::-webkit-scrollbar {
+                width: 14px;
+                height: 14px;
+              }
+              .dispatch-table-wrapper::-webkit-scrollbar-track {
+                background: #f1f1f1;
+                border-radius: 10px;
+              }
+              .dispatch-table-wrapper::-webkit-scrollbar-thumb {
+                background: #888;
+                border-radius: 10px;
+                border: 3px solid #f1f1f1;
+              }
+              .dispatch-table-wrapper::-webkit-scrollbar-thumb:hover {
+                background: #555;
+              }
+              /* Firefox */
+              .dispatch-table-wrapper {
+                scrollbar-width: thick;
+                scrollbar-color: #888 #f1f1f1;
+              }
+            `}</style>
 
-                      {isFCL ? (
-                        <>
-                          {/* FCL Mode - Read-only container details */}
-                          <TableCell className='font-mono text-sm'>
-                            {record.containerNumber}
-                          </TableCell>
-                          <TableCell>
-                            {getContainerTypeLabel(record.containerTypeId)}
-                          </TableCell>
-                          <TableCell>
-                            {getContainerSizeLabel(record.containerSizeId)}
-                          </TableCell>
-                          <TableCell className='text-right'>
-                            {record.netWeight.toFixed(2)}
-                          </TableCell>
-                        </>
-                      ) : (
-                        <>
-                          {/* LCL/Air Mode - Editable package details */}
-                          <TableCell>
-                            <Select
-                              value={record.packageType || ""}
-                              onValueChange={(value) =>
-                                updateDispatchRecord(
-                                  index,
-                                  "packageType",
-                                  value,
-                                )
-                              }
-                            >
-                              <SelectTrigger className='h-9'>
-                                <SelectValue placeholder='Select' />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {packageTypes
-                                  .filter(
-                                    (pkg: any) => pkg?.value && pkg?.label,
+            <div className='overflow-x-auto dispatch-table-wrapper max-h-[600px]'>
+              <Table>
+                <TableHeader>
+                  <TableRow className='bg-gray-50'>
+                    <TableHead className='w-[50px] sticky left-0 bg-gray-50 z-20'>
+                      #
+                    </TableHead>
+                    {isFCL ? (
+                      <>
+                        <TableHead className='min-w-[140px]'>
+                          Container No.
+                        </TableHead>
+                        <TableHead className='min-w-[100px]'>Type</TableHead>
+                        <TableHead className='min-w-[80px]'>Size</TableHead>
+                        <TableHead className='min-w-[110px] text-right'>
+                          Weight (kg)
+                        </TableHead>
+                      </>
+                    ) : (
+                      <>
+                        <TableHead className='min-w-[180px]'>
+                          Package Type
+                        </TableHead>
+                        <TableHead className='min-w-[90px]'>Qty</TableHead>
+                        <TableHead className='min-w-[110px]'>
+                          Weight (kg)
+                        </TableHead>
+                      </>
+                    )}
+                    <TableHead className='min-w-[220px]'>Transporter</TableHead>
+                    <TableHead className='min-w-[220px]'>Destination</TableHead>
+                    <TableHead className='min-w-[220px]'>
+                      Empty Return
+                    </TableHead>
+                    <TableHead className='min-w-[130px]'>
+                      Buying (PKR)
+                    </TableHead>
+                    <TableHead className='min-w-[130px]'>
+                      To-Pay (PKR)
+                    </TableHead>
+                    <TableHead className='min-w-[150px]'>
+                      Dispatch Date
+                    </TableHead>
+                    <TableHead className='w-[80px] sticky right-0 bg-gray-50 z-20'>
+                      Actions
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dispatchRecords.map(
+                    (record: DispatchRecord, index: number) => (
+                      <TableRow key={index} className='hover:bg-gray-50'>
+                        <TableCell className='font-medium sticky left-0 bg-white z-10'>
+                          {index + 1}
+                        </TableCell>
+
+                        {isFCL ? (
+                          <>
+                            <TableCell className='font-mono text-sm'>
+                              {record.containerNumber}
+                            </TableCell>
+                            <TableCell>
+                              {getContainerTypeLabel(record.containerTypeId)}
+                            </TableCell>
+                            <TableCell>
+                              {getContainerSizeLabel(record.containerSizeId)}
+                            </TableCell>
+                            <TableCell className='text-right'>
+                              {record.netWeight.toFixed(2)}
+                            </TableCell>
+                          </>
+                        ) : (
+                          <>
+                            <TableCell>
+                              <Select
+                                value={record.packageType || ""}
+                                onValueChange={(value) =>
+                                  updateDispatchRecord(
+                                    index,
+                                    "packageType",
+                                    value,
                                   )
-                                  .map((pkg: any) => (
-                                    <SelectItem
-                                      key={pkg.value}
-                                      value={pkg.label}
-                                    >
-                                      {pkg.label}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type='number'
-                              className='h-9'
-                              value={record.quantity || ""}
-                              onChange={(e) =>
-                                updateDispatchRecord(
-                                  index,
-                                  "quantity",
-                                  parseInt(e.target.value) || 0,
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type='number'
-                              step='0.01'
-                              className='h-9'
-                              value={record.netWeight || ""}
-                              onChange={(e) =>
-                                updateDispatchRecord(
-                                  index,
-                                  "netWeight",
-                                  parseFloat(e.target.value) || 0,
-                                )
-                              }
-                            />
-                          </TableCell>
-                        </>
-                      )}
+                                }
+                              >
+                                <SelectTrigger className='h-9'>
+                                  <SelectValue placeholder='Select' />
+                                </SelectTrigger>
+                                <SelectContent className='max-h-[300px] overflow-y-auto z-50'>
+                                  {packageTypes
+                                    .filter(
+                                      (pkg: any) => pkg?.value && pkg?.label,
+                                    )
+                                    .map((pkg: any) => (
+                                      <SelectItem
+                                        key={pkg.value}
+                                        value={pkg.label}
+                                      >
+                                        {pkg.label}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type='number'
+                                className='h-9'
+                                value={record.quantity || ""}
+                                onChange={(e) =>
+                                  updateDispatchRecord(
+                                    index,
+                                    "quantity",
+                                    parseInt(e.target.value) || 0,
+                                  )
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                className='h-9'
+                                value={record.netWeight || ""}
+                                onChange={(e) =>
+                                  updateDispatchRecord(
+                                    index,
+                                    "netWeight",
+                                    parseFloat(e.target.value) || 0,
+                                  )
+                                }
+                              />
+                            </TableCell>
+                          </>
+                        )}
 
-                      {/* Editable dispatch fields */}
-                      <TableCell>
-                        <Select
-                          value={record.transporterPartyId?.toString() || ""}
-                          onValueChange={(value) =>
-                            updateDispatchRecord(
-                              index,
-                              "transporterPartyId",
-                              parseInt(value),
-                            )
-                          }
-                        >
-                          <SelectTrigger className='h-9'>
-                            <SelectValue placeholder='Select Transporter'>
-                              {record.transporterPartyId
-                                ? getPartyLabel(record.transporterPartyId)
-                                : "Select Transporter"}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {parties
-                              .filter((p: any) => p?.value)
-                              .map((party: any) => (
-                                <SelectItem
-                                  key={party.value}
-                                  value={party.value.toString()}
-                                >
-                                  {party.label || "Unknown"}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
+                        {/* Transporter */}
+                        <TableCell>
+                          <Select
+                            value={record.transporterPartyId?.toString() || ""}
+                            onValueChange={(value) =>
+                              updateDispatchRecord(
+                                index,
+                                "transporterPartyId",
+                                parseInt(value),
+                              )
+                            }
+                          >
+                            <SelectTrigger className='h-9'>
+                              <SelectValue placeholder='Select Transporter'>
+                                {record.transporterPartyId
+                                  ? getPartyLabel(record.transporterPartyId)
+                                  : "Select Transporter"}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent className='max-h-[300px] overflow-y-auto z-50'>
+                              {parties
+                                .filter((p: any) => p?.value)
+                                .map((party: any) => (
+                                  <SelectItem
+                                    key={party.value}
+                                    value={party.value.toString()}
+                                  >
+                                    {party.label || "Unknown"}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
 
-                      <TableCell>
-                        <Select
-                          value={record.destinationLocationId?.toString() || ""}
-                          onValueChange={(value) =>
-                            updateDispatchRecord(
-                              index,
-                              "destinationLocationId",
-                              parseInt(value),
-                            )
-                          }
-                        >
-                          <SelectTrigger className='h-9'>
-                            <SelectValue placeholder='Select Destination'>
-                              {record.destinationLocationId
-                                ? getLocationLabel(record.destinationLocationId)
-                                : "Select Destination"}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {locations
-                              .filter((location: any) => location?.value)
-                              .map((location: any) => (
-                                <SelectItem
-                                  key={location.value}
-                                  value={location.value.toString()}
-                                >
-                                  {location.label || "Unknown"}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
+                        {/* Destination */}
+                        <TableCell>
+                          <Select
+                            value={
+                              record.destinationLocationId?.toString() || ""
+                            }
+                            onValueChange={(value) =>
+                              updateDispatchRecord(
+                                index,
+                                "destinationLocationId",
+                                parseInt(value),
+                              )
+                            }
+                          >
+                            <SelectTrigger className='h-9'>
+                              <SelectValue placeholder='Select Destination'>
+                                {record.destinationLocationId
+                                  ? getLocationLabel(
+                                      record.destinationLocationId,
+                                    )
+                                  : "Select Destination"}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent className='max-h-[300px] overflow-y-auto z-50'>
+                              {locations
+                                .filter((location: any) => location?.value)
+                                .map((location: any) => (
+                                  <SelectItem
+                                    key={location.value}
+                                    value={location.value.toString()}
+                                  >
+                                    {location.label || "Unknown"}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
 
-                      <TableCell>
-                        <Input
-                          type='number'
-                          step='0.01'
-                          className='h-9'
-                          placeholder='0.00'
-                          value={record.buyingAmountLc || ""}
-                          onChange={(e) =>
-                            updateDispatchRecord(
-                              index,
-                              "buyingAmountLc",
-                              parseFloat(e.target.value) || 0,
-                            )
-                          }
-                        />
-                      </TableCell>
+                        {/* ✅ NEW: Empty Return Field */}
+                        <TableCell>
+                          <Select
+                            value={
+                              record.containerReturnTerminalId?.toString() || ""
+                            }
+                            onValueChange={(value) =>
+                              updateDispatchRecord(
+                                index,
+                                "containerReturnTerminalId",
+                                parseInt(value),
+                              )
+                            }
+                          >
+                            <SelectTrigger className='h-9'>
+                              <SelectValue placeholder='Select Return'>
+                                {record.containerReturnTerminalId
+                                  ? getLocationLabel(
+                                      record.containerReturnTerminalId,
+                                    )
+                                  : "Select Return"}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent className='max-h-[300px] overflow-y-auto z-50'>
+                              {locations
+                                .filter((location: any) => location?.value)
+                                .map((location: any) => (
+                                  <SelectItem
+                                    key={location.value}
+                                    value={location.value.toString()}
+                                  >
+                                    {location.label || "Unknown"}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
 
-                      <TableCell>
-                        <Input
-                          type='number'
-                          step='0.01'
-                          className='h-9'
-                          placeholder='0.00'
-                          value={record.topayAmountLc || ""}
-                          onChange={(e) =>
-                            updateDispatchRecord(
-                              index,
-                              "topayAmountLc",
-                              parseFloat(e.target.value) || 0,
-                            )
-                          }
-                        />
-                      </TableCell>
+                        {/* Buying Amount */}
+                        <TableCell>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            className='h-9'
+                            placeholder='0.00'
+                            value={record.buyingAmountLc || ""}
+                            onChange={(e) =>
+                              updateDispatchRecord(
+                                index,
+                                "buyingAmountLc",
+                                parseFloat(e.target.value) || 0,
+                              )
+                            }
+                          />
+                        </TableCell>
 
-                      <TableCell>
-                        <Input
-                          type='date'
-                          className='h-9'
-                          value={record.dispatchDate || ""}
-                          onChange={(e) =>
-                            updateDispatchRecord(
-                              index,
-                              "dispatchDate",
-                              e.target.value,
-                            )
-                          }
-                        />
-                      </TableCell>
+                        {/* To-Pay Amount */}
+                        <TableCell>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            className='h-9'
+                            placeholder='0.00'
+                            value={record.topayAmountLc || ""}
+                            onChange={(e) =>
+                              updateDispatchRecord(
+                                index,
+                                "topayAmountLc",
+                                parseFloat(e.target.value) || 0,
+                              )
+                            }
+                          />
+                        </TableCell>
 
-                      <TableCell>
-                        <Button
-                          type='button'
-                          variant='ghost'
-                          size='sm'
-                          onClick={() => handleDeleteRecord(index)}
-                          className='h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50'
-                        >
-                          ×
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ),
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                        {/* Dispatch Date */}
+                        <TableCell>
+                          <Input
+                            type='date'
+                            className='h-9'
+                            value={record.dispatchDate || ""}
+                            onChange={(e) =>
+                              updateDispatchRecord(
+                                index,
+                                "dispatchDate",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </TableCell>
+
+                        {/* Actions */}
+                        <TableCell className='sticky right-0 bg-white z-10'>
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            size='sm'
+                            onClick={() => handleDeleteRecord(index)}
+                            className='h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50'
+                          >
+                            ×
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ),
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
 
         {/* Summary Footer */}

@@ -122,7 +122,7 @@ export default function JobMainTab(props: JobMainTabProps) {
               />
             </div>
           </div>
-          {/* Status Row */}
+          {/* Status Row 
           <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
             <div className='col-span-2'>
               <FormLabel className='text-xs font-semibold'>Status</FormLabel>
@@ -160,7 +160,7 @@ export default function JobMainTab(props: JobMainTabProps) {
             <div className='col-span-7 text-xs text-gray-500'>
               Current status of the job order
             </div>
-          </div>
+          </div>*/}
           {/* Job Order Date & Process Owner */}
           <div className='grid grid-cols-12 gap-2 mb-3 items-center'>
             <div className='col-span-2'>
