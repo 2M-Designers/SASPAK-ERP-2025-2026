@@ -44,13 +44,13 @@ export const fetchParties = async (setLoading: (loading: boolean) => void) => {
 // API returns object like: {"None":"","Import":"Import","Export":"Export"}
 export const fetchTypeValues = async (
   typeName: string,
-  setLoading?: (loading: boolean) => void
+  setLoading?: (loading: boolean) => void,
 ) => {
   if (setLoading) setLoading(true);
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
     const response = await fetch(
-      `${baseUrl}General/GetTypeValues?typeName=${typeName}`
+      `${baseUrl}General/GetTypeValues?typeName=${typeName}`,
     );
     if (response.ok) {
       const data = await response.json();
@@ -62,7 +62,7 @@ export const fetchTypeValues = async (
         return Object.entries(data)
           .filter(
             ([key, value]) =>
-              value !== "" && value !== null && value !== undefined
+              value !== "" && value !== null && value !== undefined,
           )
           .map(([key, value]) => ({
             value: key,
@@ -88,56 +88,56 @@ export const fetchTypeValues = async (
 
 // Specific fetch functions for Job Main dropdown types
 export const fetchOperationTypes = async (
-  setLoading?: (loading: boolean) => void
+  setLoading?: (loading: boolean) => void,
 ) => {
   return fetchTypeValues("Job_OperationType", setLoading);
 };
 
 export const fetchOperationModes = async (
-  setLoading?: (loading: boolean) => void
+  setLoading?: (loading: boolean) => void,
 ) => {
   return fetchTypeValues("Job_OperationMode", setLoading);
 };
 
 export const fetchJobLoadTypes = async (
-  setLoading?: (loading: boolean) => void
+  setLoading?: (loading: boolean) => void,
 ) => {
   return fetchTypeValues("Job_LoadType", setLoading);
 };
 
 export const fetchJobLoads = async (
-  setLoading?: (loading: boolean) => void
+  setLoading?: (loading: boolean) => void,
 ) => {
   return fetchTypeValues("Job_Load", setLoading);
 };
 
 export const fetchDocumentTypes = async (
-  setLoading?: (loading: boolean) => void
+  setLoading?: (loading: boolean) => void,
 ) => {
   return fetchTypeValues("Job_DocumentType", setLoading);
 };
 
 // Specific fetch functions for Shipping dropdown types
 export const fetchBLStatus = async (
-  setLoading?: (loading: boolean) => void
+  setLoading?: (loading: boolean) => void,
 ) => {
   return fetchTypeValues("Job_BL_Status", setLoading);
 };
 
 export const fetchFreightTypes = async (
-  setLoading?: (loading: boolean) => void
+  setLoading?: (loading: boolean) => void,
 ) => {
   return fetchTypeValues("Freight_Types", setLoading);
 };
 
 export const fetchPackageTypes = async (
-  setLoading?: (loading: boolean) => void
+  setLoading?: (loading: boolean) => void,
 ) => {
   return fetchTypeValues("Job_PackageTypes", setLoading);
 };
 
 export const fetchContainerTypes = async (
-  setLoading: (loading: boolean) => void
+  setLoading: (loading: boolean) => void,
 ) => {
   setLoading(true);
   try {
@@ -171,7 +171,7 @@ export const fetchContainerTypes = async (
 };
 
 export const fetchContainerSizes = async (
-  setLoading: (loading: boolean) => void
+  setLoading: (loading: boolean) => void,
 ) => {
   setLoading(true);
   try {
@@ -205,7 +205,7 @@ export const fetchContainerSizes = async (
 };
 
 export const fetchLocations = async (
-  setLoading: (loading: boolean) => void
+  setLoading: (loading: boolean) => void,
 ) => {
   setLoading(true);
   try {
@@ -239,7 +239,7 @@ export const fetchLocations = async (
 };
 
 export const fetchCountries = async (
-  setLoading: (loading: boolean) => void
+  setLoading: (loading: boolean) => void,
 ) => {
   setLoading(true);
   try {
@@ -273,7 +273,7 @@ export const fetchCountries = async (
 };
 
 export const fetchCurrencies = async (
-  setLoading: (loading: boolean) => void
+  setLoading: (loading: boolean) => void,
 ) => {
   setLoading(true);
   try {
@@ -376,7 +376,7 @@ export const fetchBanks = async (setLoading: (loading: boolean) => void) => {
   setLoading(true);
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-    const response = await fetch(`${baseUrl}Bank/GetList`, {
+    const response = await fetch(`${baseUrl}Banks/GetList`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
