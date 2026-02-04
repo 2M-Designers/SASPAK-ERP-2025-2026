@@ -12,6 +12,7 @@ import ChargesDialog from "@/views/dialogs/general-dialogs/dialog-charges";
 import AppLoader from "@/components/app-loader";
 import { FiTrash2, FiDownload, FiEdit } from "react-icons/fi";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
 
 type ChargesPageProps = {
   initialData: any[];
@@ -56,13 +57,13 @@ const fieldConfig = [
     isselected: true,
   },
   {
-    fieldName: "revenueGLAccountId",
+    fieldName: "revenueGlaccountId",
     displayName: "Revenue GL Account",
     isdisplayed: true,
     isselected: true,
   },
   {
-    fieldName: "costGLAccountId",
+    fieldName: "costGlaccountId",
     displayName: "Cost GL Account",
     isdisplayed: true,
     isselected: true,
@@ -101,35 +102,38 @@ const fieldConfig = [
 
 // Get only displayed fields for the table
 const displayedFields = fieldConfig.filter(
-  (field) => field.isdisplayed && field.isselected
+  (field) => field.isdisplayed && field.isselected,
 );
 
-// Dummy GL Accounts data
-const dummyGLAccounts = [
-  { id: 1, name: "Revenue Account 1", code: "REV001" },
-  { id: 2, name: "Revenue Account 2", code: "REV002" },
-  { id: 3, name: "Cost Account 1", code: "COS001" },
-  { id: 4, name: "Cost Account 2", code: "COS002" },
-  { id: 5, name: "Revenue Account 3", code: "REV003" },
-  { id: 6, name: "Cost Account 3", code: "COS003" },
-];
+// Helper function to safely convert unknown to string | number | null | undefined
+const safeConvert = (value: unknown): string | number | null | undefined => {
+  if (value === null || value === undefined) {
+    return null;
+  }
 
-// Charge Types
-const chargeTypes = [
-  "Freight",
-  "Handling",
-  "Customs",
-  "Insurance",
-  "Storage",
-  "Documentation",
-  "Other",
-];
+  if (typeof value === "string" || typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+
+  // For objects, try to convert to string
+  try {
+    return String(value);
+  } catch {
+    return null;
+  }
+};
 
 export default function ChargesPage({ initialData }: ChargesPageProps) {
   const [data, setData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [glAccounts, setGlAccounts] = useState<any[]>([]);
   const router = useRouter();
+  const { toast } = useToast();
 
   useEffect(() => {
     console.log("Initial Data received:", initialData);
@@ -139,7 +143,63 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
       console.warn("Initial data is not an array:", initialData);
       setData([]);
     }
+
+    // Fetch GL accounts for display
+    fetchGLAccounts();
   }, [initialData]);
+
+  // Fetch GL Accounts
+  const fetchGLAccounts = async () => {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(`${baseUrl}GlAccount/GetList`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          select: "AccountId,AccountCode,AccountName",
+          where: "",
+          sortOn: "AccountCode",
+          page: "1",
+          pageSize: "100",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch GL accounts: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data && Array.isArray(data)) {
+        setGlAccounts(data);
+      }
+    } catch (error) {
+      console.error("Error fetching GL accounts:", error);
+    }
+  };
+
+  // Helper function to get GL account display name
+  const getGLAccountDisplay = (accountId: unknown): string => {
+    const safeId = safeConvert(accountId);
+
+    if (safeId === null || safeId === undefined || safeId === "") {
+      return "Not set";
+    }
+
+    // Convert to number if it's a string
+    const id = typeof safeId === "string" ? parseInt(safeId, 10) : safeId;
+
+    // Check if it's a valid number
+    if (isNaN(id) || id === 0) {
+      return "Not set";
+    }
+
+    const account = glAccounts.find((acc) => acc.accountId === id);
+    return account
+      ? `${account.accountCode} - ${account.accountName}`
+      : `ID: ${id}`;
+  };
 
   // Generate columns based on the static field configuration
   const columns: ColumnDef<any>[] = [
@@ -154,8 +214,8 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
             handleAddEdit={(updatedItem: any) => {
               setData((prev: any) =>
                 prev.map((item: any) =>
-                  item.chargeId === updatedItem.chargeId ? updatedItem : item
-                )
+                  item.chargeId === updatedItem.chargeId ? updatedItem : item,
+                ),
               );
               router.refresh();
             }}
@@ -184,48 +244,75 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
     {
       accessorKey: "chargeCode",
       header: "Charge Code",
-      cell: ({ row }) => (
-        <span className='font-medium'>{row.getValue("chargeCode") || "-"}</span>
-      ),
+      cell: ({ row }) => {
+        const value = row.getValue("chargeCode");
+        return (
+          <span className='font-medium'>
+            {typeof value === "string" || typeof value === "number"
+              ? String(value)
+              : "-"}
+          </span>
+        );
+      },
       enableColumnFilter: false,
     },
     // Charge Name
     {
       accessorKey: "chargeName",
       header: "Charge Name",
-      cell: ({ row }) => (
-        <span className='font-medium'>{row.getValue("chargeName") || "-"}</span>
-      ),
+      cell: ({ row }) => {
+        const value = row.getValue("chargeName");
+        return (
+          <span className='font-medium'>
+            {typeof value === "string" || typeof value === "number"
+              ? String(value)
+              : "-"}
+          </span>
+        );
+      },
       enableColumnFilter: false,
     },
     // Charge Type
     {
       accessorKey: "chargeType",
       header: "Charge Type",
-      cell: ({ row }) => <span>{row.getValue("chargeType") || "-"}</span>,
+      cell: ({ row }) => {
+        const value = row.getValue("chargeType");
+        return (
+          <span>
+            {typeof value === "string" || typeof value === "number"
+              ? String(value)
+              : "-"}
+          </span>
+        );
+      },
       enableColumnFilter: false,
     },
     // Charge Group
     {
       accessorKey: "chargeGroup",
       header: "Charge Group",
-      cell: ({ row }) => <span>{row.getValue("chargeGroup") || "-"}</span>,
+      cell: ({ row }) => {
+        const value = row.getValue("chargeGroup");
+        return (
+          <span>
+            {typeof value === "string" || typeof value === "number"
+              ? String(value)
+              : "-"}
+          </span>
+        );
+      },
       enableColumnFilter: false,
     },
     // Revenue GL Account
     {
-      accessorKey: "revenueGLAccountId",
+      accessorKey: "revenueGlaccountId",
       header: "Revenue GL Account",
       cell: ({ row }) => {
-        const revenueAccountId = row.getValue("revenueGLAccountId");
-        const revenueAccount = dummyGLAccounts.find(
-          (acc) => acc.id === revenueAccountId
-        );
+        const revenueAccountId = row.getValue("revenueGlaccountId");
         return (
-          <span>
-            {revenueAccount
-              ? `${revenueAccount.code} - ${revenueAccount.name}`
-              : "-"}
+          <span className='text-sm'>
+            {getGLAccountDisplay(revenueAccountId)}
           </span>
         );
       },
@@ -233,17 +320,12 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
     },
     // Cost GL Account
     {
-      accessorKey: "costGLAccountId",
+      accessorKey: "costGlaccountId",
       header: "Cost GL Account",
       cell: ({ row }) => {
-        const costAccountId = row.getValue("costGLAccountId");
-        const costAccount = dummyGLAccounts.find(
-          (acc) => acc.id === costAccountId
-        );
+        const costAccountId = row.getValue("costGlaccountId");
         return (
-          <span>
-            {costAccount ? `${costAccount.code} - ${costAccount.name}` : "-"}
-          </span>
+          <span className='text-sm'>{getGLAccountDisplay(costAccountId)}</span>
         );
       },
       enableColumnFilter: false,
@@ -254,7 +336,12 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
       header: "Taxable",
       cell: ({ row }) => {
         const isTaxable = row.getValue("isTaxable");
-        return isTaxable ? (
+        const isTaxableBool =
+          isTaxable === true ||
+          isTaxable === 1 ||
+          isTaxable === "true" ||
+          isTaxable === "1";
+        return isTaxableBool ? (
           <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800'>
             Yes
           </span>
@@ -272,11 +359,17 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
       header: "Tax Percentage",
       cell: ({ row }) => {
         const taxPercentage = row.getValue("defaultTaxPercentage");
-        const taxNum =
-          typeof taxPercentage === "number"
-            ? taxPercentage
-            : parseFloat(String(taxPercentage));
-        return !isNaN(taxNum) ? (
+        let taxNum: number;
+
+        if (typeof taxPercentage === "number") {
+          taxNum = taxPercentage;
+        } else if (typeof taxPercentage === "string") {
+          taxNum = parseFloat(taxPercentage);
+        } else {
+          taxNum = NaN;
+        }
+
+        return !isNaN(taxNum) && taxNum > 0 ? (
           <span className='font-mono'>{taxNum.toFixed(2)}%</span>
         ) : (
           <span>-</span>
@@ -290,7 +383,12 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
       header: "Reimbursable",
       cell: ({ row }) => {
         const isReimbursable = row.getValue("isReimbursable");
-        return isReimbursable ? (
+        const isReimbursableBool =
+          isReimbursable === true ||
+          isReimbursable === 1 ||
+          isReimbursable === "true" ||
+          isReimbursable === "1";
+        return isReimbursableBool ? (
           <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800'>
             Yes
           </span>
@@ -308,7 +406,12 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
       header: "Status",
       cell: ({ row }) => {
         const isActive = row.getValue("isActive");
-        return isActive ? (
+        const isActiveBool =
+          isActive === true ||
+          isActive === 1 ||
+          isActive === "true" ||
+          isActive === "1";
+        return isActiveBool ? (
           <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800'>
             Active
           </span>
@@ -324,21 +427,29 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
     {
       accessorKey: "remarks",
       header: "Remarks",
-      cell: ({ row }) => (
-        <span
-          className='max-w-[200px] truncate'
-          title={row.getValue("remarks") || ""}
-        >
-          {row.getValue("remarks") || "-"}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const value = row.getValue("remarks");
+        const remarkText =
+          typeof value === "string" || typeof value === "number"
+            ? String(value)
+            : "";
+        return (
+          <span className='max-w-[200px] truncate' title={remarkText}>
+            {remarkText || "-"}
+          </span>
+        );
+      },
       enableColumnFilter: false,
     },
   ];
 
   const downloadExcelWithData = () => {
     if (!data || data.length === 0) {
-      alert("No data to export");
+      toast({
+        variant: "destructive",
+        title: "No Data",
+        description: "There is no data to export.",
+      });
       return;
     }
 
@@ -351,13 +462,57 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
 
     // Add data rows
     data.forEach((charge: any) => {
-      const row = displayedFields.map((field) => charge[field.fieldName] || "");
+      const row = displayedFields.map((field) => {
+        let value = charge[field.fieldName];
+
+        // Format boolean values for Excel
+        if (
+          field.fieldName === "isTaxable" ||
+          field.fieldName === "isReimbursable" ||
+          field.fieldName === "isActive"
+        ) {
+          return value ? "Yes" : "No";
+        }
+
+        // Format GL accounts
+        if (field.fieldName === "revenueGlaccountId") {
+          return getGLAccountDisplay(value);
+        }
+
+        if (field.fieldName === "costGlaccountId") {
+          return getGLAccountDisplay(value);
+        }
+
+        // Handle null/undefined values
+        if (value === null || value === undefined) {
+          return "";
+        }
+
+        return String(value);
+      });
       worksheet.addRow(row);
     });
 
-    workbook.xlsx.writeBuffer().then((buffer: any) => {
-      saveAs(new Blob([buffer]), "ChargesMaster.xlsx");
-    });
+    workbook.xlsx
+      .writeBuffer()
+      .then((buffer: any) => {
+        saveAs(
+          new Blob([buffer]),
+          `Charges_${new Date().toISOString().split("T")[0]}.xlsx`,
+        );
+        toast({
+          title: "Export Successful",
+          description: "Charges data has been exported to Excel.",
+        });
+      })
+      .catch((error) => {
+        toast({
+          variant: "destructive",
+          title: "Export Error",
+          description: "Failed to export data to Excel.",
+        });
+        console.error("Excel export error:", error);
+      });
   };
 
   const downloadSampleExcel = () => {
@@ -374,9 +529,9 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
         case "isTaxable":
         case "isReimbursable":
         case "isActive":
-          return true;
+          return "Yes";
         case "defaultTaxPercentage":
-          return 18.0;
+          return "18.00";
         case "chargeCode":
           return "FRE001";
         case "chargeName":
@@ -385,10 +540,10 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
           return "Freight";
         case "chargeGroup":
           return "Transportation";
-        case "revenueGLAccountId":
-          return 1;
-        case "costGLAccountId":
-          return 3;
+        case "revenueGlaccountId":
+          return "1"; // Just the ID in sample
+        case "costGlaccountId":
+          return "3"; // Just the ID in sample
         case "remarks":
           return "Sample remarks for freight charge";
         default:
@@ -398,103 +553,238 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
 
     worksheet.addRow(sampleRow);
 
-    workbook.xlsx.writeBuffer().then((buffer: any) => {
-      saveAs(new Blob([buffer]), "SampleFileCharges.xlsx");
-    });
+    workbook.xlsx
+      .writeBuffer()
+      .then((buffer: any) => {
+        saveAs(new Blob([buffer]), "SampleFileCharges.xlsx");
+        toast({
+          title: "Sample Downloaded",
+          description: "Sample file has been downloaded.",
+        });
+      })
+      .catch((error) => {
+        toast({
+          variant: "destructive",
+          title: "Download Error",
+          description: "Failed to download sample file.",
+        });
+        console.error("Sample download error:", error);
+      });
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files?.[0]) return;
 
-    readXlsxFile(event.target.files[0]).then((rows: any) => {
-      setIsLoading(true);
-      insertData(rows.slice(1)); // Skip header row
-    });
+    const file = event.target.files[0];
+
+    // Check file type
+    if (!file.name.endsWith(".xlsx")) {
+      toast({
+        variant: "destructive",
+        title: "Invalid File",
+        description: "Please upload an Excel (.xlsx) file.",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    readXlsxFile(file)
+      .then((rows: any) => {
+        insertData(rows.slice(1)); // Skip header row
+      })
+      .catch((error) => {
+        setIsLoading(false);
+        toast({
+          variant: "destructive",
+          title: "File Read Error",
+          description:
+            "Failed to read the Excel file. Please check the format.",
+        });
+        console.error("Error reading Excel file:", error);
+      });
   };
 
   const insertData = async (newData: any[]) => {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+    const user = localStorage.getItem("user");
+    let companyId = 1;
+    let userID = 0;
+
+    if (user) {
+      try {
+        const u = JSON.parse(user);
+        userID = u?.userID || 0;
+        companyId = u?.companyId || 1;
+      } catch (error) {
+        console.error("Error parsing user JSON:", error);
+      }
+    }
+
+    const results = {
+      success: 0,
+      failed: 0,
+      errors: [] as string[],
+    };
 
     try {
-      await Promise.all(
-        newData.map(async (row) => {
+      for (const row of newData) {
+        try {
           // Create payload object by mapping Excel columns to field names
           const payload: any = {};
           displayedFields.forEach((field, index) => {
             if (index < row.length) {
               let value = row[index];
-              if (
-                field.fieldName === "isTaxable" ||
-                field.fieldName === "isReimbursable" ||
-                field.fieldName === "isActive"
-              ) {
-                value = Boolean(value);
-              } else if (field.fieldName === "defaultTaxPercentage") {
-                value = parseFloat(value) || 0;
-              } else if (
-                field.fieldName === "revenueGLAccountId" ||
-                field.fieldName === "costGLAccountId"
-              ) {
-                value = parseInt(value) || 0;
+
+              // Handle different field types
+              switch (field.fieldName) {
+                case "isTaxable":
+                case "isReimbursable":
+                case "isActive":
+                  value =
+                    value?.toString().toLowerCase() === "yes" ||
+                    value?.toString().toLowerCase() === "true" ||
+                    value === true ||
+                    value === 1;
+                  break;
+
+                case "defaultTaxPercentage":
+                  value = parseFloat(value) || 0;
+                  break;
+
+                case "revenueGlaccountId":
+                case "costGlaccountId":
+                  // Handle GL account ID
+                  if (value === null || value === undefined || value === "") {
+                    value = 0;
+                  } else {
+                    // Try to parse as number
+                    const numValue = parseFloat(value);
+                    value = isNaN(numValue) ? 0 : numValue;
+                  }
+                  break;
+
+                case "chargeCode":
+                  value = value?.toString().toUpperCase();
+                  break;
+
+                default:
+                  value = value?.toString() || "";
               }
-              payload[field.fieldName] = value;
+
+              // Map field names to API field names
+              const apiFieldName =
+                field.fieldName === "revenueGlaccountId"
+                  ? "RevenueGlaccountId"
+                  : field.fieldName === "costGlaccountId"
+                    ? "CostGlaccountId"
+                    : field.fieldName.charAt(0).toUpperCase() +
+                      field.fieldName.slice(1);
+              payload[apiFieldName] = value;
             }
           });
 
-          await fetch(`${baseUrl}ChargesMaster`, {
+          // Add required fields
+          payload.CompanyId = companyId;
+          payload.CreatedBy = userID;
+          payload.Version = 0;
+
+          const response = await fetch(`${baseUrl}ChargesMaster`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
-        })
-      );
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            results.failed++;
+            results.errors.push(
+              `Row ${results.success + results.failed}: ${errorText}`,
+            );
+          } else {
+            results.success++;
+          }
+        } catch (rowError: any) {
+          results.failed++;
+          results.errors.push(
+            `Row ${results.success + results.failed}: ${rowError.message || "Unknown error"}`,
+          );
+        }
+      }
 
       setIsLoading(false);
-      alert("Charges imported successfully! Refreshing data...");
+
+      if (results.failed === 0) {
+        toast({
+          title: "Import Successful",
+          description: `${results.success} charges imported successfully!`,
+        });
+      } else {
+        toast({
+          variant: results.success > 0 ? "default" : "destructive",
+          title: results.success > 0 ? "Partial Import" : "Import Failed",
+          description: `${results.success} imported, ${results.failed} failed. ${results.errors[0]}`,
+        });
+      }
+
       router.refresh();
-    } catch (error) {
+    } catch (error: any) {
       setIsLoading(false);
-      alert("Error importing charges. Please check the file format.");
+      toast({
+        variant: "destructive",
+        title: "Import Error",
+        description:
+          error.message ||
+          "An error occurred during import. Please check the file format.",
+      });
       console.error("Error importing data:", error);
     }
   };
 
   const handleDelete = async (item: any) => {
-    if (confirm(`Are you sure you want to delete "${item.chargeName}"?`)) {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        const response = await fetch(
-          `${baseUrl}ChargesMaster/${item.chargeId}`,
-          {
-            method: "DELETE",
-          }
-        );
+    if (!confirm(`Are you sure you want to delete "${item.chargeName}"?`)) {
+      return;
+    }
 
-        if (response.ok) {
-          setData((prev: any) =>
-            prev.filter((record: any) => record.chargeId !== item.chargeId)
-          );
-          alert("Charge deleted successfully.");
-        } else {
-          throw new Error("Failed to delete charge");
-        }
-      } catch (error) {
-        alert("Error deleting charge. Please try again.");
-        console.error("Error deleting charge:", error);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(`${baseUrl}ChargesMaster/${item.chargeId}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        setData((prev: any) =>
+          prev.filter((record: any) => record.chargeId !== item.chargeId),
+        );
+        toast({
+          title: "Success",
+          description: "Charge deleted successfully.",
+        });
+        router.refresh();
+      } else {
+        const errorText = await response.text();
+        throw new Error(errorText);
       }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description:
+          error.message || "Error deleting charge. Please try again.",
+      });
+      console.error("Error deleting charge:", error);
     }
   };
 
   const filteredData = data?.filter((item: any) =>
     Object.values(item).some((value: any) =>
-      value?.toString().toLowerCase().includes(searchText.toLowerCase())
-    )
+      value?.toString().toLowerCase().includes(searchText.toLowerCase()),
+    ),
   );
 
   return (
     <div className='p-6 bg-white shadow-md rounded-md'>
       <h1 className='text-2xl font-bold mb-4'>Charges Master</h1>
-      <div className='flex justify-between items-center mb-4'>
+      <div className='flex justify-between items-center mb-4 flex-wrap gap-4'>
         <ChargesDialog
           type='add'
           defaultState={{}}
@@ -503,7 +793,7 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
             router.refresh();
           }}
         />
-        <div className='flex gap-3 items-center'>
+        <div className='flex gap-3 items-center flex-wrap'>
           <Button
             onClick={downloadSampleExcel}
             className='flex items-center gap-2'
@@ -525,9 +815,10 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
             <span className='text-sm text-gray-600'>Import:</span>
             <Input
               type='file'
-              accept='.xlsx'
+              accept='.xlsx,.xls'
               onChange={handleFileUpload}
               className='w-auto'
+              disabled={isLoading}
             />
           </div>
           <Input
@@ -540,10 +831,14 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
         </div>
       </div>
 
-      {data && data.length > 0 ? (
+      {isLoading ? (
+        <div className='flex justify-center items-center py-12'>
+          <AppLoader />
+        </div>
+      ) : data && data.length > 0 ? (
         <AppDataTable
           data={filteredData ?? []}
-          loading={isLoading}
+          loading={false}
           columns={columns}
           searchText={searchText}
           searchBy='chargeName'
@@ -551,17 +846,15 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
           isMultiSearch
         />
       ) : (
-        <div className='text-center py-8'>
-          <p className='text-gray-500 text-lg'>No charges found</p>
-          <p className='text-gray-400 text-sm mt-2'>
+        <div className='text-center py-12 border rounded-lg bg-gray-50'>
+          <p className='text-gray-500 text-lg mb-2'>No charges found</p>
+          <p className='text-gray-400 text-sm'>
             {initialData === null
-              ? "Loading..."
-              : "Add your first charge using the button above"}
+              ? "Loading charges data..."
+              : "Add your first charge using the 'Add Charge' button above"}
           </p>
         </div>
       )}
-
-      {isLoading && <AppLoader />}
     </div>
   );
 }
