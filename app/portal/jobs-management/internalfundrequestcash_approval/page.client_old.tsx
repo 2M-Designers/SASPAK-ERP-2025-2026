@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { AppDataTable } from "@/components/app-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ColumnDef } from "@tanstack/react-table";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
@@ -22,6 +23,7 @@ import {
   FiCheckCircle,
   FiClock,
   FiXCircle,
+  FiCheck,
 } from "react-icons/fi";
 import {
   Tooltip,
@@ -63,6 +65,7 @@ type InternalFundRequest = {
   beneficiaryCoaId: number;
   headOfAccount?: string;
   beneficiary?: string;
+  partiesAccount?: string;
   requestedAmount: number;
   approvedAmount?: number;
   approvalStatus: string;
@@ -218,8 +221,13 @@ export default function InternalFundRequestPage({
     useState<InternalFundRequest | null>(null);
   const [activeTab, setActiveTab] = useState("ALL_REQUESTS");
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [selectedRequestDetails, setSelectedRequestDetails] =
     useState<InternalFundRequest | null>(null);
+  const [requestToApprove, setRequestToApprove] =
+    useState<InternalFundRequest | null>(null);
+  const [approvedAmount, setApprovedAmount] = useState<number>(0);
+  const [isApproving, setIsApproving] = useState(false);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const { toast } = useToast();
 
@@ -231,52 +239,103 @@ export default function InternalFundRequestPage({
     { value: "PAID", label: "Paid" },
   ];
 
-  const fetchFundRequests = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(
-        `${baseUrl}InternalCashFundsRequest/GetList`,
-        {
+  const fetchFundRequests = useCallback(
+    async (silent: boolean = false) => {
+      if (!silent) {
+        console.log("🔄 Fetching fund requests list...");
+      }
+      setIsLoading(true);
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+        if (!baseUrl) {
+          throw new Error("NEXT_PUBLIC_BASE_URL is not configured");
+        }
+
+        const url = `${baseUrl}InternalCashFundsRequest/GetList`;
+        console.log(`📡 Calling: ${url}`);
+
+        const response = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             select:
-              "InternalFundsRequestCashId, JobId, Job.JobNumber, HeadCoaId, BeneficiaryCoaId, HeadOfAccount, Beneficiary, RequestedAmount, ApprovedAmount, ApprovalStatus, ApprovedBy, ApprovedOn, RequestedTo, CreatedOn, CreatedBy, Version",
+              "InternalFundsRequestCashId, JobId, Job.JobNumber, HeadCoaId, BeneficiaryCoaId, HeadOfAccount, Beneficiary, PartiesAccount, RequestedAmount, ApprovedAmount, ApprovalStatus, ApprovedBy, ApprovedOn, RequestedTo, CreatedOn, CreatedBy, Version",
             where: "",
             sortOn: "InternalFundsRequestCashId DESC",
             page: "1",
             pageSize: "100",
           }),
-        },
-      );
-
-      if (response.ok) {
-        const requestData = await response.json();
-        setData(requestData);
-
-        toast({
-          title: "Success",
-          description: `Loaded ${requestData.length} fund requests`,
         });
-      } else {
-        throw new Error("Failed to fetch fund requests");
+
+        if (response.ok) {
+          const requestData = await response.json();
+          console.log(`✅ Loaded ${requestData.length} fund requests`);
+
+          if (!silent) {
+            // Show sample of data in console
+            console.log("Sample data (first 3 items):");
+            requestData
+              .slice(0, 3)
+              .forEach((item: InternalFundRequest, idx: number) => {
+                console.log(
+                  `  ${idx + 1}. ID:${item.internalFundsRequestCashId} Job:${item.jobNumber} Status:${item.approvalStatus} Amt:${item.requestedAmount}`,
+                );
+              });
+          } else {
+            console.log("  (Silent refresh - no toast)");
+          }
+
+          setData(requestData);
+
+          if (!silent) {
+            toast({
+              title: "Success",
+              description: `Loaded ${requestData.length} fund requests`,
+            });
+          }
+        } else {
+          const errorText = await response.text();
+          throw new Error(
+            `Failed to fetch: ${response.status} ${response.statusText} - ${errorText}`,
+          );
+        }
+      } catch (error) {
+        console.error("❌ Error fetching fund requests:", error);
+
+        // More specific error messages
+        if (error instanceof TypeError && error.message === "Failed to fetch") {
+          console.error("🔴 Network error - possible causes:");
+          console.error("  1. Server is down or unreachable");
+          console.error("  2. CORS is blocking the request");
+          console.error("  3. Network is disabled in browser/app");
+          console.error(
+            "  4. URL is incorrect:",
+            process.env.NEXT_PUBLIC_BASE_URL,
+          );
+        }
+
+        if (!silent) {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description:
+              "Failed to load fund requests list. Please check your connection.",
+          });
+        }
+
+        // Re-throw so caller knows it failed
+        throw error;
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Error fetching fund requests:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load fund requests list",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
+    },
+    [toast],
+  );
 
   useEffect(() => {
     if (!initialData) {
-      fetchFundRequests();
+      fetchFundRequests(false);
     }
   }, [initialData, fetchFundRequests]);
 
@@ -358,7 +417,7 @@ export default function InternalFundRequestPage({
   const handleAddEditComplete = (updatedItem: any) => {
     setShowForm(false);
     setSelectedRequest(null);
-    fetchFundRequests();
+    fetchFundRequests(false);
   };
 
   const handleDelete = async (item: InternalFundRequest) => {
@@ -405,6 +464,229 @@ export default function InternalFundRequestPage({
   const handleViewDetails = async (request: InternalFundRequest) => {
     setSelectedRequestDetails(request);
     setViewDialogOpen(true);
+  };
+
+  const handleApproveClick = (request: InternalFundRequest) => {
+    console.log("Opening approval dialog for request:", request);
+    setRequestToApprove(request);
+    setApprovedAmount(request.requestedAmount); // Default to requested amount
+    setApprovalDialogOpen(true);
+  };
+
+  const handleApproveSubmit = async () => {
+    if (!requestToApprove) return;
+
+    console.log("=".repeat(80));
+    console.log("🚀 APPROVAL PROCESS STARTED");
+    console.log("=".repeat(80));
+    console.log("Request ID:", requestToApprove.internalFundsRequestCashId);
+    console.log("Job Number:", requestToApprove.jobNumber);
+    console.log("Current Status:", requestToApprove.approvalStatus);
+    console.log("Requested Amount:", requestToApprove.requestedAmount);
+    console.log("Amount to Approve:", approvedAmount);
+
+    // Get userId from localStorage
+    const storedUserId = localStorage.getItem("userId");
+    if (!storedUserId) {
+      console.error("❌ No userId found in localStorage!");
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "User ID not found. Please log in again.",
+      });
+      return;
+    }
+
+    const userId = parseInt(storedUserId, 10);
+    console.log("✅ User ID from localStorage:", userId);
+
+    // Validation
+    if (!approvedAmount || approvedAmount <= 0) {
+      console.error("❌ Invalid approved amount:", approvedAmount);
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please enter a valid approved amount",
+      });
+      return;
+    }
+
+    setIsApproving(true);
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+      const payload = {
+        internalFundsRequestCashId: requestToApprove.internalFundsRequestCashId,
+        jobId: requestToApprove.jobId,
+        headCoaId: requestToApprove.headCoaId,
+        beneficiaryCoaId: requestToApprove.beneficiaryCoaId,
+        headOfAccount: requestToApprove.headOfAccount,
+        beneficiary: requestToApprove.beneficiary,
+        partiesAccount: requestToApprove.partiesAccount,
+        requestedAmount: requestToApprove.requestedAmount,
+        approvedAmount: approvedAmount,
+        approvalStatus: "APPROVED",
+        approvedBy: userId.toString(),
+        approvedOn: new Date().toISOString(),
+        requestedTo: requestToApprove.requestedTo?.toString() || null,
+        createdBy: requestToApprove.createdBy?.toString() || null,
+        createdOn: requestToApprove.createdOn,
+        version: requestToApprove.version,
+      };
+
+      console.log("-".repeat(80));
+      console.log("📦 PUT REQUEST PAYLOAD:");
+      console.log(JSON.stringify(payload, null, 2));
+      console.log("-".repeat(80));
+
+      const updateUrl = `${baseUrl}InternalCashFundsRequest`;
+      console.log("📡 Sending PUT (update) to:", updateUrl);
+
+      const response = await fetch(updateUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      console.log(
+        `📡 PUT Response Status: ${response.status} ${response.statusText}`,
+      );
+
+      if (response.ok) {
+        const responseData = await response.json();
+        console.log("✅ PUT SUCCESS! Server Response:");
+        console.log(JSON.stringify(responseData, null, 2));
+
+        toast({
+          title: "Success",
+          description: `Fund request approved with amount ${new Intl.NumberFormat("en-US", { style: "currency", currency: "PKR" }).format(approvedAmount)}`,
+        });
+
+        // Capture ID before clearing state
+        const approvedRequestId = requestToApprove.internalFundsRequestCashId;
+
+        console.log("🔄 Closing dialog and resetting state...");
+        setApprovalDialogOpen(false);
+        setRequestToApprove(null);
+        setApprovedAmount(0);
+
+        console.log("🔄 Fetching updated list (silent refresh)...");
+        console.log("Current data count BEFORE refresh:", data.length);
+
+        try {
+          await fetchFundRequests(true);
+          console.log("✅ Refresh successful!");
+          console.log("Current data count AFTER refresh:", data.length);
+
+          // Wait a bit for React state to update, then check
+          setTimeout(() => {
+            const updatedItem = data.find(
+              (item) => item.internalFundsRequestCashId === approvedRequestId,
+            );
+            console.log("🔍 Updated item in data array:");
+            if (updatedItem) {
+              console.log("  Status:", updatedItem.approvalStatus);
+              console.log("  Approved Amount:", updatedItem.approvedAmount);
+              console.log("  Approved By:", updatedItem.approvedBy);
+              console.log("  Approved On:", updatedItem.approvedOn);
+
+              if (updatedItem.approvalStatus === "APPROVED") {
+                console.log("✅ SUCCESS! Item updated correctly in state!");
+              } else {
+                console.error(
+                  "❌ PROBLEM! Item still shows status:",
+                  updatedItem.approvalStatus,
+                );
+                console.error(
+                  "This means the backend didn't save the approval or GetList returned stale data!",
+                );
+              }
+            } else {
+              console.error("❌ PROBLEM! Item not found in data array!");
+            }
+          }, 500);
+        } catch (refreshError) {
+          console.warn(
+            "⚠️ Auto-refresh failed (this is OK - approval succeeded):",
+            refreshError,
+          );
+          console.log(
+            "💡 Click the Refresh button to update the list manually",
+          );
+
+          // Update local state optimistically since refresh failed
+          console.log("🔄 Updating local state optimistically...");
+          setData((prev) =>
+            prev.map((item) =>
+              item.internalFundsRequestCashId === approvedRequestId
+                ? {
+                    ...item,
+                    approvedAmount: approvedAmount,
+                    approvalStatus: "APPROVED",
+                    approvedBy: userId,
+                    approvedOn: new Date().toISOString(),
+                    version: item.version + 1,
+                  }
+                : item,
+            ),
+          );
+          console.log("✅ Local state updated");
+
+          // Show a friendly message to user
+          toast({
+            title: "Approval Successful",
+            description:
+              "Fund request approved. Click Refresh to see the latest data.",
+            variant: "default",
+          });
+
+          // Don't throw - approval succeeded, refresh is optional
+        }
+
+        console.log("=".repeat(80));
+        console.log("✅ APPROVAL PROCESS COMPLETED");
+        console.log("=".repeat(80));
+      } else {
+        const errorText = await response.text();
+        console.error("❌ PUT FAILED!");
+        console.error("Status:", response.status);
+        console.error("Response:", errorText);
+
+        let errorMessage = `Failed to approve request: ${response.status}`;
+        try {
+          const errorJson = JSON.parse(errorText);
+          console.error("Parsed error:", errorJson);
+          if (errorJson.errors) {
+            const errors = Object.entries(errorJson.errors)
+              .map(
+                ([key, msgs]) =>
+                  `${key}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`,
+              )
+              .join("; ");
+            errorMessage = errors;
+            console.error("Validation errors:", errors);
+          } else if (errorJson.title) {
+            errorMessage = errorJson.title;
+          }
+        } catch (e) {
+          errorMessage = errorText || errorMessage;
+        }
+
+        throw new Error(errorMessage);
+      }
+    } catch (error) {
+      console.error("💥 APPROVAL PROCESS FAILED!");
+      console.error("Error:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: `Failed to approve request: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+    } finally {
+      setIsApproving(false);
+      console.log("🏁 setIsApproving(false)");
+    }
   };
 
   const downloadExcelWithData = (
@@ -565,7 +847,10 @@ export default function InternalFundRequestPage({
               <TooltipTrigger asChild>
                 <button
                   className='p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors'
-                  onClick={() => handleViewDetails(row.original)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleViewDetails(row.original);
+                  }}
                 >
                   <FiEye size={14} />
                 </button>
@@ -575,39 +860,27 @@ export default function InternalFundRequestPage({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className='p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors'
-                  onClick={() => {
-                    setSelectedRequest(row.original);
-                    setShowForm(true);
-                  }}
-                >
-                  <FiEdit size={14} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className='text-xs'>Edit Request</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className='p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors'
-                  onClick={() => handleDelete(row.original)}
-                >
-                  <FiTrash2 size={14} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className='text-xs'>Delete Request</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+
+          {row.original.approvalStatus === "PENDING" && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className='p-1.5 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-md transition-colors'
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleApproveClick(row.original);
+                    }}
+                  >
+                    <FiCheck size={14} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className='text-xs'>Approve Request</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       ),
     },
@@ -700,6 +973,124 @@ export default function InternalFundRequestPage({
     },
   ];
 
+  const ApprovalDialog = () => {
+    return (
+      <Dialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen}>
+        <DialogContent
+          className='max-w-md'
+          onClick={(e) => e.stopPropagation()}
+        >
+          <DialogHeader>
+            <DialogTitle className='flex items-center gap-2'>
+              <FiCheck className='h-5 w-5 text-green-600' />
+              Approve Fund Request
+            </DialogTitle>
+            <DialogDescription>
+              Review and approve the fund request for Job{" "}
+              {requestToApprove?.jobNumber}
+            </DialogDescription>
+          </DialogHeader>
+
+          {requestToApprove && (
+            <div className='space-y-4'>
+              <div className='bg-gray-50 p-3 rounded-lg space-y-2'>
+                <div className='flex justify-between text-sm'>
+                  <span className='text-gray-600'>Job Number:</span>
+                  <span className='font-medium'>
+                    {requestToApprove.jobNumber}
+                  </span>
+                </div>
+                <div className='flex justify-between text-sm'>
+                  <span className='text-gray-600'>Beneficiary:</span>
+                  <span className='font-medium'>
+                    {requestToApprove.beneficiary}
+                  </span>
+                </div>
+                <div className='flex justify-between text-sm'>
+                  <span className='text-gray-600'>Requested Amount:</span>
+                  <span className='font-medium text-blue-700'>
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "PKR",
+                    }).format(requestToApprove.requestedAmount || 0)}
+                  </span>
+                </div>
+              </div>
+
+              <div className='space-y-2'>
+                <Label htmlFor='approvedAmount' className='text-sm font-medium'>
+                  Approved Amount <span className='text-red-500'>*</span>
+                </Label>
+                <div className='relative'>
+                  <FiDollarSign className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4' />
+                  <Input
+                    id='approvedAmount'
+                    type='number'
+                    min='0'
+                    step='0.01'
+                    value={approvedAmount}
+                    onChange={(e) =>
+                      setApprovedAmount(parseFloat(e.target.value) || 0)
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                    onFocus={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleApproveSubmit();
+                      }
+                    }}
+                    className='pl-9'
+                    placeholder='Enter approved amount'
+                    autoFocus
+                  />
+                </div>
+                <p className='text-xs text-gray-600'>
+                  Default is the requested amount. You can modify if needed.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => {
+                setApprovalDialogOpen(false);
+                setRequestToApprove(null);
+                setApprovedAmount(0);
+              }}
+              disabled={isApproving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type='button'
+              onClick={handleApproveSubmit}
+              disabled={isApproving || !approvedAmount || approvedAmount <= 0}
+              className='bg-green-600 hover:bg-green-700'
+            >
+              {isApproving ? (
+                <>
+                  <div className='h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent mr-2' />
+                  Approving...
+                </>
+              ) : (
+                <>
+                  <FiCheck className='mr-2 h-4 w-4' />
+                  Approve Request
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   const ViewRequestDialog = () => {
     const [detailsLoading, setDetailsLoading] = useState(false);
     const [enrichedRequest, setEnrichedRequest] = useState<any>(null);
@@ -721,7 +1112,10 @@ export default function InternalFundRequestPage({
 
     return (
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className='max-w-2xl max-h-[80vh] overflow-y-auto'>
+        <DialogContent
+          className='max-w-2xl max-h-[80vh] overflow-y-auto'
+          onClick={(e) => e.stopPropagation()}
+        >
           <DialogHeader>
             <DialogTitle className='flex items-center gap-2'>
               <FiEye className='h-5 w-5' />
@@ -966,7 +1360,7 @@ export default function InternalFundRequestPage({
           </div>
           <div className='flex gap-2'>
             <Button
-              onClick={fetchFundRequests}
+              onClick={() => fetchFundRequests(false)}
               variant='outline'
               size='sm'
               className='flex items-center gap-1.5'
@@ -1146,6 +1540,7 @@ export default function InternalFundRequestPage({
 
       {isLoading && <AppLoader />}
       <ViewRequestDialog />
+      <ApprovalDialog />
     </div>
   );
 }

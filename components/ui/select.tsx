@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 
 interface SelectProps {
@@ -11,6 +12,14 @@ interface SelectProps {
   className?: string;
 }
 
+interface SelectContentProps {
+  children: React.ReactNode;
+  className?: string;
+  position?: "popper" | "item-aligned";
+  sideOffset?: number;
+  style?: React.CSSProperties;
+}
+
 interface SelectContextType {
   selectedValue: string;
   onValueChange: (value: string) => void;
@@ -18,10 +27,12 @@ interface SelectContextType {
   setIsOpen: (open: boolean) => void;
   placeholder?: string;
   disabled?: boolean;
+  triggerRef: React.RefObject<HTMLDivElement>;
+  contentRef: React.RefObject<HTMLDivElement>;
 }
 
 const SelectContext = React.createContext<SelectContextType | undefined>(
-  undefined
+  undefined,
 );
 
 export function Select({
@@ -35,8 +46,10 @@ export function Select({
 }: SelectProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [internalValue, setInternalValue] = React.useState(
-    value || defaultValue || ""
+    value || defaultValue || "",
   );
+  const triggerRef = React.useRef<HTMLDivElement>(null);
+  const contentRef = React.useRef<HTMLDivElement>(null);
 
   // Update internal value when external value changes
   React.useEffect(() => {
@@ -44,6 +57,34 @@ export function Select({
       setInternalValue(value);
     }
   }, [value]);
+
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+
+      // Check if click is outside both trigger and content
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(target) &&
+        contentRef.current &&
+        !contentRef.current.contains(target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    // Use timeout to let item click handler fire first
+    setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+    }, 0);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
 
   const handleValueChange = (newValue: string) => {
     setInternalValue(newValue);
@@ -60,6 +101,8 @@ export function Select({
     setIsOpen,
     placeholder,
     disabled,
+    triggerRef,
+    contentRef,
   };
 
   return (
@@ -83,6 +126,7 @@ export function SelectTrigger({
 
   return (
     <div
+      ref={context.triggerRef}
       className={`flex items-center justify-between w-full p-2 border rounded-md ${
         context.disabled
           ? "bg-gray-100 cursor-not-allowed opacity-60"
@@ -112,13 +156,9 @@ export function SelectValue({
     throw new Error("SelectValue must be used within a Select component");
   }
 
-  // Use children if provided, otherwise fall back to selected value
+  // Priority: children (display text) > placeholder > default
   const displayValue =
-    children ||
-    context.selectedValue ||
-    placeholder ||
-    context.placeholder ||
-    "Select an option";
+    children || placeholder || context.placeholder || "Select an option";
 
   return (
     <span
@@ -132,24 +172,92 @@ export function SelectValue({
 export function SelectContent({
   children,
   className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+  position = "popper",
+  sideOffset = 5,
+  style = {},
+}: SelectContentProps) {
   const context = React.useContext(SelectContext);
+  const [dropdownStyle, setDropdownStyle] = React.useState<React.CSSProperties>(
+    {},
+  );
+
   if (!context) {
     throw new Error("SelectContent must be used within a Select component");
   }
 
+  // Calculate dropdown position
+  React.useEffect(() => {
+    if (!context.isOpen || !context.triggerRef.current) return;
+
+    const updatePosition = () => {
+      const trigger = context.triggerRef.current;
+      if (!trigger) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      const spaceBelow = viewportHeight - rect.bottom;
+      const spaceAbove = rect.top;
+
+      let top = rect.bottom + sideOffset + window.scrollY;
+      let maxHeight = Math.min(300, spaceBelow - 20);
+
+      // If not enough space below and more space above, position above
+      if (spaceBelow < 300 && spaceAbove > spaceBelow) {
+        top = rect.top - sideOffset + window.scrollY;
+        maxHeight = Math.min(300, spaceAbove - 20);
+        setDropdownStyle({
+          position: "absolute",
+          top: "auto",
+          bottom: `${viewportHeight - rect.top + sideOffset}px`,
+          left: `${rect.left + window.scrollX}px`,
+          width: `${rect.width}px`,
+          maxHeight: `${maxHeight}px`,
+          zIndex: 9999,
+        });
+      } else {
+        setDropdownStyle({
+          position: "absolute",
+          top: `${top}px`,
+          left: `${rect.left + window.scrollX}px`,
+          width: `${rect.width}px`,
+          maxHeight: `${maxHeight}px`,
+          zIndex: 9999,
+        });
+      }
+    };
+
+    updatePosition();
+
+    // Update position on scroll/resize
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [context.isOpen, context.triggerRef, sideOffset]);
+
   if (!context.isOpen || context.disabled) return null;
 
-  return (
+  // Render dropdown using portal
+  const dropdownContent = (
     <div
-      className={`absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto ${className}`}
+      ref={context.contentRef}
+      className={`bg-white border rounded-md shadow-lg overflow-hidden ${className}`}
+      style={{ ...dropdownStyle, ...style }}
     >
       {children}
     </div>
   );
+
+  // Render in portal to escape table overflow
+  if (typeof document !== "undefined") {
+    return createPortal(dropdownContent, document.body);
+  }
+
+  return null;
 }
 
 export function SelectItem({
@@ -168,7 +276,9 @@ export function SelectItem({
 
   const isSelected = context.selectedValue === value;
 
-  const handleClick = () => {
+  const handleSelect = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     context.onValueChange(value);
   };
 
@@ -179,7 +289,7 @@ export function SelectItem({
           ? "bg-blue-100 text-blue-800 font-medium"
           : "hover:bg-gray-100"
       } ${className}`}
-      onClick={handleClick}
+      onMouseDown={handleSelect}
     >
       {children}
     </div>
