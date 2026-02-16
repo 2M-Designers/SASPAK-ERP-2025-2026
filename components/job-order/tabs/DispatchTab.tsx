@@ -30,7 +30,7 @@ interface DispatchRecord {
   netWeight: number;
   transporterPartyId?: number;
   destinationLocationId?: number;
-  containerReturnTerminalId?: number; // ✅ NEW: Empty Return field
+  containerReturnTerminalId?: number;
   buyingAmountLc: number;
   topayAmountLc: number;
   dispatchDate: string;
@@ -43,6 +43,7 @@ export default function DispatchTab({
   form,
   fclContainers = [],
   parties = [],
+  transporters = [], // ✅ NEW: Filtered transporter list (IsTransporter=true)
   locations = [],
   containerTypes = [],
   containerSizes = [],
@@ -55,7 +56,7 @@ export default function DispatchTab({
   const [applyToAllValues, setApplyToAllValues] = useState({
     transporterPartyId: undefined as number | undefined,
     destinationLocationId: undefined as number | undefined,
-    containerReturnTerminalId: undefined as number | undefined, // ✅ NEW
+    containerReturnTerminalId: undefined as number | undefined,
     buyingAmountLc: 0,
     topayAmountLc: 0,
     dispatchDate: "",
@@ -76,7 +77,7 @@ export default function DispatchTab({
           netWeight: container.tareWeight || 0,
           transporterPartyId: undefined,
           destinationLocationId: undefined,
-          containerReturnTerminalId: undefined, // ✅ NEW
+          containerReturnTerminalId: undefined,
           buyingAmountLc: 0,
           topayAmountLc: 0,
           dispatchDate: "",
@@ -120,7 +121,6 @@ export default function DispatchTab({
         destinationLocationId: applyToAllValues.destinationLocationId,
       }),
       ...(applyToAllValues.containerReturnTerminalId && {
-        // ✅ NEW
         containerReturnTerminalId: applyToAllValues.containerReturnTerminalId,
       }),
       ...(applyToAllValues.buyingAmountLc > 0 && {
@@ -150,7 +150,7 @@ export default function DispatchTab({
       netWeight: 0,
       transporterPartyId: undefined,
       destinationLocationId: undefined,
-      containerReturnTerminalId: undefined, // ✅ NEW
+      containerReturnTerminalId: undefined,
       buyingAmountLc: 0,
       topayAmountLc: 0,
       dispatchDate: "",
@@ -241,16 +241,19 @@ export default function DispatchTab({
         </div>
 
         <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-4'>
+          {/* Transporter */}
           <div className='space-y-2'>
             <Label>Transporter</Label>
             <Select
-              value={applyToAllValues.transporterPartyId?.toString() || ""}
-              onValueChange={(value) =>
+              key={`transporter-${applyToAllValues.transporterPartyId || "none"}`}
+              defaultValue={applyToAllValues.transporterPartyId?.toString()}
+              onValueChange={(value) => {
+                console.log("Transporter selected:", value);
                 setApplyToAllValues({
                   ...applyToAllValues,
                   transporterPartyId: parseInt(value),
-                })
-              }
+                });
+              }}
             >
               <SelectTrigger>
                 <SelectValue placeholder='Select Transporter'>
@@ -259,8 +262,12 @@ export default function DispatchTab({
                     : "Select Transporter"}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent>
-                {parties
+              <SelectContent
+                position='popper'
+                sideOffset={5}
+                className='max-h-[300px] overflow-y-auto'
+              >
+                {(transporters.length > 0 ? transporters : parties)
                   .filter((p: any) => p?.value)
                   .map((party: any) => (
                     <SelectItem
@@ -272,18 +279,32 @@ export default function DispatchTab({
                   ))}
               </SelectContent>
             </Select>
+            {applyToAllValues.transporterPartyId && (
+              <p className='text-xs text-green-600'>
+                ✅ Selected:{" "}
+                {getPartyLabel(applyToAllValues.transporterPartyId)}
+              </p>
+            )}
+            <p className='text-xs text-gray-500'>
+              {transporters.length > 0
+                ? `${transporters.length} transporter(s) available`
+                : `Using all parties (${parties.length})`}
+            </p>
           </div>
 
+          {/* Destination */}
           <div className='space-y-2'>
             <Label>Destination</Label>
             <Select
-              value={applyToAllValues.destinationLocationId?.toString() || ""}
-              onValueChange={(value) =>
+              key={`destination-${applyToAllValues.destinationLocationId || "none"}`}
+              defaultValue={applyToAllValues.destinationLocationId?.toString()}
+              onValueChange={(value) => {
+                console.log("Destination selected:", value);
                 setApplyToAllValues({
                   ...applyToAllValues,
                   destinationLocationId: parseInt(value),
-                })
-              }
+                });
+              }}
             >
               <SelectTrigger>
                 <SelectValue placeholder='Select Destination'>
@@ -292,7 +313,11 @@ export default function DispatchTab({
                     : "Select Destination"}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent
+                position='popper'
+                sideOffset={5}
+                className='max-h-[300px] overflow-y-auto'
+              >
                 {locations
                   .filter((location: any) => location?.value)
                   .map((location: any) => (
@@ -305,21 +330,27 @@ export default function DispatchTab({
                   ))}
               </SelectContent>
             </Select>
+            {applyToAllValues.destinationLocationId && (
+              <p className='text-xs text-green-600'>
+                ✅ Selected:{" "}
+                {getLocationLabel(applyToAllValues.destinationLocationId)}
+              </p>
+            )}
           </div>
 
-          {/* ✅ NEW: Empty Return Field */}
+          {/* Empty Return */}
           <div className='space-y-2'>
             <Label>Empty Return (Terminal)</Label>
             <Select
-              value={
-                applyToAllValues.containerReturnTerminalId?.toString() || ""
-              }
-              onValueChange={(value) =>
+              key={`return-${applyToAllValues.containerReturnTerminalId || "none"}`}
+              defaultValue={applyToAllValues.containerReturnTerminalId?.toString()}
+              onValueChange={(value) => {
+                console.log("Return terminal selected:", value);
                 setApplyToAllValues({
                   ...applyToAllValues,
                   containerReturnTerminalId: parseInt(value),
-                })
-              }
+                });
+              }}
             >
               <SelectTrigger>
                 <SelectValue placeholder='Select Return Terminal'>
@@ -330,7 +361,11 @@ export default function DispatchTab({
                     : "Select Return Terminal"}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent
+                position='popper'
+                sideOffset={5}
+                className='max-h-[300px] overflow-y-auto'
+              >
                 {locations
                   .filter((location: any) => location?.value)
                   .map((location: any) => (
@@ -343,6 +378,12 @@ export default function DispatchTab({
                   ))}
               </SelectContent>
             </Select>
+            {applyToAllValues.containerReturnTerminalId && (
+              <p className='text-xs text-green-600'>
+                ✅ Selected:{" "}
+                {getLocationLabel(applyToAllValues.containerReturnTerminalId)}
+              </p>
+            )}
             <p className='text-xs text-gray-500'>Container return location</p>
           </div>
 
@@ -431,7 +472,7 @@ export default function DispatchTab({
           </div>
         ) : (
           <>
-            {/* ✅ IMPROVED: Better scrollbar and fixed dropdown behavior */}
+            {/* ✅ Better scrollbar styling */}
             <style jsx>{`
               .dispatch-table-wrapper::-webkit-scrollbar {
                 width: 14px;
@@ -448,6 +489,9 @@ export default function DispatchTab({
               }
               .dispatch-table-wrapper::-webkit-scrollbar-thumb:hover {
                 background: #555;
+              }
+              .dispatch-table-wrapper::-webkit-scrollbar-corner {
+                background: #f1f1f1;
               }
               /* Firefox */
               .dispatch-table-wrapper {
@@ -531,7 +575,8 @@ export default function DispatchTab({
                           <>
                             <TableCell>
                               <Select
-                                value={record.packageType || ""}
+                                key={`pkg-${index}-${record.packageType || "none"}`}
+                                defaultValue={record.packageType}
                                 onValueChange={(value) =>
                                   updateDispatchRecord(
                                     index,
@@ -543,7 +588,11 @@ export default function DispatchTab({
                                 <SelectTrigger className='h-9'>
                                   <SelectValue placeholder='Select' />
                                 </SelectTrigger>
-                                <SelectContent className='max-h-[300px] overflow-y-auto z-50'>
+                                <SelectContent
+                                  position='popper'
+                                  sideOffset={5}
+                                  className='max-h-[300px] overflow-y-auto z-50'
+                                >
                                   {packageTypes
                                     .filter(
                                       (pkg: any) => pkg?.value && pkg?.label,
@@ -594,7 +643,8 @@ export default function DispatchTab({
                         {/* Transporter */}
                         <TableCell>
                           <Select
-                            value={record.transporterPartyId?.toString() || ""}
+                            key={`trans-${index}-${record.transporterPartyId || "none"}`}
+                            defaultValue={record.transporterPartyId?.toString()}
                             onValueChange={(value) =>
                               updateDispatchRecord(
                                 index,
@@ -610,8 +660,15 @@ export default function DispatchTab({
                                   : "Select Transporter"}
                               </SelectValue>
                             </SelectTrigger>
-                            <SelectContent className='max-h-[300px] overflow-y-auto z-50'>
-                              {parties
+                            <SelectContent
+                              position='popper'
+                              sideOffset={5}
+                              className='max-h-[300px] overflow-y-auto z-50'
+                            >
+                              {(transporters.length > 0
+                                ? transporters
+                                : parties
+                              )
                                 .filter((p: any) => p?.value)
                                 .map((party: any) => (
                                   <SelectItem
@@ -628,9 +685,8 @@ export default function DispatchTab({
                         {/* Destination */}
                         <TableCell>
                           <Select
-                            value={
-                              record.destinationLocationId?.toString() || ""
-                            }
+                            key={`dest-${index}-${record.destinationLocationId || "none"}`}
+                            defaultValue={record.destinationLocationId?.toString()}
                             onValueChange={(value) =>
                               updateDispatchRecord(
                                 index,
@@ -648,7 +704,11 @@ export default function DispatchTab({
                                   : "Select Destination"}
                               </SelectValue>
                             </SelectTrigger>
-                            <SelectContent className='max-h-[300px] overflow-y-auto z-50'>
+                            <SelectContent
+                              position='popper'
+                              sideOffset={5}
+                              className='max-h-[300px] overflow-y-auto z-50'
+                            >
                               {locations
                                 .filter((location: any) => location?.value)
                                 .map((location: any) => (
@@ -663,12 +723,11 @@ export default function DispatchTab({
                           </Select>
                         </TableCell>
 
-                        {/* ✅ NEW: Empty Return Field */}
+                        {/* Empty Return */}
                         <TableCell>
                           <Select
-                            value={
-                              record.containerReturnTerminalId?.toString() || ""
-                            }
+                            key={`return-${index}-${record.containerReturnTerminalId || "none"}`}
+                            defaultValue={record.containerReturnTerminalId?.toString()}
                             onValueChange={(value) =>
                               updateDispatchRecord(
                                 index,
@@ -686,7 +745,11 @@ export default function DispatchTab({
                                   : "Select Return"}
                               </SelectValue>
                             </SelectTrigger>
-                            <SelectContent className='max-h-[300px] overflow-y-auto z-50'>
+                            <SelectContent
+                              position='popper'
+                              sideOffset={5}
+                              className='max-h-[300px] overflow-y-auto z-50'
+                            >
                               {locations
                                 .filter((location: any) => location?.value)
                                 .map((location: any) => (

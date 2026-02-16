@@ -21,19 +21,22 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import Select from "react-select";
-import {
-  Plus,
-  Save,
-  Edit,
-  Trash2,
-  Package,
-  Upload,
-  AlertTriangle,
-} from "lucide-react";
+import { Plus, Save, Edit, Trash2, Package, AlertTriangle } from "lucide-react";
 import { compactSelectStyles } from "../utils/styles";
 import { useEffect, useState } from "react";
+import { UseFormReturn } from "react-hook-form";
 
-// Define types
+// ✅ IMPORT TYPES FROM SCHEMA
+import {
+  type InvoiceFormValues,
+  type InvoiceItemFormValues,
+} from "../schemas/jobOrderSchemas";
+
+// Define types using schema
+type Invoice = InvoiceFormValues;
+type InvoiceItem = InvoiceItemFormValues;
+
+// Define SelectOption type
 interface SelectOption {
   value: number | string;
   label: string;
@@ -42,41 +45,7 @@ interface SelectOption {
   [key: string]: any;
 }
 
-interface InvoiceItem {
-  invoiceItemId?: number;
-  jobInvoiceId?: number;
-  hsCodeId?: number;
-  hsCode: string;
-  description: string;
-  originId?: number;
-  quantity: number;
-  dutiableValue: number;
-  assessableValue: number;
-  totalValue: number;
-  version?: number;
-}
-
-interface Invoice {
-  invoiceId?: number;
-  invoiceNumber?: string;
-  invoiceDate?: string;
-  invoiceIssuedByPartyId?: number;
-  shippingTerm?: string;
-  goodsType?: string; // ✅ NEW: Goods Type
-  lcNumber?: string;
-  lcDate?: string;
-  lcIssuedByBankId?: number;
-  lcValue: number;
-  lcCurrencyId?: number;
-  lcExchangeRate: number;
-  fiNumber?: string;
-  fiDate?: string;
-  fiExpiryDate?: string;
-  invoiceStatus?: string;
-  items: InvoiceItem[];
-  version?: number;
-}
-
+// ✅ UPDATED PROPS WITH PROPER TYPES
 interface InvoiceTabProps {
   form: any;
   parties: SelectOption[];
@@ -92,12 +61,12 @@ interface InvoiceTabProps {
   freightType?: string;
   invoices: Invoice[];
   setInvoices: (invoices: Invoice[]) => void;
-  invoiceForm: any;
+  invoiceForm: UseFormReturn<Invoice>;
   showInvoiceForm: boolean;
   setShowInvoiceForm: (show: boolean) => void;
   currentInvoiceItems: InvoiceItem[];
   setCurrentInvoiceItems: (items: InvoiceItem[]) => void;
-  invoiceItemForm: any;
+  invoiceItemForm: UseFormReturn<InvoiceItem>;
   showInvoiceItemForm: boolean;
   setShowInvoiceItemForm: (show: boolean) => void;
   editingInvoice: number | null;
@@ -107,7 +76,7 @@ interface InvoiceTabProps {
   toast: any;
 }
 
-// ✅ NEW: Goods Type Options
+// ✅ Goods Type Options
 const GOODS_TYPE_OPTIONS = [
   { value: "MACHINERY", label: "Machinery" },
   { value: "RAW_MATERIAL", label: "Raw Material" },
@@ -180,15 +149,15 @@ export default function InvoiceTab(props: InvoiceTabProps) {
     fiExpiryDate: "",
   });
 
-  // ✅ NEW: Calculate total DV value from current items
+  // ✅ Calculate total DV value from current items
   const calculateTotalDvValue = (): number => {
     return currentInvoiceItems.reduce(
-      (sum, item) => sum + item.quantity * item.dutiableValue,
+      (sum, item) => sum + (item.quantity || 0) * (item.dutiableValue || 0),
       0,
     );
   };
 
-  // ✅ NEW: Watch LC Value for validation
+  // ✅ Watch LC Value for validation
   const lcValue = invoiceForm.watch("lcValue") || 0;
   const totalDvValue = calculateTotalDvValue();
   const hasLcValueMismatch =
@@ -197,7 +166,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
   // Auto-calculate invoice item totalValue
   useEffect(() => {
     const subscription = invoiceItemForm.watch(
-      (value: any, { name }: { name: string }) => {
+      (value: any, { name }: { name?: string }) => {
         if (
           name === "quantity" ||
           name === "assessableValue" ||
@@ -205,7 +174,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
         ) {
           const qty = value.quantity || 0;
           const dv = value.dutiableValue || 0;
-          const total = qty * dv; // ✅ FIXED: Calculate from DV
+          const total = qty * dv;
 
           if (value.totalValue !== total) {
             invoiceItemForm.setValue("totalValue", total);
@@ -257,6 +226,12 @@ export default function InvoiceTab(props: InvoiceTabProps) {
     }
 
     invoiceItemForm.reset({
+      invoiceItemId: undefined,
+      jobInvoiceId: undefined,
+      hsCodeId: undefined, // ✅ Clear hsCodeId
+      hsCode: "",
+      description: "",
+      originId: undefined, // ✅ Clear originId
       quantity: 0,
       dutiableValue: 0,
       assessableValue: 0,
@@ -268,8 +243,35 @@ export default function InvoiceTab(props: InvoiceTabProps) {
   };
 
   const handleEditInvoiceItem = (index: number) => {
+    console.log("====================================");
+    console.log("InvoiceTab: Editing Invoice Item");
+    console.log("====================================");
+    console.log("Item index:", index);
+    console.log(
+      "Item data:",
+      JSON.stringify(currentInvoiceItems[index], null, 2),
+    );
+
     setEditingInvoiceItem(index);
-    invoiceItemForm.reset(currentInvoiceItems[index]);
+    const item = currentInvoiceItems[index];
+
+    // ✅ Reset form with ALL fields
+    invoiceItemForm.reset({
+      invoiceItemId: item.invoiceItemId,
+      jobInvoiceId: item.jobInvoiceId,
+      hsCodeId: item.hsCodeId, // ✅ CRITICAL: Include hsCodeId
+      hsCode: item.hsCode || "",
+      description: item.description || "",
+      originId: item.originId, // ✅ CRITICAL: Include originId
+      quantity: item.quantity || 0,
+      dutiableValue: item.dutiableValue || 0,
+      assessableValue: item.assessableValue || 0,
+      totalValue: item.totalValue || 0,
+      version: item.version || 0,
+    });
+
+    console.log("Form values after reset:", invoiceItemForm.getValues());
+
     setShowInvoiceItemForm(true);
   };
 
@@ -284,6 +286,25 @@ export default function InvoiceTab(props: InvoiceTabProps) {
     console.log("=== handleAddInvoice CALLED ===");
     console.log("Invoice form data:", JSON.stringify(data, null, 2));
 
+    // ✅ Validate required fields
+    if (!data.invoiceNumber || data.invoiceNumber.trim() === "") {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Invoice Number is required",
+      });
+      return;
+    }
+
+    if (!data.invoiceDate) {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Invoice Date is required",
+      });
+      return;
+    }
+
     if (currentInvoiceItems.length === 0) {
       toast({
         variant: "destructive",
@@ -293,7 +314,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
       return;
     }
 
-    // ✅ NEW: Validate LC Value matches Total DV
+    // ✅ Validate LC Value matches Total DV
     const totalDv = calculateTotalDvValue();
     if (data.lcValue > 0 && Math.abs(data.lcValue - totalDv) > 0.01) {
       toast({
@@ -304,7 +325,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
       return;
     }
 
-    const invoiceWithItems = { ...data, items: currentInvoiceItems };
+    const invoiceWithItems: Invoice = { ...data, items: currentInvoiceItems };
 
     if (editingInvoice !== null) {
       const updated = [...invoices];
@@ -332,17 +353,23 @@ export default function InvoiceTab(props: InvoiceTabProps) {
       }
     }
 
-    const resetData: any = {
-      lcNumber: undefined,
-      lcDate: undefined,
+    const resetData: Partial<Invoice> = {
+      invoiceId: undefined,
+      invoiceNumber: undefined,
+      invoiceDate: undefined,
+      invoiceIssuedByPartyId: undefined,
+      shippingTerm: undefined,
+      goodsType: undefined, // ✅ Include
+      lcNumber: undefined, // ✅ Include
+      lcDate: undefined, // ✅ Include
       lcIssuedByBankId: undefined,
       lcValue: 0,
-      lcCurrencyId: undefined,
+      lcCurrencyId: undefined, // ✅ Include
       lcExchangeRate: 0,
-      fiNumber: undefined,
-      fiDate: undefined,
-      fiExpiryDate: undefined,
-      goodsType: undefined, // ✅ NEW
+      fiNumber: undefined, // ✅ Include
+      fiDate: undefined, // ✅ Include
+      fiExpiryDate: undefined, // ✅ Include
+      invoiceStatus: undefined,
       version: 0,
       items: [],
     };
@@ -366,9 +393,38 @@ export default function InvoiceTab(props: InvoiceTabProps) {
   };
 
   const handleEditInvoice = (index: number) => {
+    console.log("====================================");
+    console.log("InvoiceTab: Editing Invoice");
+    console.log("====================================");
+    console.log("Invoice index:", index);
+    console.log("Invoice data:", JSON.stringify(invoices[index], null, 2));
+
     setEditingInvoice(index);
     const invoice = invoices[index];
-    invoiceForm.reset(invoice);
+
+    // ✅ Reset form with ALL fields
+    invoiceForm.reset({
+      invoiceId: invoice.invoiceId,
+      invoiceNumber: invoice.invoiceNumber || "",
+      invoiceDate: invoice.invoiceDate || "", // ✅ Should be YYYY-MM-DD
+      invoiceIssuedByPartyId: invoice.invoiceIssuedByPartyId,
+      shippingTerm: invoice.shippingTerm || "",
+      goodsType: invoice.goodsType || "", // ✅ Include goodsType
+      lcNumber: invoice.lcNumber || "", // ✅ Include lcNumber
+      lcDate: invoice.lcDate || "", // ✅ Include lcDate (YYYY-MM-DD)
+      lcIssuedByBankId: invoice.lcIssuedByBankId,
+      lcValue: invoice.lcValue || 0,
+      lcCurrencyId: invoice.lcCurrencyId, // ✅ Include lcCurrencyId
+      lcExchangeRate: invoice.lcExchangeRate || 0,
+      fiNumber: invoice.fiNumber || "", // ✅ Include fiNumber
+      fiDate: invoice.fiDate || "", // ✅ Include fiDate (YYYY-MM-DD)
+      fiExpiryDate: invoice.fiExpiryDate || "", // ✅ Include fiExpiryDate (YYYY-MM-DD)
+      invoiceStatus: invoice.invoiceStatus || "DRAFT",
+      version: invoice.version || 0,
+    });
+
+    console.log("Form values after reset:", invoiceForm.getValues());
+
     setCurrentInvoiceItems(invoice.items || []);
     setShowInvoiceForm(true);
   };
@@ -382,24 +438,20 @@ export default function InvoiceTab(props: InvoiceTabProps) {
     if (selectedOption) {
       invoiceItemForm.setValue("hsCode", selectedOption.code || "");
       invoiceItemForm.setValue("description", selectedOption.description || "");
-      invoiceItemForm.setValue("hsCodeId", selectedOption.value);
+      invoiceItemForm.setValue("hsCodeId", selectedOption.value as number);
     }
-  };
-
-  const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    toast({
-      title: "Coming Soon",
-      description: "Excel import functionality will be implemented.",
-    });
   };
 
   const handleAddInvoiceClick = () => {
     setShowInvoiceForm(!showInvoiceForm);
     setEditingInvoice(null);
 
-    const resetData: any = {
+    const resetData: Partial<Invoice> = {
+      invoiceNumber: undefined,
+      invoiceDate: undefined,
+      invoiceIssuedByPartyId: undefined,
+      shippingTerm: undefined,
+      goodsType: undefined,
       lcNumber: undefined,
       lcDate: undefined,
       lcIssuedByBankId: undefined,
@@ -409,7 +461,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
       fiNumber: undefined,
       fiDate: undefined,
       fiExpiryDate: undefined,
-      goodsType: undefined, // ✅ NEW
+      invoiceStatus: undefined,
       version: 0,
       items: [],
     };
@@ -457,8 +509,9 @@ export default function InvoiceTab(props: InvoiceTabProps) {
               <div className='space-y-4'>
                 {invoices.map((inv: Invoice, invIdx: number) => {
                   // ✅ Calculate total DV for this invoice
-                  const invoiceTotalDv = inv.items.reduce(
-                    (sum, item) => sum + item.quantity * item.dutiableValue,
+                  const invoiceTotalDv = (inv.items || []).reduce(
+                    (sum, item) =>
+                      sum + (item.quantity || 0) * (item.dutiableValue || 0),
                     0,
                   );
 
@@ -468,7 +521,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                         <div className='flex items-center justify-between'>
                           <div className='text-sm font-semibold'>
                             Invoice #{invIdx + 1}: {inv.invoiceNumber || "N/A"}{" "}
-                            ({inv.items.length} items)
+                            ({(inv.items || []).length} items)
                           </div>
                           <div className='flex gap-1'>
                             <Button
@@ -504,7 +557,6 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                             <span className='font-semibold'>Term:</span>{" "}
                             {inv.shippingTerm || "N/A"}
                           </div>
-                          {/* ✅ NEW: Display Goods Type */}
                           <div>
                             <span className='font-semibold'>Goods Type:</span>{" "}
                             {GOODS_TYPE_OPTIONS.find(
@@ -541,11 +593,11 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {inv.items.map(
+                            {(inv.items || []).map(
                               (item: InvoiceItem, itemIdx: number) => (
                                 <TableRow key={itemIdx}>
                                   <TableCell className='text-xs'>
-                                    {item.hsCode}
+                                    {item.hsCodeId}
                                   </TableCell>
                                   <TableCell className='text-xs max-w-[200px] truncate'>
                                     {item.description}
@@ -557,20 +609,20 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                     )?.label || "-"}
                                   </TableCell>
                                   <TableCell className='text-xs text-right'>
-                                    {item.quantity}
+                                    {item.quantity || 0}
                                   </TableCell>
                                   <TableCell className='text-xs text-right'>
-                                    {item.dutiableValue.toFixed(2)}
+                                    {(item.dutiableValue || 0).toFixed(2)}
                                   </TableCell>
                                   <TableCell className='text-xs text-right font-medium'>
                                     {(
-                                      item.quantity * item.dutiableValue
+                                      (item.quantity || 0) *
+                                      (item.dutiableValue || 0)
                                     ).toFixed(2)}
                                   </TableCell>
                                 </TableRow>
                               ),
                             )}
-                            {/* ✅ FIXED: Total Row */}
                             <TableRow className='bg-gray-50 font-bold'>
                               <TableCell
                                 colSpan={5}
@@ -605,7 +657,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
               </CardHeader>
               <CardContent className='p-4'>
                 <div className='space-y-4'>
-                  {/* ✅ NEW: LC Value Validation Alert */}
+                  {/* ✅ LC Value Validation Alert */}
                   {hasLcValueMismatch && currentInvoiceItems.length > 0 && (
                     <Alert
                       variant='destructive'
@@ -636,7 +688,8 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel className='text-xs'>
-                              Invoice No.
+                              Invoice No.{" "}
+                              <span className='text-red-500'>*</span>
                             </FormLabel>
                             <FormControl>
                               <Input
@@ -644,8 +697,10 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                 value={field.value || ""}
                                 className='h-8 text-xs'
                                 placeholder='INV-001'
+                                required
                               />
                             </FormControl>
+                            <FormMessage />
                           </FormItem>
                         )}
                       />
@@ -696,7 +751,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                       />
                     </div>
 
-                    {/* ✅ NEW: Shipping Term and Goods Type in same row */}
+                    {/* Shipping Term and Goods Type */}
                     <div className='grid grid-cols-2 gap-3 mt-3'>
                       <FormField
                         control={invoiceForm.control}
@@ -704,7 +759,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel className='text-xs'>
-                              Shipping Term (Dynamic based on Freight Type)
+                              Shipping Term
                             </FormLabel>
                             <FormControl>
                               <Select
@@ -743,7 +798,6 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                         )}
                       />
 
-                      {/* ✅ NEW: Goods Type Dropdown */}
                       <FormField
                         control={invoiceForm.control}
                         name='goodsType'
@@ -811,64 +865,6 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                 {...field}
                                 value={field.value || ""}
                                 className='h-8 text-xs'
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={invoiceForm.control}
-                        name='lcValue'
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className='text-xs'>
-                              LC Value
-                              {currentInvoiceItems.length > 0 && (
-                                <span className='text-xs text-gray-500 ml-1'>
-                                  (Should match Total DV:{" "}
-                                  {totalDvValue.toFixed(2)})
-                                </span>
-                              )}
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                type='number'
-                                step='0.01'
-                                {...field}
-                                value={field.value || 0}
-                                onChange={(e) =>
-                                  field.onChange(Number(e.target.value))
-                                }
-                                className={`h-8 text-xs ${
-                                  hasLcValueMismatch
-                                    ? "border-orange-500 bg-orange-50"
-                                    : ""
-                                }`}
-                                placeholder='0.00'
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={invoiceForm.control}
-                        name='lcCurrencyId'
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className='text-xs'>Currency</FormLabel>
-                            <FormControl>
-                              <Select
-                                options={currencies}
-                                value={currencies.find(
-                                  (c: SelectOption) => c.value === field.value,
-                                )}
-                                onChange={(val) => field.onChange(val?.value)}
-                                styles={compactSelectStyles}
-                                isLoading={loadingCurrencies}
-                                isClearable
-                                placeholder='Currency'
                               />
                             </FormControl>
                           </FormItem>
@@ -968,6 +964,88 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                           </FormItem>
                         )}
                       />
+
+                      <FormField
+                        control={invoiceForm.control}
+                        name='lcValue'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>
+                              LC Value
+                              {currentInvoiceItems.length > 0 && (
+                                <span className='text-xs text-gray-500 ml-1'>
+                                  (Should: {totalDvValue.toFixed(2)})
+                                </span>
+                              )}
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                {...field}
+                                value={field.value || 0}
+                                onChange={(e) =>
+                                  field.onChange(Number(e.target.value))
+                                }
+                                className={`h-8 text-xs ${
+                                  hasLcValueMismatch
+                                    ? "border-orange-500 bg-orange-50"
+                                    : ""
+                                }`}
+                                placeholder='0.00'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={invoiceForm.control}
+                        name='lcCurrencyId'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>Currency</FormLabel>
+                            <FormControl>
+                              <Select
+                                options={currencies}
+                                value={currencies.find(
+                                  (c: SelectOption) => c.value === field.value,
+                                )}
+                                onChange={(val) => field.onChange(val?.value)}
+                                styles={compactSelectStyles}
+                                isLoading={loadingCurrencies}
+                                isClearable
+                                placeholder='Currency'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={invoiceForm.control}
+                        name='lcExchangeRate'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>
+                              LC Exchange Rate
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type='number'
+                                step='0.01'
+                                {...field}
+                                value={field.value || 0}
+                                onChange={(e) =>
+                                  field.onChange(Number(e.target.value))
+                                }
+                                className='h-8 text-xs'
+                                placeholder='0.00'
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
                     </div>
                   </div>
 
@@ -1034,7 +1112,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                             (item: InvoiceItem, idx: number) => (
                               <TableRow key={idx}>
                                 <TableCell className='text-xs'>
-                                  {item.hsCode}
+                                  {item.hsCodeId}
                                 </TableCell>
                                 <TableCell className='text-xs max-w-[200px] truncate'>
                                   {item.description}
@@ -1046,15 +1124,16 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                                   )?.label || "-"}
                                 </TableCell>
                                 <TableCell className='text-xs text-right'>
-                                  {item.quantity}
+                                  {item.quantity || 0}
                                 </TableCell>
                                 <TableCell className='text-xs text-right'>
-                                  {item.dutiableValue.toFixed(2)}
+                                  {(item.dutiableValue || 0).toFixed(2)}
                                 </TableCell>
                                 <TableCell className='text-xs text-right font-medium'>
-                                  {(item.quantity * item.dutiableValue).toFixed(
-                                    2,
-                                  )}
+                                  {(
+                                    (item.quantity || 0) *
+                                    (item.dutiableValue || 0)
+                                  ).toFixed(2)}
                                 </TableCell>
                                 <TableCell>
                                   <div className='flex gap-1'>
@@ -1083,7 +1162,6 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                               </TableRow>
                             ),
                           )}
-                          {/* ✅ FIXED: Total Row */}
                           <TableRow className='bg-gray-50 font-bold'>
                             <TableCell
                               colSpan={5}
@@ -1118,7 +1196,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel className='text-xs'>
-                                    Search HS Code (by Code or Description)
+                                    Search HS Code
                                   </FormLabel>
                                   <FormControl>
                                     <Select
@@ -1283,7 +1361,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                               />
                             </div>
 
-                            {/* ✅ Show calculated total */}
+                            {/* Show calculated total */}
                             {invoiceItemForm.watch("quantity") > 0 &&
                               invoiceItemForm.watch("dutiableValue") > 0 && (
                                 <div className='bg-blue-50 p-2 rounded text-xs'>

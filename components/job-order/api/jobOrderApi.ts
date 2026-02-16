@@ -8,28 +8,91 @@ export const fetchParties = async (setLoading: (loading: boolean) => void) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        select: "PartyId,PartyCode,PartyName,IsProcessOwner",
+        select:
+          "PartyId,PartyCode,PartyName,IsProcessOwner,IsShipper,IsConsignee,IsPrincipal,IsShippingLine,IsTransporter",
         where: "IsActive == true",
         sortOn: "PartyName",
         page: "1",
         pageSize: "1000",
       }),
     });
+
     if (response.ok) {
       const data = await response.json();
       if (Array.isArray(data)) {
+        // All parties
         const parties = data.map((p: any) => ({
           value: p.partyId,
           label: `${p.partyCode} - ${p.partyName}`,
           isProcessOwner: p.isProcessOwner,
+          isShipper: p.isShipper,
+          isConsignee: p.isConsignee,
+          isPrincipal: p.isPrincipal,
+          isShippingLine: p.isShippingLine,
+          isTransporter: p.isTransporter,
         }));
+
+        // Process Owners
         const processOwners = data
           .filter((p: any) => p.isProcessOwner)
           .map((p: any) => ({
             value: p.partyId,
             label: `${p.partyCode} - ${p.partyName}`,
           }));
-        return { parties, processOwners };
+
+        // Shippers
+        const shippers = data
+          .filter((p: any) => p.isShipper)
+          .map((p: any) => ({
+            value: p.partyId,
+            label: `${p.partyCode} - ${p.partyName}`,
+          }));
+
+        // Consignees
+        const consignees = data
+          .filter((p: any) => p.isConsignee)
+          .map((p: any) => ({
+            value: p.partyId,
+            label: `${p.partyCode} - ${p.partyName}`,
+          }));
+
+        // Local Agents (Principal)
+        const localAgents = data
+          .filter((p: any) => p.isPrincipal)
+          .map((p: any) => ({
+            value: p.partyId,
+            label: `${p.partyCode} - ${p.partyName}`,
+          }));
+
+        // Carriers (Shipping Lines)
+        const carriers = data
+          .filter((p: any) => p.isShippingLine)
+          .map((p: any) => ({
+            value: p.partyId,
+            label: `${p.partyCode} - ${p.partyName}`,
+          }));
+
+        // Transporters
+        const transporters = data
+          .filter((p: any) => p.isTransporter)
+          .map((p: any) => ({
+            value: p.partyId,
+            label: `${p.partyCode} - ${p.partyName}`,
+          }));
+
+        // Terminals - All parties can be terminals, no specific flag
+        const terminals = parties; // or you can create specific filtering if needed
+
+        return {
+          parties,
+          processOwners,
+          shippers,
+          consignees,
+          localAgents,
+          carriers,
+          transporters,
+          terminals,
+        };
       }
     }
   } catch (error) {
@@ -37,7 +100,17 @@ export const fetchParties = async (setLoading: (loading: boolean) => void) => {
   } finally {
     setLoading(false);
   }
-  return { parties: [], processOwners: [] };
+
+  return {
+    parties: [],
+    processOwners: [],
+    shippers: [],
+    consignees: [],
+    localAgents: [],
+    carriers: [],
+    transporters: [],
+    terminals: [],
+  };
 };
 
 // Function to fetch type values from General API
@@ -398,6 +471,48 @@ export const fetchBanks = async (setLoading: (loading: boolean) => void) => {
     }
   } catch (error) {
     console.error("Error fetching banks:", error);
+  } finally {
+    setLoading(false);
+  }
+  return [];
+};
+
+// ✅ NEW: Fetch GD Cleared Under Section for Completion Tab
+export const fetchGdClearedUnderSection = async (
+  setLoading: (loading: boolean) => void,
+) => {
+  setLoading(true);
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+    const response = await fetch(
+      `${baseUrl}SetupGdclearedUnderSection/GetList`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          select:
+            "GdclearedUnderSectionId,SectionCode,SectionName,IsActive,IsSecurityRequired",
+          where: "IsActive == true",
+          sortOn: "SectionCode",
+          page: "1",
+          pageSize: "100",
+        }),
+      },
+    );
+    if (response.ok) {
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        return data.map((section: any) => ({
+          value: section.gdclearedUnderSectionId,
+          label: `${section.sectionCode} - ${section.sectionName}`,
+          sectionCode: section.sectionCode,
+          sectionName: section.sectionName,
+          isSecurityRequired: section.isSecurityRequired,
+        }));
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching GD Cleared Under Section:", error);
   } finally {
     setLoading(false);
   }

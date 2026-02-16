@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { TabsContent } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -22,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Info, DollarSign } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
+// ✅ CORRECTED INTERFACE - MATCHES SCHEMA
 interface DetentionRecord {
   jobEquipmentDetentionDetailId?: number;
   jobId?: number;
@@ -29,16 +29,16 @@ interface DetentionRecord {
   containerTypeId?: number;
   containerSizeId?: number;
   netWeight: number;
-  transport?: string;
+  transporterPartyId?: number; // ✅ Schema field (ID, not name)
   emptyDate?: string;
-  eirReceivedDate?: string;
+  eirReceivedOn?: string; // ✅ Schema field name
   condition?: string;
   rentDays: number;
-  rentAmount: number; // ✅ NOW IN USD
-  exchangeRate: number; // ✅ NEW: Exchange rate for this container
-  rentAmountPkr: number; // ✅ NEW: Calculated PKR amount
-  damageAmount: number;
-  dirtyAmount: number;
+  rentAmountFc: number; // ✅ Foreign Currency (USD)
+  exchangeRate: number;
+  rentAmountLc: number; // ✅ Local Currency (PKR) - Auto-calculated
+  damage: string; // ✅ STRING field for description
+  dirty: string; // ✅ STRING field for description
   version?: number;
 }
 
@@ -65,6 +65,11 @@ interface PartyOption {
   label: string;
 }
 
+interface ContainerOption {
+  value: number;
+  label: string;
+}
+
 export default function DetentionTab({
   form,
   fclContainers = [],
@@ -87,8 +92,8 @@ export default function DetentionTab({
   const [rentInvoiceDate, setRentInvoiceDate] = useState<string>("");
   const [refundReceivedDate, setRefundReceivedDate] = useState<string>("");
 
-  // ✅ Function to get transporter name from dispatch records
-  const getTransporterForContainer = (containerNumber: string): string => {
+  // ✅ Get transporter NAME from dispatch records (for display)
+  const getTransporterNameForContainer = (containerNumber: string): string => {
     if (!dispatchRecords || !parties || dispatchRecords.length === 0) {
       return "";
     }
@@ -108,7 +113,20 @@ export default function DetentionTab({
     return transporterParty?.label || "";
   };
 
-  // Initialize detention records from containers
+  // ✅ Get transporter ID from dispatch records (for storage)
+  const getTransporterIdForContainer = (containerNumber: string): number => {
+    if (!dispatchRecords || dispatchRecords.length === 0) {
+      return 0;
+    }
+
+    const dispatchRecord = dispatchRecords.find(
+      (record: DispatchRecord) => record.containerNumber === containerNumber,
+    );
+
+    return dispatchRecord?.transporterPartyId || 0;
+  };
+
+  // ✅ Initialize detention records from containers
   useEffect(() => {
     if (fclContainers.length > 0) {
       const existingIds = new Set(
@@ -118,7 +136,7 @@ export default function DetentionTab({
       const newRecords = fclContainers
         .filter((container: any) => !existingIds.has(container.containerNo))
         .map((container: any) => {
-          const transporterName = getTransporterForContainer(
+          const transporterId = getTransporterIdForContainer(
             container.containerNo,
           );
 
@@ -127,16 +145,16 @@ export default function DetentionTab({
             containerTypeId: container.containerTypeId,
             containerSizeId: container.containerSizeId,
             netWeight: container.tareWeight || 0,
-            transport: transporterName,
+            transporterPartyId: transporterId, // ✅ Store ID
             emptyDate: "",
-            eirReceivedDate: "",
+            eirReceivedOn: "", // ✅ Correct field name
             condition: "",
             rentDays: 0,
-            rentAmount: 0, // USD
-            exchangeRate: 0, // ✅ NEW
-            rentAmountPkr: 0, // ✅ NEW
-            damageAmount: 0,
-            dirtyAmount: 0,
+            rentAmountFc: 0, // ✅ USD
+            exchangeRate: 0,
+            rentAmountLc: 0, // ✅ PKR (auto-calculated)
+            damage: "", // ✅ Empty string
+            dirty: "", // ✅ Empty string
           };
         });
 
@@ -144,19 +162,19 @@ export default function DetentionTab({
         setDetentionRecords([...detentionRecords, ...newRecords]);
       }
     }
-  }, [fclContainers, dispatchRecords]);
+  }, [fclContainers]);
 
-  // ✅ Sync transporter when dispatch records change
+  // ✅ Sync transporter ID when dispatch records change
   useEffect(() => {
     if (detentionRecords.length > 0 && dispatchRecords.length > 0) {
       const updatedRecords = detentionRecords.map((record: DetentionRecord) => {
-        const transporterName = getTransporterForContainer(
+        const transporterId = getTransporterIdForContainer(
           record.containerNumber,
         );
-        if (transporterName && !record.transport) {
+        if (transporterId && !record.transporterPartyId) {
           return {
             ...record,
-            transport: transporterName,
+            transporterPartyId: transporterId,
           };
         }
         return record;
@@ -165,7 +183,7 @@ export default function DetentionTab({
     }
   }, [dispatchRecords]);
 
-  // ✅ Update a specific field in a detention record with auto-calculation
+  // ✅ Update a specific field in a detention record
   const updateDetentionRecord = (
     index: number,
     field: keyof DetentionRecord,
@@ -184,12 +202,22 @@ export default function DetentionTab({
     }
 
     // ✅ Auto-calculate PKR rent when USD rent or exchange rate changes
-    if (field === "rentAmount" || field === "exchangeRate") {
+    if (field === "rentAmountFc" || field === "exchangeRate") {
       const usdRent =
-        field === "rentAmount" ? value : updatedRecords[index].rentAmount;
+        field === "rentAmountFc"
+          ? value
+          : updatedRecords[index].rentAmountFc || 0;
       const rate =
-        field === "exchangeRate" ? value : updatedRecords[index].exchangeRate;
-      updatedRecords[index].rentAmountPkr = usdRent * rate;
+        field === "exchangeRate"
+          ? value
+          : updatedRecords[index].exchangeRate || 0;
+      updatedRecords[index].rentAmountLc = usdRent * rate;
+
+      console.log("Auto-calculation:", {
+        usdRent,
+        rate,
+        pkrResult: usdRent * rate,
+      });
     }
 
     setDetentionRecords(updatedRecords);
@@ -199,12 +227,17 @@ export default function DetentionTab({
   const calculateRentDays = (emptyDate: string, uptoDate: string): number => {
     if (!emptyDate || !uptoDate) return 0;
 
-    const empty = new Date(emptyDate);
-    const upto = new Date(uptoDate);
-    const diffTime = upto.getTime() - empty.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    try {
+      const empty = new Date(emptyDate);
+      const upto = new Date(uptoDate);
+      const diffTime = upto.getTime() - empty.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    return diffDays > 0 ? diffDays : 0;
+      return diffDays > 0 ? diffDays : 0;
+    } catch (error) {
+      console.error("Error calculating rent days:", error);
+      return 0;
+    }
   };
 
   // Recalculate all rent days when upto date changes
@@ -226,43 +259,38 @@ export default function DetentionTab({
   };
 
   // Get container type label
-  const getContainerTypeLabel = (typeId: number | undefined) => {
+  const getContainerTypeLabel = (typeId: number | undefined): string => {
     if (!typeId) return "";
-    const type = containerTypes.find((t: any) => t.value === typeId);
+    const type = containerTypes.find(
+      (t: ContainerOption) => t.value === typeId,
+    );
     return type?.label || "";
   };
 
   // Get container size label
-  const getContainerSizeLabel = (sizeId: number | undefined) => {
+  const getContainerSizeLabel = (sizeId: number | undefined): string => {
     if (!sizeId) return "";
-    const size = containerSizes.find((s: any) => s.value === sizeId);
+    const size = containerSizes.find(
+      (s: ContainerOption) => s.value === sizeId,
+    );
     return size?.label || "";
   };
 
-  // ✅ Calculate totals (now using PKR amounts)
+  // ✅ Calculate totals (with correct field names)
   const totals = {
     containers: detentionRecords.length,
     totalRentUsd: detentionRecords.reduce(
-      (sum: number, r: DetentionRecord) => sum + (r.rentAmount || 0),
+      (sum: number, r: DetentionRecord) => sum + (r.rentAmountFc || 0),
       0,
     ),
     totalRentPkr: detentionRecords.reduce(
-      (sum: number, r: DetentionRecord) => sum + (r.rentAmountPkr || 0),
-      0,
-    ),
-    totalDamage: detentionRecords.reduce(
-      (sum: number, r: DetentionRecord) => sum + (r.damageAmount || 0),
-      0,
-    ),
-    totalDirty: detentionRecords.reduce(
-      (sum: number, r: DetentionRecord) => sum + (r.dirtyAmount || 0),
+      (sum: number, r: DetentionRecord) => sum + (r.rentAmountLc || 0),
       0,
     ),
   };
 
-  // Calculate financial summary (using PKR)
-  const totalPayable =
-    totals.totalRentPkr + totals.totalDamage + totals.totalDirty;
+  // Calculate financial summary
+  const totalPayable = totals.totalRentPkr;
   const securityDeposit = depositAmount;
   const balanceReceivable = totalPayable - securityDeposit - advanceRent;
 
@@ -316,13 +344,25 @@ export default function DetentionTab({
 
           {/* Master Fields */}
           <div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-4'>
+            {/* Depositor Dropdown */}
             <div className='space-y-2'>
               <Label>Depositor</Label>
-              <Select value={depositor} onValueChange={setDepositor}>
+              <Select
+                key={`depositor-${depositor || "none"}`}
+                value={depositor}
+                onValueChange={(value) => {
+                  console.log("Depositor selected:", value);
+                  setDepositor(value);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder='Select Depositor' />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent
+                  position='popper'
+                  sideOffset={5}
+                  className='max-h-[300px] overflow-y-auto z-50'
+                >
                   {depositorOptions.map((option) => (
                     <SelectItem key={option} value={option}>
                       {option}
@@ -330,6 +370,11 @@ export default function DetentionTab({
                   ))}
                 </SelectContent>
               </Select>
+              {depositor && (
+                <p className='text-xs text-green-600'>
+                  ✅ Selected: {depositor}
+                </p>
+              )}
               <p className='text-xs text-gray-500'>
                 Billing Parties/Transporter/SASPAK/Forwarder/Depositor/Free
                 Deposit
@@ -406,7 +451,7 @@ export default function DetentionTab({
             </div>
           ) : (
             <>
-              {/* ✅ IMPROVED: Better scrollbar styling */}
+              {/* Scrollbar Styling */}
               <style jsx>{`
                 .detention-table-wrapper::-webkit-scrollbar {
                   width: 14px;
@@ -424,7 +469,9 @@ export default function DetentionTab({
                 .detention-table-wrapper::-webkit-scrollbar-thumb:hover {
                   background: #555;
                 }
-                /* Firefox */
+                .detention-table-wrapper::-webkit-scrollbar-corner {
+                  background: #f1f1f1;
+                }
                 .detention-table-wrapper {
                   scrollbar-width: thick;
                   scrollbar-color: #888 #f1f1f1;
@@ -466,18 +513,14 @@ export default function DetentionTab({
                       <TableHead className='min-w-[140px] text-right bg-green-50'>
                         Rent (PKR)
                       </TableHead>
-                      <TableHead className='min-w-[130px] text-right'>
-                        Damage (PKR)
-                      </TableHead>
-                      <TableHead className='min-w-[130px] text-right'>
-                        Dirty (PKR)
-                      </TableHead>
+                      <TableHead className='min-w-[150px]'>Damage</TableHead>
+                      <TableHead className='min-w-[150px]'>Dirty</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {detentionRecords.map(
                       (record: DetentionRecord, index: number) => {
-                        const dispatchTransporter = getTransporterForContainer(
+                        const transporterName = getTransporterNameForContainer(
                           record.containerNumber,
                         );
 
@@ -487,39 +530,36 @@ export default function DetentionTab({
                               {index + 1}
                             </TableCell>
 
-                            {/* Read-only container details */}
+                            {/* Container Number */}
                             <TableCell className='font-mono text-sm'>
                               {record.containerNumber}
                             </TableCell>
+
+                            {/* Type */}
                             <TableCell>
                               {getContainerTypeLabel(record.containerTypeId)}
                             </TableCell>
+
+                            {/* Size */}
                             <TableCell>
                               {getContainerSizeLabel(record.containerSizeId)}
                             </TableCell>
+
+                            {/* Weight */}
                             <TableCell className='text-right'>
-                              {record.netWeight.toFixed(2)}
+                              {record.netWeight?.toFixed(2) || "0.00"}
                             </TableCell>
 
-                            {/* Transport */}
+                            {/* ✅ Transport - Display only (read-only) */}
                             <TableCell>
                               <Input
-                                className='h-9'
-                                placeholder='Transport name'
-                                value={
-                                  record.transport || dispatchTransporter || ""
-                                }
-                                onChange={(e) =>
-                                  updateDetentionRecord(
-                                    index,
-                                    "transport",
-                                    e.target.value,
-                                  )
-                                }
+                                className='h-9 bg-gray-50'
+                                value={transporterName || "Not assigned"}
+                                readOnly
                                 title={
-                                  dispatchTransporter
-                                    ? `Pre-filled from Dispatch: ${dispatchTransporter}`
-                                    : "Enter transport name"
+                                  transporterName
+                                    ? `From Dispatch: ${transporterName}`
+                                    : "Assign transporter in Dispatch Tab"
                                 }
                               />
                             </TableCell>
@@ -540,16 +580,16 @@ export default function DetentionTab({
                               />
                             </TableCell>
 
-                            {/* EIR Received */}
+                            {/* ✅ EIR Received - Correct field name */}
                             <TableCell>
                               <Input
                                 type='date'
                                 className='h-9'
-                                value={record.eirReceivedDate || ""}
+                                value={record.eirReceivedOn || ""}
                                 onChange={(e) =>
                                   updateDetentionRecord(
                                     index,
-                                    "eirReceivedDate",
+                                    "eirReceivedOn",
                                     e.target.value,
                                   )
                                 }
@@ -559,6 +599,7 @@ export default function DetentionTab({
                             {/* Condition */}
                             <TableCell>
                               <Select
+                                key={`condition-${index}-${record.condition || "none"}`}
                                 value={record.condition || ""}
                                 onValueChange={(value) =>
                                   updateDetentionRecord(
@@ -571,7 +612,11 @@ export default function DetentionTab({
                                 <SelectTrigger className='h-9'>
                                   <SelectValue placeholder='Select' />
                                 </SelectTrigger>
-                                <SelectContent className='max-h-[300px] overflow-y-auto z-50'>
+                                <SelectContent
+                                  position='popper'
+                                  sideOffset={5}
+                                  className='max-h-[300px] overflow-y-auto z-50'
+                                >
                                   {conditionOptions.map((option) => (
                                     <SelectItem key={option} value={option}>
                                       {option}
@@ -597,25 +642,25 @@ export default function DetentionTab({
                               />
                             </TableCell>
 
-                            {/* ✅ NEW: Rent Amount (USD) */}
+                            {/* ✅ Rent Amount (USD) - rentAmountFc */}
                             <TableCell className='bg-blue-50'>
                               <Input
                                 type='number'
                                 step='0.01'
                                 className='h-9 text-right font-semibold'
                                 placeholder='0.00'
-                                value={record.rentAmount || ""}
+                                value={record.rentAmountFc || ""}
                                 onChange={(e) =>
                                   updateDetentionRecord(
                                     index,
-                                    "rentAmount",
+                                    "rentAmountFc",
                                     parseFloat(e.target.value) || 0,
                                   )
                                 }
                               />
                             </TableCell>
 
-                            {/* ✅ NEW: Exchange Rate */}
+                            {/* ✅ Exchange Rate */}
                             <TableCell className='bg-blue-50'>
                               <Input
                                 type='number'
@@ -633,53 +678,53 @@ export default function DetentionTab({
                               />
                             </TableCell>
 
-                            {/* ✅ NEW: Rent Amount (PKR) - Auto-calculated */}
+                            {/* ✅ Rent Amount (PKR) - rentAmountLc - Auto-calculated */}
                             <TableCell className='bg-green-50'>
                               <Input
                                 type='number'
                                 step='0.01'
                                 className='h-9 text-right bg-green-50 font-bold'
                                 value={
-                                  record.rentAmountPkr?.toFixed(2) || "0.00"
+                                  record.rentAmountLc?.toFixed(2) || "0.00"
                                 }
                                 readOnly
                                 title='Auto-calculated: USD Rent × Exchange Rate'
                               />
                             </TableCell>
 
-                            {/* Damage Amount */}
+                            {/* ✅ Damage - TEXT field */}
                             <TableCell>
                               <Input
-                                type='number'
-                                step='0.01'
-                                className='h-9 text-right'
-                                placeholder='0.00'
-                                value={record.damageAmount || ""}
+                                type='text'
+                                className='h-9'
+                                placeholder='e.g., Scratched on side'
+                                value={record.damage || ""}
                                 onChange={(e) =>
                                   updateDetentionRecord(
                                     index,
-                                    "damageAmount",
-                                    parseFloat(e.target.value) || 0,
+                                    "damage",
+                                    e.target.value,
                                   )
                                 }
+                                title='Enter damage description'
                               />
                             </TableCell>
 
-                            {/* Dirty Amount */}
+                            {/* ✅ Dirty - TEXT field */}
                             <TableCell>
                               <Input
-                                type='number'
-                                step='0.01'
-                                className='h-9 text-right'
-                                placeholder='0.00'
-                                value={record.dirtyAmount || ""}
+                                type='text'
+                                className='h-9'
+                                placeholder='e.g., Oil stains'
+                                value={record.dirty || ""}
                                 onChange={(e) =>
                                   updateDetentionRecord(
                                     index,
-                                    "dirtyAmount",
-                                    parseFloat(e.target.value) || 0,
+                                    "dirty",
+                                    e.target.value,
                                   )
                                 }
+                                title='Enter dirty description'
                               />
                             </TableCell>
                           </TableRow>
@@ -695,7 +740,7 @@ export default function DetentionTab({
           {/* Summary Footer */}
           {detentionRecords.length > 0 && (
             <div className='p-4 border-t bg-gray-50'>
-              <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4'>
+              <div className='grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4'>
                 <div>
                   <span className='text-gray-600'>Total Containers:</span>{" "}
                   <span className='font-semibold'>{totals.containers}</span>
@@ -715,33 +760,6 @@ export default function DetentionTab({
                     })}
                   </span>
                 </div>
-                <div>
-                  <span className='text-gray-600'>Total Damage:</span>{" "}
-                  <span className='font-semibold'>
-                    PKR{" "}
-                    {totals.totalDamage.toLocaleString("en-PK", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                <div>
-                  <span className='text-gray-600'>Total Dirty:</span>{" "}
-                  <span className='font-semibold'>
-                    PKR{" "}
-                    {totals.totalDirty.toLocaleString("en-PK", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                <div className='col-span-2 md:col-span-3 border-t pt-2'>
-                  <span className='text-gray-600'>Total Payable (PKR):</span>{" "}
-                  <span className='font-bold text-lg'>
-                    PKR{" "}
-                    {totalPayable.toLocaleString("en-PK", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
               </div>
 
               {/* Financial Summary */}
@@ -749,7 +767,7 @@ export default function DetentionTab({
                 <h4 className='font-semibold mb-3'>Financial Summary (PKR)</h4>
                 <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm'>
                   <div>
-                    <div className='text-gray-600'>Total Payable:</div>
+                    <div className='text-gray-600'>Total Rent Payable:</div>
                     <div className='font-semibold'>
                       PKR{" "}
                       {totalPayable.toLocaleString("en-PK", {
@@ -786,6 +804,14 @@ export default function DetentionTab({
                       })}
                     </div>
                   </div>
+                </div>
+                <div className='mt-3 text-xs text-gray-500 bg-blue-50 p-2 rounded'>
+                  <p>
+                    ℹ️ <strong>Note:</strong> Damage and Dirty are text fields
+                    for descriptions (e.g., &quot;Scratched on side&quot;,
+                    &quot;Oil stains&quot;). Financial calculations based on
+                    rent only.
+                  </p>
                 </div>
               </div>
             </div>

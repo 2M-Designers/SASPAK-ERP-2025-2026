@@ -63,6 +63,7 @@ export const jobMasterSchema = z.object({
   // Weight
   grossWeight: z.number().min(0).default(0),
   netWeight: z.number().min(0).default(0),
+  chargeableWeight: z.number().min(0).default(0), // ✅ Matches API: Decimal
 
   // Dates
   etdDate: z.string().optional(),
@@ -104,18 +105,25 @@ export const jobMasterSchema = z.object({
   gdType: z.string().optional(),
   gddate: z.string().optional(),
   gdcharges: z.number().min(0).default(0),
-  gdclearedUs: z.string().optional(),
+  gdclearedUs: z.string().optional(), // ⚠️ API: String, DB: Int32 - See note below
   gdsecurityType: z.string().optional(),
   gdsecurityValue: z.string().optional(),
   gdsecurityExpiryDate: z.string().optional(),
 
-  // Completion Fields
-  rmschannel: z.string().optional(), // Note: lowercase 'channel'
+  // ⚠️ COMPLETION FIELDS - CRITICAL NOTES
+  // API metadata shows these as String, but your database expects:
+  // - gdclearedUs: Should be Int32 (it's an ID from SetupGdclearedUnderSection)
+  // - DelayInClearance: Should be Int32 (days count)
+  // - DelayInDispatch: Should be Int32 (days count)
+  //
+  // CURRENT: Keeping as strings to match API
+  // TO FIX COMPLETION TAB: Change these to z.number() as shown in comments below
+  rmschannel: z.string().optional(),
   gdassignToGateOut: z.string().optional(),
   destuffingOn: z.string().optional(),
-  delayInClearance: z.string().optional(), // Days as string?
+  delayInClearance: z.string().optional(), // ⚠️ Should be: z.number().min(0).default(0)
   reasonOfDelayInClearance: z.string().optional(),
-  delayInDispatch: z.string().optional(), // Days as string?
+  delayInDispatch: z.string().optional(), // ⚠️ Should be: z.number().min(0).default(0)
   reasonOfDelayInDispatch: z.string().optional(),
 
   // Case & Rent Tracking
@@ -125,8 +133,6 @@ export const jobMasterSchema = z.object({
 
   // Remarks
   remarks: z.string().optional(),
-
-  // Note: dispatchNotes removed as not in DB schema
 
   // Arrays for related data
   jobCharges: z.array(z.any()).optional(),
@@ -254,12 +260,14 @@ export const jobEquipmentDetentionDetailSchema = z.object({
   eirReceivedOn: z.string().optional(),
   condition: z.string().optional(),
   rentDays: z.number().min(0).default(0),
-  rentAmountLc: z.number().min(0).default(0),
-  rentAmount: z.number().min(0).default(0), // NOW IN USD
-  exchangeRate: z.number().min(0).default(0), // ✅ NEW
-  rentAmountPkr: z.number().min(0).default(0), // ✅ NEW (Auto-calculated)
-  damage: z.string().optional(), // Note: string, not number
-  dirty: z.string().optional(), // Note: string, not number
+
+  // ✅ MATCHES API METADATA
+  rentAmountLc: z.number().min(0).default(0), // API: RentAmountLc
+  rentAmountFc: z.number().min(0).default(0), // API: RentAmountFc (was missing)
+  exchangeRate: z.number().min(0).default(0), // API: ExchangeRate
+
+  damage: z.string().optional(), // Note: API says String
+  dirty: z.string().optional(), // Note: API says String
   version: z.number().optional(),
 });
 
@@ -278,7 +286,7 @@ export const jobEquipmentHandingOverSchema = z.object({
   buyingAmountLc: z.number().min(0).default(0),
   topayAmountLc: z.number().min(0).default(0),
   dispatchDate: z.string().optional(),
-  containerReturnTerminalId: z.number().default(0), // ✅ NEW FIELD
+  containerReturnTerminalId: z.number().default(0),
   version: z.number().optional(),
 });
 
@@ -292,7 +300,7 @@ export const jobGoodsDeclarationSchema = z.object({
   quantity: z.number().min(0).default(0),
   cocode: z.string().optional(),
   sronumber: z.string().optional(),
-  hscode: z.string().optional(), // lowercase
+  hscode: z.string().optional(),
   itemDescription: z.string().optional(),
   declaredUnitValue: z.number().min(0).default(0),
   assessedUnitValue: z.number().min(0).default(0),
@@ -325,7 +333,7 @@ export const jobInvoiceCommoditySchema = z.object({
   jobInvoiceCommodityId: z.number().optional(),
   jobInvoiceId: z.number().optional(),
   description: z.string().min(1, "Description required"),
-  hscodeId: z.number().optional(), // lowercase 'scode'
+  hscodeId: z.number().optional(),
   originId: z.number().optional(),
   quantity: z.number().min(0).default(0),
   dutiableValue: z.number().min(0).default(0),
@@ -343,7 +351,7 @@ export const jobInvoiceSchema = z.object({
   jobId: z.number().optional(),
   invoiceNumber: z.string().optional(),
   invoiceDate: z.string().optional(),
-  issuedBy: z.string().optional(), // ✅ Matches DB: 'issuedBy'
+  issuedBy: z.string().optional(),
   shippingTerm: z.string().optional(),
   goodsType: z.string().optional(),
 
@@ -351,11 +359,11 @@ export const jobInvoiceSchema = z.object({
   lcNumber: z.string().optional(),
   lcValue: z.number().min(0).default(0),
   lcDate: z.string().optional(),
-  lcIssuedBy: z.string().optional(), // ✅ Matches DB: 'lcIssuedBy'
-  lcCurrencyid: z.number().optional(), // ✅ lowercase 'id' as in DB
+  lcIssuedBy: z.string().optional(),
+  lcCurrencyid: z.number().optional(),
   lcExchangeRate: z.number().min(0).default(0),
 
-  // FL (Form L) Fields - Note: 'fl' not 'fi' in DB
+  // FL (Form L) Fields
   flNumber: z.string().optional(),
   flDate: z.string().optional(),
   expiryDate: z.string().optional(),
@@ -371,9 +379,9 @@ export const jobInvoiceSchema = z.object({
 // INVOICE ITEM SCHEMA - FOR FORM COMPATIBILITY (FRONTEND ONLY)
 // ============================================
 export const invoiceItemSchema = z.object({
-  invoiceItemId: z.number().optional(), // Maps to jobInvoiceCommodityId
+  invoiceItemId: z.number().optional(),
   jobInvoiceId: z.number().optional(),
-  hsCodeId: z.number().optional(), // Will map to hscodeId
+  hsCodeId: z.number().optional(),
   hsCode: z.string().min(1, "HS Code required"),
   description: z.string().min(1, "Description required"),
   originId: z.number().optional(),
@@ -389,18 +397,18 @@ export const invoiceSchema = z.object({
   invoiceId: z.number().optional(),
   invoiceNumber: z.string().optional(),
   invoiceDate: z.string().optional(),
-  invoiceIssuedByPartyId: z.number().optional(), // Will map to issuedBy string
+  invoiceIssuedByPartyId: z.number().optional(),
   shippingTerm: z.string().optional(),
   goodsType: z.string().optional(),
   lcNumber: z.string().optional(),
   lcDate: z.string().optional(),
-  lcIssuedByBankId: z.number().optional(), // Will map to lcIssuedBy string
+  lcIssuedByBankId: z.number().optional(),
   lcValue: z.number().min(0).default(0),
-  lcCurrencyId: z.number().optional(), // Will map to lcCurrencyid
+  lcCurrencyId: z.number().optional(),
   lcExchangeRate: z.number().min(0).default(0),
-  fiNumber: z.string().optional(), // Will map to flNumber
-  fiDate: z.string().optional(), // Will map to flDate
-  fiExpiryDate: z.string().optional(), // Will map to expiryDate
+  fiNumber: z.string().optional(),
+  fiDate: z.string().optional(),
+  fiExpiryDate: z.string().optional(),
   invoiceStatus: z.string().optional(),
   version: z.number().optional(),
   items: z.array(invoiceItemSchema).default([]),
@@ -439,8 +447,8 @@ export const mapInvoiceToDb = (invoice: any) => ({
       quantity: item.quantity,
       dutiableValue: item.dutiableValue,
       assessableValue: item.assessableValue,
-      totalValueAv: item.totalValue, // Assuming totalValue is based on AV
-      totalValueDv: item.dutiableValue * item.quantity, // Calculate DV total
+      totalValueAv: item.totalValue,
+      totalValueDv: item.dutiableValue * item.quantity,
       version: item.version || 0,
     })) || [],
 });

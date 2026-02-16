@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import Select from "react-select";
 import { compactSelectStyles } from "../utils/styles";
+import { Building2, User } from "lucide-react";
 
-// Define the option type for react-select
 interface SelectOption {
   value: number | string;
   label: string;
@@ -22,6 +22,12 @@ interface JobMainTabProps {
   form: any;
   parties: SelectOption[];
   processOwners: SelectOption[];
+  shippers: SelectOption[];
+  consignees: SelectOption[];
+  localAgents: SelectOption[];
+  carriers: SelectOption[];
+  transporters: SelectOption[];
+  terminals: SelectOption[];
   operationTypes: SelectOption[];
   operationModes: SelectOption[];
   jobLoadTypes: SelectOption[];
@@ -45,6 +51,12 @@ export default function JobMainTab(props: JobMainTabProps) {
     form,
     parties,
     processOwners,
+    shippers,
+    consignees,
+    localAgents,
+    carriers,
+    transporters,
+    terminals,
     operationTypes,
     operationModes,
     jobLoadTypes,
@@ -58,13 +70,24 @@ export default function JobMainTab(props: JobMainTabProps) {
     loadingDocumentTypes,
     mode,
     shippingType,
-    shipperId,
-    consigneeId,
   } = props;
 
-  // Watch form values instead of using props
+  // Watch form values for dynamic display
   const shipperValue = form.watch("shipperPartyId");
   const consigneeValue = form.watch("consigneePartyId");
+
+  // ✅ Get shipper and consignee details
+  const getPartyLabel = (partyId: number, partyList: SelectOption[]) => {
+    const party = partyList.find((p: SelectOption) => p.value === partyId);
+    return party?.label || "";
+  };
+
+  const shipperLabel = shipperValue
+    ? getPartyLabel(shipperValue, shippers)
+    : "";
+  const consigneeLabel = consigneeValue
+    ? getPartyLabel(consigneeValue, consignees)
+    : "";
 
   return (
     <TabsContent value='main' className='mt-0'>
@@ -75,7 +98,7 @@ export default function JobMainTab(props: JobMainTabProps) {
           </CardTitle>
         </CardHeader>
         <CardContent className='p-4'>
-          {/* Job Order Number & Date */}
+          {/* Job Order Number & Customer Reference */}
           <div className='grid grid-cols-12 gap-2 mb-3 items-center'>
             <div className='col-span-2 font-semibold'>
               <FormLabel className='text-sm'>Job Order Number</FormLabel>
@@ -122,45 +145,7 @@ export default function JobMainTab(props: JobMainTabProps) {
               />
             </div>
           </div>
-          {/* Status Row 
-          <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
-            <div className='col-span-2'>
-              <FormLabel className='text-xs font-semibold'>Status</FormLabel>
-            </div>
-            <div className='col-span-3'>
-              <FormField
-                control={form.control}
-                name='status'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Select
-                        options={[
-                          { value: "Draft", label: "Draft" },
-                          { value: "Active", label: "Active" },
-                          { value: "InProgress", label: "In Progress" },
-                          { value: "Completed", label: "Completed" },
-                          { value: "Cancelled", label: "Cancelled" },
-                          { value: "OnHold", label: "On Hold" },
-                        ]}
-                        value={
-                          field.value
-                            ? { value: field.value, label: field.value }
-                            : { value: "Draft", label: "Draft" }
-                        }
-                        onChange={(val) => field.onChange(val?.value)}
-                        styles={compactSelectStyles}
-                        placeholder='Select Status'
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            </div>
-            <div className='col-span-7 text-xs text-gray-500'>
-              Current status of the job order
-            </div>
-          </div>*/}
+
           {/* Job Order Date & Process Owner */}
           <div className='grid grid-cols-12 gap-2 mb-3 items-center'>
             <div className='col-span-2'>
@@ -213,15 +198,16 @@ export default function JobMainTab(props: JobMainTabProps) {
               />
             </div>
           </div>
+
           <div className='border-t mb-3'></div>
-          {/* Scope Row with Checkboxes - Now Connected to Form */}
+
+          {/* Scope Row with Checkboxes */}
           <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
             <div className='col-span-2'>
               <FormLabel className='text-xs font-semibold'>Scope</FormLabel>
             </div>
             <div className='col-span-10'>
               <div className='flex gap-6'>
-                {/* Freight Forwarding Checkbox */}
                 <FormField
                   control={form.control}
                   name='isFreightForwarding'
@@ -241,7 +227,6 @@ export default function JobMainTab(props: JobMainTabProps) {
                   )}
                 />
 
-                {/* Clearance Checkbox */}
                 <FormField
                   control={form.control}
                   name='isClearance'
@@ -261,7 +246,6 @@ export default function JobMainTab(props: JobMainTabProps) {
                   )}
                 />
 
-                {/* Transport Checkbox */}
                 <FormField
                   control={form.control}
                   name='isTransporter'
@@ -281,7 +265,6 @@ export default function JobMainTab(props: JobMainTabProps) {
                   )}
                 />
 
-                {/* Other Checkbox */}
                 <FormField
                   control={form.control}
                   name='isOther'
@@ -303,7 +286,8 @@ export default function JobMainTab(props: JobMainTabProps) {
               </div>
             </div>
           </div>
-          {/* Direction Row - API Driven */}
+
+          {/* Direction Row */}
           <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
             <div className='col-span-2'>
               <FormLabel className='text-xs'>Direction</FormLabel>
@@ -332,7 +316,8 @@ export default function JobMainTab(props: JobMainTabProps) {
               />
             </div>
           </div>
-          {/* Mode Row - API Driven */}
+
+          {/* Mode Row */}
           <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
             <div className='col-span-2'>
               <FormLabel className='text-xs'>Mode</FormLabel>
@@ -351,10 +336,9 @@ export default function JobMainTab(props: JobMainTabProps) {
                         )}
                         onChange={(val) => {
                           field.onChange(val?.value);
-                          // Clear shipping type and load when mode changes to AIR
                           if (val?.value === "AIR") {
-                            form.setValue("shippingType", "");
-                            form.setValue("load", "");
+                            form.setValue("jobSubType", "");
+                            form.setValue("jobLoadType", "");
                           }
                         }}
                         styles={compactSelectStyles}
@@ -368,7 +352,8 @@ export default function JobMainTab(props: JobMainTabProps) {
               />
             </div>
           </div>
-          {/* Shipping Type Row - API Driven - Hide for AIR mode */}
+
+          {/* Shipping Type Row - Hide for AIR mode */}
           {mode !== "AIR" && (
             <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
               <div className='col-span-2'>
@@ -399,7 +384,8 @@ export default function JobMainTab(props: JobMainTabProps) {
               </div>
             </div>
           )}
-          {/* Load Row - API Driven - Show only when Shipping Type = FCL */}
+
+          {/* Load Row - Show only when Shipping Type = FCL */}
           {shippingType === "FCL" && (
             <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
               <div className='col-span-2'>
@@ -430,7 +416,8 @@ export default function JobMainTab(props: JobMainTabProps) {
               </div>
             </div>
           )}
-          {/* Document Type Row - API Driven */}
+
+          {/* Document Type Row */}
           <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
             <div className='col-span-2'>
               <FormLabel className='text-xs'>Document Type</FormLabel>
@@ -459,6 +446,7 @@ export default function JobMainTab(props: JobMainTabProps) {
               />
             </div>
           </div>
+
           {/* Shipper Row */}
           <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
             <div className='col-span-2'>
@@ -472,8 +460,8 @@ export default function JobMainTab(props: JobMainTabProps) {
                   <FormItem>
                     <FormControl>
                       <Select
-                        options={parties}
-                        value={parties.find(
+                        options={shippers}
+                        value={shippers.find(
                           (p: SelectOption) => p.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
@@ -488,6 +476,7 @@ export default function JobMainTab(props: JobMainTabProps) {
               />
             </div>
           </div>
+
           {/* Consignee Row */}
           <div className='grid grid-cols-12 gap-2 mb-2 items-center'>
             <div className='col-span-2'>
@@ -501,8 +490,8 @@ export default function JobMainTab(props: JobMainTabProps) {
                   <FormItem>
                     <FormControl>
                       <Select
-                        options={parties}
-                        value={parties.find(
+                        options={consignees}
+                        value={consignees.find(
                           (p: SelectOption) => p.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
@@ -518,16 +507,57 @@ export default function JobMainTab(props: JobMainTabProps) {
             </div>
           </div>
 
-          {/* Billing Parties Info Row - Read Only - Shows when both shipper and consignee are selected */}
+          {/* ✅ UPDATED: Billing Parties Information - Shows when both shipper and consignee are selected */}
           {shipperValue && consigneeValue && (
-            <div className='grid grid-cols-12 gap-2 mb-3 items-center'>
+            <div className='grid grid-cols-12 gap-2 mb-3 items-start'>
               <div className='col-span-2'>
-                <FormLabel className='text-xs'>Billing Parties</FormLabel>
+                <FormLabel className='text-xs font-semibold'>
+                  Billing Parties
+                </FormLabel>
               </div>
-              <div className='col-span-8'>
-                <div className='p-2 bg-gray-50 border rounded text-xs'>
-                  {form.getValues("billingPartiesInfo") ||
-                    "Billing parties information"}
+              <div className='col-span-10'>
+                <div className='bg-gradient-to-r from-blue-50 to-green-50 border-2 border-blue-200 rounded-lg p-4'>
+                  <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                    {/* Shipper Information */}
+                    <div className='bg-white rounded-lg p-3 border border-blue-200'>
+                      <div className='flex items-center gap-2 mb-2'>
+                        <Building2 className='h-4 w-4 text-blue-600' />
+                        <span className='text-xs font-semibold text-blue-900'>
+                          SHIPPER
+                        </span>
+                      </div>
+                      <div className='text-sm font-medium text-gray-900'>
+                        {shipperLabel}
+                      </div>
+                    </div>
+
+                    {/* Consignee Information */}
+                    <div className='bg-white rounded-lg p-3 border border-green-200'>
+                      <div className='flex items-center gap-2 mb-2'>
+                        <User className='h-4 w-4 text-green-600' />
+                        <span className='text-xs font-semibold text-green-900'>
+                          CONSIGNEE
+                        </span>
+                      </div>
+                      <div className='text-sm font-medium text-gray-900'>
+                        {consigneeLabel}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Combined Display */}
+                  <div className='mt-3 pt-3 border-t border-gray-200'>
+                    <div className='text-xs text-gray-600 mb-1'>
+                      Billing Information:
+                    </div>
+                    <div className='text-sm font-medium text-gray-900'>
+                      <span className='text-blue-700'>Shipper:</span>{" "}
+                      {shipperLabel}
+                      <span className='mx-2 text-gray-400'>|</span>
+                      <span className='text-green-700'>Consignee:</span>{" "}
+                      {consigneeLabel}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

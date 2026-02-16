@@ -21,7 +21,7 @@ Select * from Jobs
 Delete from Jobs
 
 Select * from Parties
-Delete from Parties
+--Delete from Parties
 
 Select * from BLMaster
 Delete from BLMaster
@@ -32,9 +32,10 @@ Select * from AwbMaster
 Select * from AwbEquipments
 
 Select * from Banks
-delete from Banks
+--delete from Banks
 
 Select * from Branches
-delete from Branches
+--delete from Branches
 
-Select * from
+Select * from HSCodes
+--delete from HsCodes

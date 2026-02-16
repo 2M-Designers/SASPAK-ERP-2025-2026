@@ -4,6 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -49,6 +56,81 @@ export default function GDInfoTab({
   const [isGDDialogOpen, setIsGDDialogOpen] = useState(false);
   const [editingGDIndex, setEditingGDIndex] = useState<number | null>(null);
   const [insuranceType, setInsuranceType] = useState<"1percent" | "Rs">("Rs");
+
+  // ✅ NEW: Separate state for GD serial number (user input only)
+  const [gdSerialNumber, setGdSerialNumber] = useState<string>("1119");
+
+  // ✅ NEW: Controlled state for Type dropdown
+  const [selectedType, setSelectedType] = useState<string>("");
+
+  // ✅ NEW: Track if initial data has been loaded (prevents auto-generation on edit)
+  const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
+
+  // ✅ Sync selectedType with form value on mount or when form value changes
+  React.useEffect(() => {
+    const currentType = form.watch("gdType");
+    if (currentType && currentType !== selectedType) {
+      setSelectedType(currentType);
+      console.log("Synced type from form:", currentType);
+    }
+  }, [form.watch("gdType")]);
+
+  // ✅ NEW: Extract serial number from existing GD Number on mount (Edit mode)
+  React.useEffect(() => {
+    const existingGDNumber = form.watch("gdnumber");
+
+    if (existingGDNumber && existingGDNumber.includes("-")) {
+      // Format: KAPS-TYPE-####-DDMMYYYY
+      const parts = existingGDNumber.split("-");
+
+      if (parts.length === 4) {
+        const serialFromGD = parts[2]; // Extract serial number (####)
+
+        if (serialFromGD && serialFromGD !== gdSerialNumber) {
+          console.log("Extracted serial number from GD:", serialFromGD);
+          setGdSerialNumber(serialFromGD);
+        }
+      }
+    }
+
+    // Mark initial load as complete after a short delay
+    setTimeout(() => {
+      setIsInitialLoad(false);
+      console.log("Initial load complete");
+    }, 500);
+  }, []); // Run only once on mount
+
+  // ✅ NEW: Extract serial number from GD Number in edit mode
+  React.useEffect(() => {
+    const gdNumber = form.watch("gdnumber");
+
+    if (gdNumber && gdNumber.includes("-")) {
+      // Parse format: KAPS-TYPE-####-DDMMYYYY
+      const parts = gdNumber.split("-");
+
+      if (parts.length === 4) {
+        const extractedSerial = parts[2]; // Get the #### part
+        const extractedType = parts[1]; // Get the TYPE part
+
+        console.log("Extracted from GD Number:", {
+          type: extractedType,
+          serial: extractedSerial,
+          fullNumber: gdNumber,
+        });
+
+        // Only update if different to avoid infinite loops
+        if (extractedSerial && extractedSerial !== gdSerialNumber) {
+          setGdSerialNumber(extractedSerial);
+        }
+
+        if (extractedType && extractedType !== selectedType) {
+          setSelectedType(extractedType);
+          form.setValue("gdType", extractedType);
+        }
+      }
+    }
+  }, []); // Run only on mount to extract from existing GD Number
+
   const [currentGD, setCurrentGD] = useState<any>({
     id: 0,
     unitType: "",
@@ -80,13 +162,13 @@ export default function GDInfoTab({
     payableIt: 0,
   });
 
-  // ✅ NEW: Get current date in YYYY-MM-DD format for max date
+  // ✅ Get current date in YYYY-MM-DD format for max date
   const getTodayDate = () => {
     const today = new Date();
     return today.toISOString().split("T")[0];
   };
 
-  // ✅ NEW: Format GD Number - KAPS-TYPE-####-DDMMYYYY
+  // ✅ Format GD Number - KAPS-TYPE-####-DDMMYYYY
   const formatGDNumber = (
     prefix: string,
     type: string,
@@ -95,50 +177,46 @@ export default function GDInfoTab({
   ): string => {
     if (!type || !serial || !date) return "";
 
+    // Pad serial to 4 digits
+    const paddedSerial = serial.padStart(4, "0");
+
     // Convert date from YYYY-MM-DD to DDMMYYYY
     const dateParts = date.split("-");
     if (dateParts.length !== 3) return "";
 
     const formattedDate = `${dateParts[2]}${dateParts[1]}${dateParts[0]}`; // DDMMYYYY
 
-    return `${prefix}-${type}-${serial}-${formattedDate}`;
+    return `${prefix}-${type}-${paddedSerial}-${formattedDate}`;
   };
 
-  // ✅ NEW: Auto-generate GD Number when type or date changes
+  // ✅ Auto-generate GD Number when type, serial, or date changes
+  // But only AFTER initial load is complete (prevents overwriting in edit mode)
   React.useEffect(() => {
-    const gdType = form.watch("gdType");
+    // Skip auto-generation during initial load
+    if (isInitialLoad) {
+      console.log("Skipping auto-generation: initial load in progress");
+      return;
+    }
+
     const gdDate = form.watch("gddate");
-    const gdNumber = form.watch("gdnumber");
+    const existingGDNumber = form.watch("gdnumber");
 
-    // Only auto-generate if we have type and date
-    if (gdType && gdDate) {
-      // Extract serial number if GD number already exists and follows format
-      let serial = "1119"; // Default serial
+    // Only auto-generate if we have all required fields
+    if (selectedType && gdSerialNumber && gdDate) {
+      const newGDNumber = formatGDNumber(
+        "KAPS",
+        selectedType,
+        gdSerialNumber,
+        gdDate,
+      );
 
-      if (gdNumber) {
-        const parts = gdNumber.split("-");
-        if (parts.length === 4) {
-          serial = parts[2]; // Keep existing serial
-        }
-      }
-
-      const newGDNumber = formatGDNumber("KAPS", gdType, serial, gdDate);
-
-      // Only update if different to avoid infinite loop
-      if (newGDNumber !== gdNumber) {
+      // Only update if different
+      if (newGDNumber && newGDNumber !== existingGDNumber) {
+        console.log("Auto-generating GD Number:", newGDNumber);
         form.setValue("gdnumber", newGDNumber);
       }
     }
-  }, [form.watch("gdType"), form.watch("gddate")]);
-
-  // ✅ NEW: Validate GD Number format
-  const validateGDNumberFormat = (value: string): boolean => {
-    if (!value) return true; // Allow empty
-
-    // Format: KAPS-XX-####-DDMMYYYY
-    const pattern = /^[A-Z]{4}-[A-Z]{2}-\d{4}-\d{8}$/;
-    return pattern.test(value);
-  };
+  }, [selectedType, gdSerialNumber, form.watch("gddate"), isInitialLoad]);
 
   // Calculate total assessed value from all items
   const calculateTotalAssessedValue = () => {
@@ -556,33 +634,61 @@ export default function GDInfoTab({
       <div className='bg-white p-6 rounded-lg border'>
         <h3 className='text-lg font-semibold mb-4'>GD Master Information</h3>
 
-        {/* ✅ NEW: GD Number Format Info */}
+        {/* ✅ IMPROVED: Show auto-generated GD Number at top */}
+        {form.watch("gdnumber") && (
+          <Alert className='mb-4 bg-green-50 border-green-200'>
+            <Info className='h-4 w-4 text-green-600' />
+            <AlertDescription className='text-sm text-green-800'>
+              <strong>Generated GD Number:</strong>{" "}
+              <span className='font-mono text-lg font-bold'>
+                {form.watch("gdnumber")}
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* ✅ NEW: Info about format */}
         <Alert className='mb-4 bg-blue-50 border-blue-200'>
           <Info className='h-4 w-4 text-blue-600' />
           <AlertDescription className='text-sm text-blue-800'>
             <strong>GD Number Format:</strong> KAPS-TYPE-####-DDMMYYYY
             <br />
             <span className='text-xs'>
-              Example: KAPS-HC-1119-20122026 (Auto-generated from Type and Date)
+              Select Type and Date, then enter only the 4-digit serial number
+              below.
             </span>
           </AlertDescription>
         </Alert>
 
         <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-          {/* Row 1 */}
+          {/* Row 1: Type, Date, Serial Number (User Input) */}
           <div className='space-y-2'>
-            <Label htmlFor='gdType'>
-              Type{" "}
-              <span className='text-xs text-gray-500'>(HC/IB/EB/TI/SB)</span>
+            <Label>
+              Type <span className='text-red-500'>*</span>
+              <span className='text-xs text-gray-500 ml-1'>
+                (HC/IB/EB/TI/SB)
+              </span>
             </Label>
             <Select
-              value={form.watch("gdType") || ""}
-              onValueChange={(value) => form.setValue("gdType", value)}
+              key={`type-select-${selectedType || "none"}`}
+              defaultValue={selectedType}
+              onValueChange={(value) => {
+                console.log("Type selected:", value);
+                setSelectedType(value);
+                form.setValue("gdType", value, {
+                  shouldValidate: true,
+                  shouldDirty: true,
+                });
+              }}
             >
               <SelectTrigger>
                 <SelectValue placeholder='Select Type' />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent
+                position='popper'
+                sideOffset={5}
+                className='max-h-[300px] overflow-y-auto z-50'
+              >
                 <SelectItem value='HC'>HC - Home Consumption</SelectItem>
                 <SelectItem value='IB'>IB - Import Bond</SelectItem>
                 <SelectItem value='EB'>EB - Export Bond</SelectItem>
@@ -590,11 +696,21 @@ export default function GDInfoTab({
                 <SelectItem value='SB'>SB - Supply Bond</SelectItem>
               </SelectContent>
             </Select>
+            {!selectedType && (
+              <p className='text-xs text-orange-600'>
+                ⚠️ Please select a GD Type
+              </p>
+            )}
+            {selectedType && (
+              <p className='text-xs text-green-600'>
+                ✅ Selected: {selectedType}
+              </p>
+            )}
           </div>
 
           <div className='space-y-2'>
             <Label htmlFor='gddate'>
-              GD Date
+              GD Date <span className='text-red-500'>*</span>
               <span className='text-xs text-gray-500 ml-1'>
                 (No future dates)
               </span>
@@ -610,33 +726,30 @@ export default function GDInfoTab({
             </p>
           </div>
 
+          {/* ✅ NEW: Serial Number Input (User enters ONLY the 4-digit number) */}
           <div className='space-y-2'>
-            <Label htmlFor='gdnumber'>
-              GD Number
-              <span className='text-xs text-gray-500 ml-1'>
-                (Auto-generated)
-              </span>
+            <Label htmlFor='gdSerialNumber'>
+              Serial Number <span className='text-red-500'>*</span>
+              <span className='text-xs text-gray-500 ml-1'>(4 digits)</span>
             </Label>
             <Input
-              id='gdnumber'
+              id='gdSerialNumber'
               type='text'
-              placeholder='KAPS-HC-1119-20122026'
-              className={
-                form.watch("gdnumber") &&
-                !validateGDNumberFormat(form.watch("gdnumber"))
-                  ? "border-red-500"
-                  : ""
-              }
-              {...form.register("gdnumber")}
+              maxLength={4}
+              placeholder='1119'
+              value={gdSerialNumber}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, ""); // Only digits
+                setGdSerialNumber(value);
+              }}
+              className='font-mono text-lg'
             />
-            {form.watch("gdnumber") &&
-              !validateGDNumberFormat(form.watch("gdnumber")) && (
-                <p className='text-xs text-red-500'>
-                  Invalid format. Expected: KAPS-XX-####-DDMMYYYY
-                </p>
-              )}
+            <p className='text-xs text-gray-500'>
+              Enter 4-digit serial number (e.g., 1119, 0001)
+            </p>
           </div>
 
+          {/* Exchange Rate */}
           <div className='space-y-2'>
             <Label htmlFor='jobInvoiceExchRate'>
               Exchange Rate{" "}
@@ -653,15 +766,15 @@ export default function GDInfoTab({
 
           {/* Row 4: Financial Calculations */}
           <div className='space-y-2'>
-            <Label htmlFor='freightCharges'>
+            <Label htmlFor='gdcharges'>
               {freightType === "Collect" ? "Freight Charges" : "Other Charges"}
             </Label>
             <Input
-              id='freightCharges'
+              id='gdcharges'
               type='number'
               step='0.01'
               placeholder='0.00'
-              {...form.register("freightCharges", { valueAsNumber: true })}
+              {...form.register("gdcharges", { valueAsNumber: true })}
             />
             <p className='text-xs text-gray-500'>
               {freightType === "Collect"
@@ -686,7 +799,11 @@ export default function GDInfoTab({
                 <SelectTrigger className='w-[120px]'>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent
+                  position='popper'
+                  sideOffset={5}
+                  className='max-h-[300px] overflow-y-auto z-50'
+                >
                   <SelectItem value='1percent'>1% of AV</SelectItem>
                   <SelectItem value='Rs'>Rs.</SelectItem>
                 </SelectContent>
@@ -813,7 +930,6 @@ export default function GDInfoTab({
           </div>
         </div>
 
-        {/* ✅ IMPROVED: Better scrollbar visibility and wider table */}
         <div className='border rounded-lg overflow-x-auto max-h-[600px] styled-scrollbar'>
           <style jsx>{`
             .styled-scrollbar::-webkit-scrollbar {

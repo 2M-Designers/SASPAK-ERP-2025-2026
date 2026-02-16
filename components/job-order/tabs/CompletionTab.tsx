@@ -19,10 +19,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, AlertCircle, Info } from "lucide-react";
+import { Calendar, AlertCircle, Info, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { fetchGdClearedUnderSection } from "../api/jobOrderApi";
 
 // RMS Channel Options with colors
 const RMS_CHANNEL_OPTIONS = [
@@ -40,14 +41,6 @@ const RMS_CHANNEL_OPTIONS = [
   { value: "RED", label: "Red", color: "bg-red-500 text-white" },
 ];
 
-// Security Type Options (80, 81, 82, 83)
-const SECURITY_TYPE_OPTIONS = [
-  { value: "80", label: "80" },
-  { value: "81", label: "81" },
-  { value: "82", label: "82" },
-  { value: "83", label: "83" },
-];
-
 // Clearance Delay Type Options
 const CLEARANCE_DELAY_TYPES = [
   { value: "GROUNDING", label: "Grounding" },
@@ -63,14 +56,121 @@ const DISPATCH_DELAY_TYPES = [
   { value: "CLEARANCE", label: "Clearance" },
 ];
 
-export default function CompletionTab({ form, shippingType }: any) {
+// PSQCA Options
+const PSQCA_OPTIONS = [
+  { value: "Submitted", label: "Submitted" },
+  { value: "Not Required", label: "Not Required" },
+  { value: "Pending", label: "Pending" },
+];
+
+interface GdClearedOption {
+  value: number;
+  label: string;
+  sectionCode: string;
+  sectionName: string;
+  isSecurityRequired: boolean;
+}
+
+export default function CompletionTab({ form, shippingType, toast }: any) {
   const [clearanceDelayTypes, setClearanceDelayTypes] = useState<string[]>([]);
   const [dispatchDelayTypes, setDispatchDelayTypes] = useState<string[]>([]);
+  const [gdClearedOptions, setGdClearedOptions] = useState<GdClearedOption[]>(
+    [],
+  );
+  const [loadingGdOptions, setLoadingGdOptions] = useState<boolean>(false);
 
   // Watch relevant dates for automatic calculation
   const gateOutDate = form.watch("gateOutDate");
   const gdDate = form.watch("gddate");
   const vesselArrival = form.watch("vesselArrival");
+
+  // Fetch GD Cleared U/S options from API
+  useEffect(() => {
+    const loadGdClearedOptions = async () => {
+      try {
+        const options = await fetchGdClearedUnderSection(setLoadingGdOptions);
+
+        if (options && options.length > 0) {
+          setGdClearedOptions(options);
+          console.log("GD Cleared U/S options loaded:", options);
+
+          if (toast) {
+            toast({
+              title: "GD Cleared U/S Loaded",
+              description: `${options.length} option(s) available`,
+            });
+          }
+        } else {
+          const fallbackOptions: GdClearedOption[] = [
+            {
+              value: 80,
+              label: "80 - Section 80",
+              sectionCode: "80",
+              sectionName: "Section 80",
+              isSecurityRequired: false,
+            },
+            {
+              value: 81,
+              label: "81 - Section 81",
+              sectionCode: "81",
+              sectionName: "Section 81",
+              isSecurityRequired: false,
+            },
+            {
+              value: 82,
+              label: "82 - Section 82",
+              sectionCode: "82",
+              sectionName: "Section 82",
+              isSecurityRequired: false,
+            },
+            {
+              value: 83,
+              label: "83 - Section 83",
+              sectionCode: "83",
+              sectionName: "Section 83",
+              isSecurityRequired: false,
+            },
+          ];
+          setGdClearedOptions(fallbackOptions);
+        }
+      } catch (error: any) {
+        console.error("Error loading GD Cleared U/S options:", error);
+        const fallbackOptions: GdClearedOption[] = [
+          {
+            value: 80,
+            label: "80 - Section 80",
+            sectionCode: "80",
+            sectionName: "Section 80",
+            isSecurityRequired: false,
+          },
+          {
+            value: 81,
+            label: "81 - Section 81",
+            sectionCode: "81",
+            sectionName: "Section 81",
+            isSecurityRequired: false,
+          },
+          {
+            value: 82,
+            label: "82 - Section 82",
+            sectionCode: "82",
+            sectionName: "Section 82",
+            isSecurityRequired: false,
+          },
+          {
+            value: 83,
+            label: "83 - Section 83",
+            sectionCode: "83",
+            sectionName: "Section 83",
+            isSecurityRequired: false,
+          },
+        ];
+        setGdClearedOptions(fallbackOptions);
+      }
+    };
+
+    loadGdClearedOptions();
+  }, [toast]);
 
   // Calculate Clearance Delay Days automatically
   useEffect(() => {
@@ -80,7 +180,7 @@ export default function CompletionTab({ form, shippingType }: any) {
         const gd = new Date(gdDate);
         const diffTime = gateOut.getTime() - gd.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        form.setValue("delayInClearanceDays", Math.max(0, diffDays));
+        form.setValue("delayInClearance", Math.max(0, diffDays)); // ✅ FIXED NAME
       } catch (error) {
         console.error("Error calculating clearance delay:", error);
       }
@@ -89,7 +189,6 @@ export default function CompletionTab({ form, shippingType }: any) {
 
   // Calculate Dispatch Delay Days automatically
   useEffect(() => {
-    // Get earliest dispatch date from dispatch records
     const dispatchRecords = form.watch("dispatchRecords") || [];
     if (dispatchRecords.length > 0 && vesselArrival) {
       try {
@@ -105,7 +204,7 @@ export default function CompletionTab({ form, shippingType }: any) {
           const arrival = new Date(vesselArrival);
           const diffTime = earliestDispatch.getTime() - arrival.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          form.setValue("delayInDispatchDays", Math.max(0, diffDays));
+          form.setValue("delayInDispatch", Math.max(0, diffDays)); // ✅ FIXED NAME
         }
       } catch (error) {
         console.error("Error calculating dispatch delay:", error);
@@ -120,7 +219,8 @@ export default function CompletionTab({ form, shippingType }: any) {
       : [...clearanceDelayTypes, value];
 
     setClearanceDelayTypes(updated);
-    form.setValue("delayInClearanceType", updated.join(","));
+    form.setValue("delayInClearanceType", updated.join(",")); // ✅ FIXED NAME
+    console.log("Clearance delay types updated:", updated);
   };
 
   // Handle multi-select for dispatch delay types
@@ -130,12 +230,13 @@ export default function CompletionTab({ form, shippingType }: any) {
       : [...dispatchDelayTypes, value];
 
     setDispatchDelayTypes(updated);
-    form.setValue("delayInDispatchType", updated.join(","));
+    form.setValue("delayInDispatchType", updated.join(",")); // ✅ FIXED NAME
+    console.log("Dispatch delay types updated:", updated);
   };
 
   // Load existing multi-select values
   useEffect(() => {
-    const clearanceTypes = form.watch("delayInClearanceType");
+    const clearanceTypes = form.watch("delayInClearanceType"); // ✅ FIXED NAME
     if (clearanceTypes) {
       setClearanceDelayTypes(
         clearanceTypes
@@ -145,7 +246,7 @@ export default function CompletionTab({ form, shippingType }: any) {
       );
     }
 
-    const dispatchTypes = form.watch("delayInDispatchType");
+    const dispatchTypes = form.watch("delayInDispatchType"); // ✅ FIXED NAME
     if (dispatchTypes) {
       setDispatchDelayTypes(
         dispatchTypes
@@ -157,10 +258,18 @@ export default function CompletionTab({ form, shippingType }: any) {
   }, []);
 
   // Get selected RMS channel for color badge
-  const selectedRmsChannel = form.watch("rmsChannel");
+  const selectedRmsChannel = form.watch("rmschannel"); // ✅ FIXED NAME
   const rmsChannelOption = RMS_CHANNEL_OPTIONS.find(
     (opt) => opt.value === selectedRmsChannel,
   );
+
+  // Get selected GD Cleared U/S for display
+  const selectedGdCleared = form.watch("gdclearedUs"); // ✅ FIXED NAME
+  const selectedGdOption = gdClearedOptions.find(
+    (opt) => opt.value === selectedGdCleared,
+  );
+
+  const selectedPsqca = form.watch("psqcaSamples");
 
   // Check if shipping type is LCL
   const isLCL = shippingType === "LCL" || shippingType === "AIR";
@@ -182,9 +291,10 @@ export default function CompletionTab({ form, shippingType }: any) {
 
             {/* GD Cleared U/S Section */}
             <div className='grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200'>
+              {/* ✅ FIXED: gdclearedUs */}
               <FormField
                 control={form.control}
-                name='gdClearedUs'
+                name='gdclearedUs'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
@@ -193,28 +303,85 @@ export default function CompletionTab({ form, shippingType }: any) {
                         (Security Type)
                       </span>
                     </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select
+                      key={`gd-cleared-${field.value || "none"}`}
+                      value={field.value?.toString()}
+                      onValueChange={(value) => {
+                        console.log("GD Cleared U/S selected:", value);
+                        field.onChange(value);
+                      }}
+                      disabled={loadingGdOptions}
+                    >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder='Select type (80, 81, etc.)' />
+                          <SelectValue
+                            placeholder={
+                              loadingGdOptions
+                                ? "Loading..."
+                                : "Select security type"
+                            }
+                          >
+                            {loadingGdOptions ? (
+                              <span className='flex items-center gap-2'>
+                                <Loader2 className='h-4 w-4 animate-spin' />
+                                Loading...
+                              </span>
+                            ) : selectedGdOption ? (
+                              `${selectedGdOption.sectionCode} - ${selectedGdOption.sectionName}`
+                            ) : (
+                              "Select security type"
+                            )}
+                          </SelectValue>
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent>
-                        {SECURITY_TYPE_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
+                      <SelectContent
+                        position='popper'
+                        sideOffset={5}
+                        className='max-h-[300px] overflow-y-auto z-50'
+                      >
+                        {gdClearedOptions.length === 0 && !loadingGdOptions ? (
+                          <SelectItem value='none'>
+                            No options available
                           </SelectItem>
-                        ))}
+                        ) : (
+                          gdClearedOptions.map((option) => (
+                            <SelectItem
+                              key={option.value}
+                              value={option.value.toString()}
+                            >
+                              <div className='flex items-center justify-between w-full gap-2'>
+                                <span>
+                                  {option.sectionCode} - {option.sectionName}
+                                </span>
+                                {option.isSecurityRequired && (
+                                  <Badge
+                                    variant='outline'
+                                    className='text-xs ml-2'
+                                  >
+                                    Security Required
+                                  </Badge>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
+                    {selectedGdOption && (
+                      <p className='text-xs text-green-600'>
+                        ✅ Selected: {selectedGdOption.sectionCode} -{" "}
+                        {selectedGdOption.sectionName}
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
+              {/* ✅ FIXED: gdsecurityValue */}
               <FormField
                 control={form.control}
-                name='gdSecurityValue'
+                name='gdsecurityValue'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Value</FormLabel>
@@ -223,6 +390,13 @@ export default function CompletionTab({ form, shippingType }: any) {
                         placeholder='Enter security value'
                         {...field}
                         value={field.value || ""}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          console.log(
+                            "Security value changed:",
+                            e.target.value,
+                          );
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -230,14 +404,23 @@ export default function CompletionTab({ form, shippingType }: any) {
                 )}
               />
 
+              {/* ✅ FIXED: gdsecurityExpiryDate */}
               <FormField
                 control={form.control}
-                name='gdSecurityExpiryDate'
+                name='gdsecurityExpiryDate'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Expiry Date</FormLabel>
                     <FormControl>
-                      <Input type='date' {...field} value={field.value || ""} />
+                      <Input
+                        type='date'
+                        {...field}
+                        value={field.value || ""}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          console.log("Expiry date changed:", e.target.value);
+                        }}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -247,9 +430,10 @@ export default function CompletionTab({ form, shippingType }: any) {
 
             {/* RMS Channel */}
             <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+              {/* ✅ FIXED: rmschannel */}
               <FormField
                 control={form.control}
-                name='rmsChannel'
+                name='rmschannel'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className='flex items-center gap-2'>
@@ -260,13 +444,24 @@ export default function CompletionTab({ form, shippingType }: any) {
                         </Badge>
                       )}
                     </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select
+                      key={`rms-${field.value || "none"}`}
+                      value={field.value}
+                      onValueChange={(value) => {
+                        console.log("RMS Channel selected:", value);
+                        field.onChange(value);
+                      }}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder='Select RMS channel' />
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent>
+                      <SelectContent
+                        position='popper'
+                        sideOffset={5}
+                        className='max-h-[300px] overflow-y-auto z-50'
+                      >
                         {RMS_CHANNEL_OPTIONS.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             <div className='flex items-center gap-2'>
@@ -279,13 +474,17 @@ export default function CompletionTab({ form, shippingType }: any) {
                         ))}
                       </SelectContent>
                     </Select>
+                    {field.value && (
+                      <p className='text-xs text-green-600'>
+                        ✅ Selected: {rmsChannelOption?.label}
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
               {/* Destuffing On - Only for LCL */}
-
               <FormField
                 control={form.control}
                 name='destuffingOn'
@@ -304,6 +503,13 @@ export default function CompletionTab({ form, shippingType }: any) {
                         value={field.value || ""}
                         disabled={!isLCL}
                         className={!isLCL ? "bg-gray-100" : ""}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          console.log(
+                            "Destuffing date changed:",
+                            e.target.value,
+                          );
+                        }}
                       />
                     </FormControl>
                     {!isLCL && (
@@ -318,42 +524,77 @@ export default function CompletionTab({ form, shippingType }: any) {
               />
             </div>
 
-            {/* GD Assign to Gate Out Date */}
+            {/* GD Assign to Gate Out Date & PSQCA */}
             <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+              {/* ✅ FIXED: gdassignToGateOut */}
               <FormField
                 control={form.control}
-                name='gdAssignToGateOutDate'
+                name='gdassignToGateOut'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>GD Assign to Gate Out Date</FormLabel>
                     <FormControl>
-                      <Input type='date' {...field} value={field.value || ""} />
+                      <Input
+                        type='date'
+                        {...field}
+                        value={field.value || ""}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          console.log(
+                            "GD Assign to Gate Out Date changed:",
+                            e.target.value,
+                          );
+                        }}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              {/* Row 5: PSQCA */}
-              <div className='space-y-2'>
-                <Label htmlFor='psqcaSamples'>PSQCA Samples</Label>
-                <Select
-                  value={form.watch("psqcaSamples") || ""}
-                  onValueChange={(value) =>
-                    form.setValue("psqcaSamples", value)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder='Select Status' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='Submitted'>Submitted</SelectItem>
-                    <SelectItem value='Not Required'>Not Required</SelectItem>
-                    <SelectItem value='Pending'>Pending</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* PSQCA Samples */}
+              <FormField
+                control={form.control}
+                name='psqcaSamples'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>PSQCA Samples</FormLabel>
+                    <Select
+                      key={`psqca-${field.value || "none"}`}
+                      value={field.value}
+                      onValueChange={(value) => {
+                        console.log("PSQCA status selected:", value);
+                        field.onChange(value);
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder='Select Status' />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent
+                        position='popper'
+                        sideOffset={5}
+                        className='max-h-[300px] overflow-y-auto z-50'
+                      >
+                        {PSQCA_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {field.value && (
+                      <p className='text-xs text-green-600'>
+                        ✅ Selected: {field.value}
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
+
             {/* Delay in Clearance Section */}
             <div className='space-y-4 p-4 bg-orange-50 rounded-lg border border-orange-200'>
               <div className='flex items-center gap-2'>
@@ -364,10 +605,10 @@ export default function CompletionTab({ form, shippingType }: any) {
               </div>
 
               <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-                {/* Days (Auto-calculated) */}
+                {/* ✅ FIXED: delayInClearance (not delayInClearanceDays) */}
                 <FormField
                   control={form.control}
-                  name='delayInClearanceDays'
+                  name='delayInClearance'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
@@ -391,10 +632,10 @@ export default function CompletionTab({ form, shippingType }: any) {
                   )}
                 />
 
-                {/* Reason */}
+                {/* ✅ FIXED: reasonOfDelayInClearance */}
                 <FormField
                   control={form.control}
-                  name='delayInClearanceReason'
+                  name='reasonOfDelayInClearance'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Reason of Delay</FormLabel>
@@ -403,6 +644,13 @@ export default function CompletionTab({ form, shippingType }: any) {
                           placeholder='Enter reason'
                           {...field}
                           value={field.value || ""}
+                          onChange={(e) => {
+                            field.onChange(e);
+                            console.log(
+                              "Clearance delay reason changed:",
+                              e.target.value,
+                            );
+                          }}
                         />
                       </FormControl>
                       <FormMessage />
@@ -410,7 +658,7 @@ export default function CompletionTab({ form, shippingType }: any) {
                   )}
                 />
 
-                {/* Type (Multi-select) */}
+                {/* ✅ delayInClearanceType (multi-select) */}
                 <FormItem>
                   <FormLabel>
                     Type{" "}
@@ -470,10 +718,10 @@ export default function CompletionTab({ form, shippingType }: any) {
               </div>
 
               <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-                {/* Days (Auto-calculated) */}
+                {/* ✅ FIXED: delayInDispatch (not delayInDispatchDays) */}
                 <FormField
                   control={form.control}
-                  name='delayInDispatchDays'
+                  name='delayInDispatch'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
@@ -497,10 +745,10 @@ export default function CompletionTab({ form, shippingType }: any) {
                   )}
                 />
 
-                {/* Reason */}
+                {/* ✅ FIXED: reasonOfDelayInDispatch */}
                 <FormField
                   control={form.control}
-                  name='delayInDispatchReason'
+                  name='reasonOfDelayInDispatch'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Reason of Delay</FormLabel>
@@ -509,6 +757,13 @@ export default function CompletionTab({ form, shippingType }: any) {
                           placeholder='Enter reason'
                           {...field}
                           value={field.value || ""}
+                          onChange={(e) => {
+                            field.onChange(e);
+                            console.log(
+                              "Dispatch delay reason changed:",
+                              e.target.value,
+                            );
+                          }}
                         />
                       </FormControl>
                       <FormMessage />
@@ -516,7 +771,7 @@ export default function CompletionTab({ form, shippingType }: any) {
                   )}
                 />
 
-                {/* Type (Multi-select) */}
+                {/* ✅ delayInDispatchType (multi-select) */}
                 <FormItem>
                   <FormLabel>
                     Type{" "}
@@ -566,10 +821,10 @@ export default function CompletionTab({ form, shippingType }: any) {
               </div>
             </div>
 
-            {/* Remarks */}
+            {/* ✅ FIXED: remarks (not completionRemarks) */}
             <FormField
               control={form.control}
-              name='completionRemarks'
+              name='remarks'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Remarks</FormLabel>
@@ -579,6 +834,13 @@ export default function CompletionTab({ form, shippingType }: any) {
                       className='min-h-[100px]'
                       {...field}
                       value={field.value || ""}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        console.log(
+                          "Completion remarks changed:",
+                          e.target.value,
+                        );
+                      }}
                     />
                   </FormControl>
                   <FormMessage />

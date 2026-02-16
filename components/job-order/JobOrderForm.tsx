@@ -85,6 +85,12 @@ export default function JobOrderForm({
   // Dropdown states
   const [parties, setParties] = useState<any[]>([]);
   const [processOwners, setProcessOwners] = useState<any[]>([]);
+  const [shippers, setShippers] = useState<any[]>([]);
+  const [consignees, setConsignees] = useState<any[]>([]);
+  const [localAgents, setLocalAgents] = useState<any[]>([]);
+  const [carriers, setCarriers] = useState<any[]>([]);
+  const [transporters, setTransporters] = useState<any[]>([]);
+  const [terminals, setTerminals] = useState<any[]>([]);
   const [containerTypes, setContainerTypes] = useState<any[]>([]);
   const [containerSizes, setContainerSizes] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
@@ -270,6 +276,7 @@ export default function JobOrderForm({
       // Weight
       grossWeight: 0,
       netWeight: 0,
+      chargeableWeight: 0,
 
       // Dates
       etdDate: "",
@@ -481,6 +488,7 @@ export default function JobOrderForm({
       // Weight
       grossWeight: jobData.grossWeight || 0,
       netWeight: jobData.netWeight || 0,
+      chargeableWeight: jobData.chargeableWeight || 0,
 
       // Dates
       etdDate: formatDateForForm(jobData.etdDate),
@@ -589,6 +597,86 @@ export default function JobOrderForm({
       );
 
       setInvoices(transformedInvoices);
+    }
+
+    // ✅✅✅ POPULATE INVOICES IN EDIT MODE - ALL FIELDS ✅✅✅
+    if (jobData.jobInvoices && jobData.jobInvoices.length > 0) {
+      console.log("=== POPULATING INVOICES FOR EDIT ===");
+      console.log(
+        "Invoices from API:",
+        JSON.stringify(jobData.jobInvoices, null, 2),
+      );
+
+      const loadedInvoices = jobData.jobInvoices.map((invoice: any) => {
+        console.log("Processing invoice ID:", invoice.jobInvoiceId);
+
+        // ✅ Map commodities with ALL fields
+        const items = (invoice.jobInvoiceCommodities || []).map((item: any) => {
+          console.log("Processing commodity:", {
+            id: item.jobInvoiceCommodityId,
+            hscodeId: item.hscodeId, // Note: API returns lowercase
+            originId: item.originId,
+          });
+
+          return {
+            invoiceItemId: item.jobInvoiceCommodityId || 0,
+            jobInvoiceId: item.jobInvoiceId || 0,
+            hsCodeId: item.hscodeId || null, // ✅ API returns lowercase 'hscodeId'
+            hsCode: "", // Will be populated from dropdown
+            description: item.description || "",
+            originId: item.originId || null, // ✅ ADDED
+            quantity: item.quantity || 0,
+            dutiableValue: item.dutiableValue || 0,
+            assessableValue: item.assessableValue || 0,
+            totalValue: item.totalValueDv || 0, // Use DV total
+            version: item.version || 0,
+          };
+        });
+
+        console.log("Mapped items:", JSON.stringify(items, null, 2));
+
+        // ✅ Map invoice with ALL fields
+        const loadedInvoice = {
+          invoiceId: invoice.jobInvoiceId || 0,
+          invoiceNumber: invoice.invoiceNumber || "",
+          invoiceDate: invoice.invoiceDate
+            ? invoice.invoiceDate.split("T")[0] // ✅ Format: YYYY-MM-DD
+            : "",
+          invoiceIssuedByPartyId: invoice.issuedBy
+            ? parseInt(invoice.issuedBy)
+            : undefined,
+          shippingTerm: invoice.shippingTerm || "",
+          goodsType: invoice.goodsType || "", // ✅ ADDED
+          lcNumber: invoice.lcNumber || "", // ✅ ADDED
+          lcDate: invoice.lcDate
+            ? invoice.lcDate.split("T")[0] // ✅ Format: YYYY-MM-DD
+            : "",
+          lcIssuedByBankId: invoice.lcIssuedBy
+            ? parseInt(invoice.lcIssuedBy)
+            : undefined,
+          lcValue: invoice.lcValue || 0,
+          lcCurrencyId: invoice.lcCurrencyid || undefined, // ✅ API returns lowercase 'id'
+          lcExchangeRate: invoice.lcExchangeRate || 0,
+          fiNumber: invoice.flNumber || "", // ✅ API: fl → fi
+          fiDate: invoice.flDate
+            ? invoice.flDate.split("T")[0] // ✅ Format: YYYY-MM-DD
+            : "",
+          fiExpiryDate: invoice.expiryDate
+            ? invoice.expiryDate.split("T")[0] // ✅ Format: YYYY-MM-DD
+            : "",
+          invoiceStatus: invoice.invoiceStatus || "DRAFT",
+          version: invoice.version || 0,
+          items: items, // ✅ Include items
+        };
+
+        console.log("Loaded invoice:", JSON.stringify(loadedInvoice, null, 2));
+
+        return loadedInvoice;
+      });
+
+      console.log("=== SETTING INVOICES STATE ===");
+      console.log("Total invoices loaded:", loadedInvoices.length);
+      setInvoices(loadedInvoices);
     }
 
     // Populate job commodities
@@ -726,8 +814,10 @@ export default function JobOrderForm({
           condition: detention.condition || "",
           rentDays: detention.rentDays || 0,
           rentAmountLc: detention.rentAmountLc || 0,
-          damage: detention.damage || "", // ✅ Changed from damageAmount to damage (string)
-          dirty: detention.dirty || "", // ✅ Changed from dirtyAmount to dirty (string)
+          rentAmountFc: detention.rentAmountFc || 0, // ✅ ADDED - API: RentAmountFc
+          exchangeRate: detention.exchangeRate || 0, // ✅ ADDED - API: ExchangeRate
+          damage: detention.damage || "", // ✅ String (not number)
+          dirty: detention.dirty || "", // ✅ String (not number)
           version: detention.version || 0,
         }),
       );
@@ -746,7 +836,12 @@ export default function JobOrderForm({
       const partiesData = await fetchParties(setLoadingParties);
       setParties(partiesData.parties);
       setProcessOwners(partiesData.processOwners);
-
+      setShippers(partiesData.shippers);
+      setConsignees(partiesData.consignees);
+      setLocalAgents(partiesData.localAgents);
+      setCarriers(partiesData.carriers);
+      setTransporters(partiesData.transporters);
+      setTerminals(partiesData.terminals);
       setContainerTypes(await fetchContainerTypes(setLoadingContainerTypes));
       setContainerSizes(await fetchContainerSizes(setLoadingContainerSizes));
       setLocations(await fetchLocations(setLoadingLocations));
@@ -1002,21 +1097,81 @@ export default function JobOrderForm({
         );
       }
 
-      // ✅ USE MAPPING FUNCTION FOR INVOICES
+      // ✅✅✅ COMPLETE INVOICE MAPPING - ALL FIELDS INCLUDED ✅✅✅
       const jobInvoices = invoices.map((invoice) => {
+        console.log("=== MAPPING INVOICE ===");
+        console.log("Original invoice:", JSON.stringify(invoice, null, 2));
+
         const invoiceId = invoice.invoiceId || 0;
         const latestInvoiceVersion =
           type === "edit" && invoiceId > 0
             ? (latestVersions.invoices?.get(invoiceId) ?? invoice.version ?? 0)
             : invoice.version || 0;
 
-        const mappedInvoice = mapInvoiceToDb({
-          ...invoice,
-          version: latestInvoiceVersion,
+        // ✅ Map invoice items with ALL fields
+        const mappedInvoiceItems = (invoice.items || []).map((item: any) => {
+          const itemId = item.invoiceItemId || 0;
+          const latestItemVersion =
+            type === "edit" && itemId > 0
+              ? (latestVersions.invoiceCommodities?.get(itemId) ??
+                item.version ??
+                0)
+              : item.version || 0;
+
+          return {
+            jobInvoiceCommodityId: itemId,
+            jobInvoiceId: invoiceId,
+            description: item.description || "",
+            hscodeId: item.hsCodeId || null, // ✅ Correct field name
+            originId: item.originId || null, // ✅ ADDED
+            quantity: item.quantity || 0,
+            dutiableValue: item.dutiableValue || 0,
+            assessableValue: item.assessableValue || 0,
+            totalValueAv: (item.quantity || 0) * (item.assessableValue || 0),
+            totalValueDv: (item.quantity || 0) * (item.dutiableValue || 0),
+            version: latestItemVersion,
+          };
         });
+
+        // ✅ Build complete invoice with ALL 17+ fields
+        const mappedInvoice = {
+          jobInvoiceId: invoiceId,
+          jobId: values.jobId || 0, // ✅ CRITICAL
+          invoiceNumber: invoice.invoiceNumber || null,
+          invoiceDate: invoice.invoiceDate
+            ? new Date(invoice.invoiceDate).toISOString()
+            : null,
+          issuedBy: invoice.invoiceIssuedByPartyId?.toString() || "",
+          shippingTerm: invoice.shippingTerm || null, // ✅ ADDED
+          goodsType: invoice.goodsType || null, // ✅ ADDED
+          lcNumber: invoice.lcNumber || null, // ✅ ADDED
+          lcValue: invoice.lcValue || 0,
+          lcDate: invoice.lcDate
+            ? new Date(invoice.lcDate).toISOString()
+            : null, // ✅ ADDED
+          lcIssuedBy: invoice.lcIssuedByBankId?.toString() || "",
+          lcCurrencyid: invoice.lcCurrencyId || null, // ✅ ADDED (lowercase 'id')
+          lcExchangeRate: invoice.lcExchangeRate || 0,
+          flNumber: invoice.fiNumber || null, // ✅ ADDED (fi→fl)
+          flDate: invoice.fiDate
+            ? new Date(invoice.fiDate).toISOString()
+            : null, // ✅ ADDED
+          expiryDate: invoice.fiExpiryDate
+            ? new Date(invoice.fiExpiryDate).toISOString()
+            : null, // ✅ ADDED
+          invoiceStatus: invoice.invoiceStatus || "DRAFT",
+          version: latestInvoiceVersion,
+          jobInvoiceCommodities: mappedInvoiceItems,
+        };
+
+        console.log("Mapped invoice:", JSON.stringify(mappedInvoice, null, 2));
 
         return mappedInvoice;
       });
+
+      console.log("=== FINAL INVOICE PAYLOAD ===");
+      console.log("Total invoices:", jobInvoices.length);
+      console.log("Invoice payload:", JSON.stringify(jobInvoices, null, 2));
 
       // Map containers
       const jobEquipments = fclContainers.map((container) => {
@@ -1266,8 +1421,10 @@ export default function JobOrderForm({
             condition: detention.condition || null,
             rentDays: detention.rentDays || 0,
             rentAmountLc: detention.rentAmountLc || 0,
-            damage: detention.damage || null, // ✅ Changed to string
-            dirty: detention.dirty || null, // ✅ Changed to string
+            rentAmountFc: detention.rentAmountFc || 0, // ✅ ADDED - API: RentAmountFc
+            exchangeRate: detention.exchangeRate || 0, // ✅ ADDED - API: ExchangeRate
+            damage: detention.damage || null, // ✅ String
+            dirty: detention.dirty || null, // ✅ String
             version: latestDetentionVersion,
           };
         },
@@ -1279,9 +1436,7 @@ export default function JobOrderForm({
 
         // Basic Information
         jobNumber: jobNumber, // ✅ Use the generated/entered job number
-        jobDate: values.jobDate
-          ? new Date(values.jobDate).toISOString()
-          : new Date().toISOString(),
+        jobDate: values.jobDate ? new Date(values.jobDate).toISOString() : null,
         customerReferenceNumber: values.customerReferenceNumber || null,
         indexNo: values.indexNo || null,
         status: values.status || "", // Changed from "DRAFT" to empty string
@@ -1337,6 +1492,7 @@ export default function JobOrderForm({
         // Weight
         grossWeight: values.grossWeight || 0,
         netWeight: values.netWeight || 0,
+        chargeableWeight: values.chargeableWeight || 0,
 
         // Dates
         etdDate: values.etdDate ? new Date(values.etdDate).toISOString() : null,
@@ -1544,6 +1700,12 @@ export default function JobOrderForm({
     form,
     parties,
     processOwners,
+    shippers,
+    consignees,
+    localAgents,
+    carriers,
+    transporters,
+    terminals,
     containerTypes,
     containerSizes,
     locations,

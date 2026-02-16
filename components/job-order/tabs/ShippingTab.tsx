@@ -56,6 +56,9 @@ interface FclContainer {
 interface ShippingTabProps {
   form: any;
   parties: SelectOption[];
+  localAgents: SelectOption[];
+  carriers: SelectOption[];
+  terminals: SelectOption[];
   locations: SelectOption[];
   vessels: SelectOption[];
   containerTypes: SelectOption[];
@@ -86,6 +89,9 @@ export default function ShippingTab(props: ShippingTabProps) {
   const {
     form,
     parties,
+    localAgents,
+    carriers,
+    terminals,
     locations,
     vessels,
     containerTypes,
@@ -117,6 +123,30 @@ export default function ShippingTab(props: ShippingTabProps) {
     string[]
   >([]);
   const containerNoPattern = /^[A-Z]{4}[-]?\d{6,7}[-]?\d?$/;
+
+  // ✅ AUTO-CALCULATE Last Free Day
+  useEffect(() => {
+    const etaDate = form.watch("etaDate");
+    const freeDays = form.watch("freeDays");
+
+    if (etaDate && freeDays > 0) {
+      // Parse the ETA date
+      const eta = new Date(etaDate);
+
+      // Add free days to ETA (including the arrival date)
+      const lastFreeDay = new Date(eta);
+      lastFreeDay.setDate(eta.getDate() + freeDays);
+
+      // Format as YYYY-MM-DD for input field
+      const formattedDate = lastFreeDay.toISOString().split("T")[0];
+
+      // Update the form field
+      form.setValue("lastFreeDay", formattedDate);
+    } else if (!etaDate || freeDays === 0) {
+      // Clear last free day if either field is empty
+      form.setValue("lastFreeDay", "");
+    }
+  }, [form.watch("etaDate"), form.watch("freeDays")]);
 
   const checkForDuplicates = (containerNo: string): boolean => {
     return fclContainers.some(
@@ -350,8 +380,8 @@ export default function ShippingTab(props: ShippingTabProps) {
                   </FormLabel>
                   <FormControl>
                     <Select
-                      options={parties}
-                      value={parties.find(
+                      options={localAgents}
+                      value={localAgents.find(
                         (p: SelectOption) => p.value === field.value,
                       )}
                       onChange={(val) => field.onChange(val?.value)}
@@ -376,8 +406,8 @@ export default function ShippingTab(props: ShippingTabProps) {
                   <FormLabel className='text-sm font-medium'>Carrier</FormLabel>
                   <FormControl>
                     <Select
-                      options={parties}
-                      value={parties.find(
+                      options={carriers}
+                      value={carriers.find(
                         (p: SelectOption) => p.value === field.value,
                       )}
                       onChange={(val) => field.onChange(val?.value)}
@@ -413,17 +443,28 @@ export default function ShippingTab(props: ShippingTabProps) {
               )}
             />
 
+            {/* ✅ AUTO-CALCULATED Last Free Day */}
             <FormField
               control={form.control}
               name='lastFreeDay'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className='text-sm font-medium'>
-                    Last Free Day
+                    Last Free Day (Auto-calculated)
                   </FormLabel>
                   <FormControl>
-                    <Input type='date' {...field} value={field.value || ""} />
+                    <Input
+                      type='date'
+                      {...field}
+                      value={field.value || ""}
+                      className='bg-gray-100 cursor-not-allowed'
+                      readOnly
+                      disabled
+                    />
                   </FormControl>
+                  <p className='text-xs text-gray-500 mt-1'>
+                    Auto-calculated: Arrival Date + Free Days
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -442,7 +483,6 @@ export default function ShippingTab(props: ShippingTabProps) {
         </CardHeader>
         <CardContent className='p-4'>
           <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-            {/* ✅ NEW: Chargeable Weight */}
             <FormField
               control={form.control}
               name='chargeableWeight'
@@ -472,7 +512,6 @@ export default function ShippingTab(props: ShippingTabProps) {
               )}
             />
 
-            {/* Gross Weight */}
             <FormField
               control={form.control}
               name='grossWeight'
@@ -500,7 +539,6 @@ export default function ShippingTab(props: ShippingTabProps) {
               )}
             />
 
-            {/* Net Weight */}
             <FormField
               control={form.control}
               name='netWeight'
@@ -630,8 +668,8 @@ export default function ShippingTab(props: ShippingTabProps) {
                   </FormLabel>
                   <FormControl>
                     <Select
-                      options={parties}
-                      value={parties.find(
+                      options={terminals}
+                      value={terminals.find(
                         (p: SelectOption) => p.value === field.value,
                       )}
                       onChange={(val) => field.onChange(val?.value)}
@@ -822,7 +860,6 @@ export default function ShippingTab(props: ShippingTabProps) {
             </div>
           </CardHeader>
           <CardContent className='p-4 space-y-3'>
-            {/* Duplicate Warning */}
             {duplicateContainerNumbers.length > 0 && (
               <div className='p-3 bg-red-50 border border-red-200 rounded-lg'>
                 <div className='flex items-center gap-2 mb-2'>
@@ -841,7 +878,6 @@ export default function ShippingTab(props: ShippingTabProps) {
               </div>
             )}
 
-            {/* Container Table */}
             {fclContainers.length > 0 && (
               <div className='border rounded-lg overflow-hidden'>
                 <div className='overflow-x-auto'>
@@ -943,7 +979,6 @@ export default function ShippingTab(props: ShippingTabProps) {
               </div>
             )}
 
-            {/* Add Container Form */}
             {(showFclForm || fclContainers.length === 0) && (
               <Card className='border-2 border-blue-200 bg-blue-50'>
                 <CardContent className='p-4 space-y-4'>
@@ -1132,7 +1167,6 @@ export default function ShippingTab(props: ShippingTabProps) {
               </Card>
             )}
 
-            {/* Empty State */}
             {fclContainers.length === 0 && !showFclForm && (
               <div className='text-center py-8 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed'>
                 <Package className='h-12 w-12 mx-auto mb-3 text-gray-400' />
