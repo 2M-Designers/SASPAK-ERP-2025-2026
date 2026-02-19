@@ -430,7 +430,7 @@ export default function JobOrderForm({
   const formatDateForForm = (isoDate: string | null | undefined) => {
     if (!isoDate) return "";
     try {
-      return new Date(isoDate).toISOString().split("T")[0];
+      return isoDate.split("T")[0]; // ✅ FIXED!
     } catch {
       return "";
     }
@@ -1218,29 +1218,23 @@ export default function JobOrderForm({
           containerSizeId: container.containerSizeId || null,
           tareWeight: container.tareWeight || 0,
           sealNo: container.sealNo || null,
-          eirReceivedOn: container.eirReceivedOn
-            ? new Date(container.eirReceivedOn).toISOString()
-            : null,
+
+          eirReceivedOn: container.eirReceivedOn || null,
           eirSubmitted: container.eirSubmitted || false,
           eirDocumentId: container.eirDocumentId || 0,
-          rentInvoiceIssuedOn: container.rentInvoiceIssuedOn
-            ? new Date(container.rentInvoiceIssuedOn).toISOString()
-            : null,
+
+          rentInvoiceIssuedOn: container.rentInvoiceIssuedOn || null,
+
           containerRentFc: container.containerRentFc || 0,
           containerRentLc: container.containerRentLc || 0,
           damageDirtyFc: container.damageDirtyFc || 0,
           damageDirtyLc: container.damageDirtyLc || 0,
-          refundAppliedOn: container.refundAppliedOn
-            ? new Date(container.refundAppliedOn).toISOString()
-            : null,
+          refundAppliedOn: container.refundAppliedOn || null,
           refundFc: container.refundFc || 0,
           refundLc: container.refundLc || 0,
-          gateOutDate: container.gateOutDate
-            ? new Date(container.gateOutDate).toISOString()
-            : null,
-          gateInDate: container.gateInDate
-            ? new Date(container.gateInDate).toISOString()
-            : null,
+          gateOutDate: container.gateOutDate || null,
+          gateInDate: container.gateInDate || null,
+
           status: container.status || null,
           noOfPackages: container.noOfPackages || 0,
           packageType: container.packageType || null,
@@ -1460,7 +1454,8 @@ export default function JobOrderForm({
 
         // Basic Information
         jobNumber: jobNumber, // ✅ Use the generated/entered job number
-        jobDate: values.jobDate ? new Date(values.jobDate).toISOString() : null,
+        //jobDate: values.jobDate ? new Date(values.jobDate).toISOString() : null,
+        jobDate: values.jobDate || null,
         customerReferenceNumber: values.customerReferenceNumber || null,
         indexNo: values.indexNo || null,
         status: values.status || "", // Changed from "DRAFT" to empty string
@@ -1496,13 +1491,9 @@ export default function JobOrderForm({
 
         // Document Numbers
         houseDocumentNumber: values.houseDocumentNumber || null,
-        houseDocumentDate: values.houseDocumentDate
-          ? new Date(values.houseDocumentDate).toISOString()
-          : null,
+        houseDocumentDate: values.houseDocumentDate || null,
         masterDocumentNumber: values.masterDocumentNumber || null,
-        masterDocumentDate: values.masterDocumentDate
-          ? new Date(values.masterDocumentDate).toISOString()
-          : null,
+        masterDocumentDate: values.masterDocumentDate || null,
 
         // Location IDs
         originPortId: values.originPortId || null,
@@ -1519,32 +1510,22 @@ export default function JobOrderForm({
         chargeableWeight: values.chargeableWeight || 0,
 
         // Dates
-        etdDate: values.etdDate ? new Date(values.etdDate).toISOString() : null,
-        etaDate: values.etaDate ? new Date(values.etaDate).toISOString() : null,
-        vesselArrival: values.vesselArrival
-          ? new Date(values.vesselArrival).toISOString()
-          : null,
-        deliverDate: values.deliverDate
-          ? new Date(values.deliverDate).toISOString()
-          : null,
+        //etdDate: values.etdDate ? new Date(values.etdDate).toISOString() : null,
+        //etaDate: values.etaDate ? new Date(values.etaDate).toISOString() : null,
+        etdDate: values.etdDate || null,
+        etaDate: values.etaDate || null,
+        vesselArrival: values.vesselArrival || null,
+        deliverDate: values.deliverDate || null,
         freeDays: values.freeDays || 0,
-        lastFreeDay: values.lastFreeDay
-          ? new Date(values.lastFreeDay).toISOString()
-          : null,
-        advanceRentPaidUpto: values.advanceRentPaidUpto
-          ? new Date(values.advanceRentPaidUpto).toISOString()
-          : null,
+        lastFreeDay: values.lastFreeDay || null,
+        advanceRentPaidUpto: values.advanceRentPaidUpto || null,
 
         // Address
         dispatchAddress: values.dispatchAddress || null,
 
         // Document Dates
-        originalDocsReceivedOn: values.originalDocsReceivedOn
-          ? new Date(values.originalDocsReceivedOn).toISOString()
-          : null,
-        copyDocsReceivedOn: values.copyDocsReceivedOn
-          ? new Date(values.copyDocsReceivedOn).toISOString()
-          : null,
+        originalDocsReceivedOn: values.originalDocsReceivedOn || null,
+        copyDocsReceivedOn: values.copyDocsReceivedOn || null,
 
         // Description & IGM
         jobDescription: values.jobDescription || null,
@@ -1559,9 +1540,7 @@ export default function JobOrderForm({
         // ✅ REMOVED: freightCharges (not in schema)
 
         // PO Fields
-        poReceivedOn: values.poReceivedOn
-          ? new Date(values.poReceivedOn).toISOString()
-          : null,
+        poReceivedOn: values.poReceivedOn || null,
         poCustomDuty: values.poCustomDuty || 0,
         poWharfage: values.poWharfage || 0,
         poExciseDuty: values.poExciseDuty || 0,
@@ -1572,23 +1551,17 @@ export default function JobOrderForm({
         // GD Fields
         gdnumber: values.gdnumber || null,
         gdType: values.gdType || null,
-        gddate: values.gddate ? new Date(values.gddate).toISOString() : null,
+        gddate: values.gddate || null,
         gdcharges: values.gdcharges || 0,
         gdclearedUs: values.gdclearedUs || null,
         gdsecurityType: values.gdsecurityType || null,
         gdsecurityValue: values.gdsecurityValue || null,
-        gdsecurityExpiryDate: values.gdsecurityExpiryDate
-          ? new Date(values.gdsecurityExpiryDate).toISOString()
-          : null,
+        gdsecurityExpiryDate: values.gdsecurityExpiryDate || null,
 
         // ✅ ADD COMPLETION FIELDS TO PAYLOAD:
         rmschannel: values.rmschannel || null,
-        gdassignToGateOut: values.gdassignToGateOut
-          ? new Date(values.gdassignToGateOut).toISOString()
-          : null,
-        destuffingOn: values.destuffingOn
-          ? new Date(values.destuffingOn).toISOString()
-          : null,
+        gdassignToGateOut: values.gdassignToGateOut || null,
+        destuffingOn: values.destuffingOn || null,
         delayInClearance: values.delayInClearance || null,
         reasonOfDelayInClearance: values.reasonOfDelayInClearance || null,
         delayInDispatch: values.delayInDispatch || null,
@@ -1598,15 +1571,9 @@ export default function JobOrderForm({
         // ✅ REMOVED: dispatchNotes (not in schema)
 
         // Case & Rent
-        caseSubmittedToLineOn: values.caseSubmittedToLineOn
-          ? new Date(values.caseSubmittedToLineOn).toISOString()
-          : null,
-        rentInvoiceIssuedOn: values.rentInvoiceIssuedOn
-          ? new Date(values.rentInvoiceIssuedOn).toISOString()
-          : null,
-        refundBalanceReceivedOn: values.refundBalanceReceivedOn
-          ? new Date(values.refundBalanceReceivedOn).toISOString()
-          : null,
+        caseSubmittedToLineOn: values.caseSubmittedToLineOn || null,
+        rentInvoiceIssuedOn: values.rentInvoiceIssuedOn || null,
+        refundBalanceReceivedOn: values.refundBalanceReceivedOn || null,
 
         // Remarks
         remarks: values.remarks || null,

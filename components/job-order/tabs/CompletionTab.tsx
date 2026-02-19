@@ -238,16 +238,14 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                   <FormItem>
                     <FormLabel>
                       GD Cleared U/S{" "}
-                      <span className='text-xs text-gray-500'>
-                        (Security Type)
-                      </span>
+                      <span className='text-xs text-gray-500'>(Section)</span>
                     </FormLabel>
                     <Select
-                      key={`gd-cleared-${field.value || "none"}`}
-                      value={field.value?.toString()}
+                      value={field.value?.toString() || ""}
                       onValueChange={(value) => {
-                        console.log("GD Cleared U/S selected:", value);
-                        field.onChange(value);
+                        const numericValue = value ? parseInt(value, 10) : null;
+                        console.log("GD Cleared U/S selected:", numericValue);
+                        field.onChange(numericValue);
                       }}
                       disabled={loadingGdOptions}
                     >
@@ -255,9 +253,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                         <SelectTrigger>
                           <SelectValue
                             placeholder={
-                              loadingGdOptions
-                                ? "Loading..."
-                                : "Select security type"
+                              loadingGdOptions ? "Loading..." : "Select section"
                             }
                           >
                             {loadingGdOptions ? (
@@ -265,19 +261,19 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                                 <Loader2 className='h-4 w-4 animate-spin' />
                                 Loading...
                               </span>
-                            ) : selectedGdOption ? (
-                              `${selectedGdOption.sectionCode} - ${selectedGdOption.sectionName}`
+                            ) : field.value ? (
+                              selectedGdOption ? (
+                                `${selectedGdOption.sectionCode} - ${selectedGdOption.sectionName}`
+                              ) : (
+                                `Section ${field.value}`
+                              )
                             ) : (
-                              "Select security type"
+                              "Select section"
                             )}
                           </SelectValue>
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent
-                        position='popper'
-                        sideOffset={5}
-                        className='max-h-[300px] overflow-y-auto z-50'
-                      >
+                      <SelectContent position='popper' sideOffset={5}>
                         {gdClearedOptions.length === 0 && !loadingGdOptions ? (
                           <SelectItem value='none'>
                             No options available
@@ -306,7 +302,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                         )}
                       </SelectContent>
                     </Select>
-                    {selectedGdOption && (
+                    {field.value && selectedGdOption && (
                       <p className='text-xs text-green-600'>
                         ✅ Selected: {selectedGdOption.sectionCode} -{" "}
                         {selectedGdOption.sectionName}
