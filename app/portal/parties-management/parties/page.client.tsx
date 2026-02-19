@@ -66,392 +66,558 @@ type PartiesPageProps = {
 };
 
 // Static field configuration for Parties
+// Each entry maps: fieldName (camelCase from API response) -> displayName -> apiKey (PascalCase for POST body)
 const fieldConfig = [
   {
     fieldName: "partyId",
+    apiKey: "PartyId",
     displayName: "Party ID",
     isdisplayed: false,
     isselected: true,
+    type: "int",
   },
   {
     fieldName: "companyId",
+    apiKey: "CompanyId",
     displayName: "Company ID",
     isdisplayed: false,
     isselected: true,
+    type: "int",
   },
   {
     fieldName: "partyCode",
+    apiKey: "PartyCode",
     displayName: "Party Code",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "partyName",
+    apiKey: "PartyName",
     displayName: "Party Name",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "partyShortName",
+    apiKey: "PartyShortName",
     displayName: "Short Name",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "isActive",
+    apiKey: "IsActive",
     displayName: "Status",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isGLLinked",
+    apiKey: "IsGllinked",
     displayName: "GL Linked",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isCustomer",
+    apiKey: "IsCustomer",
     displayName: "Customer",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isVendor",
+    apiKey: "IsVendor",
     displayName: "Vendor",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isCustomerVendor",
+    apiKey: "IsCustomerVendor",
     displayName: "Customer/Vendor",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isAgent",
+    apiKey: "IsAgent",
     displayName: "Agent",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isOverseasAgent",
+    apiKey: "IsOverseasAgent",
     displayName: "Overseas Agent",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isShippingLine",
+    apiKey: "IsShippingLine",
     displayName: "Shipping Line",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isTransporter",
+    apiKey: "IsTransporter",
     displayName: "Transporter",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isConsignee",
+    apiKey: "IsConsignee",
     displayName: "Consignee",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isShipper",
+    apiKey: "IsShipper",
     displayName: "Shipper",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isPrincipal",
+    apiKey: "IsPrincipal",
     displayName: "Principal",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isNonGLParty",
-    displayName: "Non-GL Party",
+    apiKey: "IsNonGlparty",
+    displayName: "Non GL Party",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
+  },
+  {
+    fieldName: "isTerminal",
+    apiKey: "IsTerminal",
+    displayName: "Terminal",
+    isdisplayed: true,
+    isselected: true,
+    type: "bool",
+  },
+  {
+    fieldName: "isBondedCarrier",
+    apiKey: "IsBondedCarier",
+    displayName: "Bonded Carrier",
+    isdisplayed: true,
+    isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isInSeaImport",
+    apiKey: "IsInSeaImport",
     displayName: "Sea Import",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isInSeaExport",
+    apiKey: "IsInSeaExport",
     displayName: "Sea Export",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isInAirImport",
+    apiKey: "IsInAirImport",
     displayName: "Air Import",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isInAirExport",
+    apiKey: "IsInAirExport",
     displayName: "Air Export",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isInLogistics",
+    apiKey: "IsInLogistics",
     displayName: "Logistics",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "unLocationId",
+    apiKey: "UnlocationId",
     displayName: "UN Location ID",
     isdisplayed: false,
     isselected: true,
+    type: "int",
   },
   {
     fieldName: "addressLine1",
+    apiKey: "AddressLine1",
     displayName: "Address Line 1",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "addressLine2",
+    apiKey: "AddressLine2",
     displayName: "Address Line 2",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "postalCode",
+    apiKey: "PostalCode",
     displayName: "Postal Code",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "phone",
+    apiKey: "Phone",
     displayName: "Phone",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
-  { fieldName: "fax", displayName: "Fax", isdisplayed: true, isselected: true },
+  {
+    fieldName: "fax",
+    apiKey: "Fax",
+    displayName: "Fax",
+    isdisplayed: true,
+    isselected: true,
+    type: "string",
+  },
   {
     fieldName: "email",
+    apiKey: "Email",
     displayName: "Email",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "website",
+    apiKey: "Website",
     displayName: "Website",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "contactPersonName",
+    apiKey: "ContactPersonName",
     displayName: "Contact Person",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "contactPersonDesignation",
+    apiKey: "ContactPersonDesignation",
     displayName: "Contact Designation",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "contactPersonEmail",
+    apiKey: "ContactPersonEmail",
     displayName: "Contact Email",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "contactPersonPhone",
+    apiKey: "ContactPersonPhone",
     displayName: "Contact Phone",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "ntnNumber",
+    apiKey: "Ntnnumber",
     displayName: "NTN Number",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "strnNumber",
+    apiKey: "Strnnumber",
     displayName: "STRN Number",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "bankName",
+    apiKey: "BankName",
     displayName: "Bank Name",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "bankAccountNumber",
+    apiKey: "BankAccountNumber",
     displayName: "Bank Account",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "ibanNumber",
+    apiKey: "Ibannumber",
     displayName: "IBAN Number",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "creditLimitLC",
+    apiKey: "CreditLimitLc",
     displayName: "Credit Limit LC",
     isdisplayed: true,
     isselected: true,
+    type: "decimal",
   },
   {
     fieldName: "creditLimitFC",
+    apiKey: "CreditLimitFc",
     displayName: "Credit Limit FC",
     isdisplayed: true,
     isselected: true,
+    type: "decimal",
   },
   {
     fieldName: "allowedCreditDays",
+    apiKey: "AllowedCreditDays",
     displayName: "Credit Days",
     isdisplayed: true,
     isselected: true,
+    type: "int",
   },
   {
     fieldName: "paymentTerms",
+    apiKey: "PaymentTerms",
     displayName: "Payment Terms",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "glParentAccountId",
+    apiKey: "GlparentAccountId",
     displayName: "GL Parent Account",
     isdisplayed: false,
     isselected: true,
+    type: "int",
   },
   {
     fieldName: "glAccountId",
+    apiKey: "GlaccountId",
     displayName: "GL Account",
     isdisplayed: false,
     isselected: true,
+    type: "int",
   },
   {
     fieldName: "trackIdAllowed",
+    apiKey: "TrackIdAllowed",
     displayName: "Track ID Allowed",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "idPasswordAllowed",
+    apiKey: "IdPasswordAllowed",
     displayName: "ID Password Allowed",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "sendEmail",
+    apiKey: "SendEmail",
     displayName: "Send Email",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "canSeeBills",
+    apiKey: "CanSeeBills",
     displayName: "Can See Bills",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "canSeeLedger",
+    apiKey: "CanSeeLedger",
     displayName: "Can See Ledger",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "isProcessOwner",
+    apiKey: "IsProcessOwner",
     displayName: "Process Owner",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "clearanceByOps",
+    apiKey: "ClearanceByOps",
     displayName: "Clearance By Ops",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "clearanceByAcm",
+    apiKey: "ClearanceByAcm",
     displayName: "Clearance By ACM",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
-    fieldName: "atTradeForGDInsustrial",
+    fieldName: "atTradeForGDIndustrial",
+    apiKey: "AttradeForGdinsustrial",
     displayName: "AT Trade GD Industrial",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "atTradeForGDCommercial",
+    apiKey: "AttradeForGdcommercial",
     displayName: "AT Trade GD Commercial",
     isdisplayed: true,
     isselected: true,
+    type: "bool",
   },
   {
     fieldName: "benificiaryNameOfPO",
+    apiKey: "BenificiaryNameOfPo",
     displayName: "Beneficiary Name",
     isdisplayed: true,
     isselected: true,
+    type: "string",
   },
   {
     fieldName: "salesRepId",
+    apiKey: "SalesRepId",
     displayName: "Sales Rep",
     isdisplayed: false,
     isselected: true,
+    type: "int",
   },
   {
     fieldName: "docsRepId",
+    apiKey: "DocsRepId",
     displayName: "Docs Rep",
     isdisplayed: false,
     isselected: true,
+    type: "int",
   },
   {
     fieldName: "accountsRepId",
+    apiKey: "AccountsRepId",
     displayName: "Accounts Rep",
     isdisplayed: false,
     isselected: true,
-  },
-  {
-    fieldName: "createdBy",
-    displayName: "Created By",
-    isdisplayed: false,
-    isselected: true,
-  },
-  {
-    fieldName: "createdAt",
-    displayName: "Created At",
-    isdisplayed: false,
-    isselected: true,
-  },
-  {
-    fieldName: "updatedAt",
-    displayName: "Updated At",
-    isdisplayed: false,
-    isselected: true,
+    type: "int",
   },
   {
     fieldName: "version",
+    apiKey: "Version",
     displayName: "Version",
     isdisplayed: false,
     isselected: true,
+    type: "int",
   },
 ];
 
-// Get only displayed fields for the table
+// Get only displayed fields for the table / Excel export
 const displayedFields = fieldConfig.filter(
-  (field) => field.isdisplayed && field.isselected
+  (field) => field.isdisplayed && field.isselected,
 );
+
+// ─── Type conversion helpers ──────────────────────────────────────────────────
+
+/** Reliably parse any Excel cell value into a true boolean */
+const parseBool = (value: any): boolean => {
+  if (typeof value === "boolean") return value;
+  if (value === null || value === undefined) return false;
+  const str = String(value).trim().toLowerCase();
+  return str === "true" || str === "yes" || str === "1";
+};
+
+/** Parse any Excel cell value into an integer (0 when empty/invalid) */
+const parseInt_ = (value: any): number => {
+  if (value === null || value === undefined || value === "") return 0;
+  const n = parseInt(String(value), 10);
+  return isNaN(n) ? 0 : n;
+};
+
+/** Parse any Excel cell value into a decimal (0 when empty/invalid) */
+const parseDecimal = (value: any): number => {
+  if (value === null || value === undefined || value === "") return 0;
+  const n = parseFloat(String(value));
+  return isNaN(n) ? 0 : n;
+};
+
+/** Convert a raw Excel cell value according to the field's declared type */
+const convertValue = (value: any, type: string): any => {
+  switch (type) {
+    case "bool":
+      return parseBool(value);
+    case "int":
+      return parseInt_(value);
+    case "decimal":
+      return parseDecimal(value);
+    default:
+      return value !== null && value !== undefined ? String(value) : "";
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function PartiesPage({ initialData }: PartiesPageProps) {
   const [data, setData] = useState<any[]>([]);
@@ -461,21 +627,19 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
   const [selectedParty, setSelectedParty] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("ALL_PARTIES");
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
-    {}
+    {},
   );
   const router = useRouter();
   const { toast } = useToast();
 
-  // Fetch parties data using POST method
+  // ── Fetch parties ──────────────────────────────────────────────────────────
   const fetchParties = async () => {
     setIsLoading(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       const response = await fetch(`${baseUrl}Party/GetList`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           select:
             "PartyId,PartyCode,PartyName,PartyShortName,IsActive,IsCustomer,IsVendor,IsAgent,IsShippingLine,IsTransporter,IsOverseasAgent,Email,Phone,ContactPersonName,CreditLimitLC,AllowedCreditDays",
@@ -487,9 +651,8 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        setData(data);
-        console.log("Parties data fetched successfully:", data);
+        const result = await response.json();
+        setData(result);
       } else {
         throw new Error("Failed to fetch parties");
       }
@@ -505,7 +668,6 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     }
   };
 
-  // Fetch data on component mount
   useEffect(() => {
     if (initialData && Array.isArray(initialData)) {
       setData(initialData);
@@ -514,10 +676,9 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     }
   }, []);
 
-  // Enhanced search function
+  // ── Search ─────────────────────────────────────────────────────────────────
   const searchInItem = (item: any, searchTerm: string) => {
     if (!searchTerm) return true;
-
     const searchLower = searchTerm.toLowerCase();
     const searchableFields = [
       item.partyId?.toString(),
@@ -535,47 +696,42 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       item.strnNumber?.toString(),
       item.bankName?.toString(),
     ];
-
     return searchableFields.some(
-      (field) => field && field.toLowerCase().includes(searchLower)
+      (field) => field && field.toLowerCase().includes(searchLower),
     );
   };
 
-  // Filter data for different tabs
+  // ── Tab data helpers ───────────────────────────────────────────────────────
   const getAllParties = () => data || [];
-  const getActiveParties = () => data?.filter((item) => item.isActive) || [];
-  const getCustomers = () => data?.filter((item) => item.isCustomer) || [];
-  const getVendors = () => data?.filter((item) => item.isVendor) || [];
+  const getActiveParties = () => data?.filter((i) => i.isActive) || [];
+  const getCustomers = () => data?.filter((i) => i.isCustomer) || [];
+  const getVendors = () => data?.filter((i) => i.isVendor) || [];
   const getAgents = () =>
-    data?.filter((item) => item.isAgent || item.isOverseasAgent) || [];
+    data?.filter((i) => i.isAgent || i.isOverseasAgent) || [];
   const getLogisticsParties = () =>
     data?.filter(
-      (item) => item.isShippingLine || item.isTransporter || item.isInLogistics
+      (i) => i.isShippingLine || i.isTransporter || i.isInLogistics,
     ) || [];
 
-  // Calculate statistics
   const getPartiesStats = () => {
-    const allParties = getAllParties();
-
+    const all = getAllParties();
     return {
-      totalParties: allParties.length,
-      activeParties: allParties.filter((item) => item.isActive).length,
-      customers: allParties.filter((item) => item.isCustomer).length,
-      vendors: allParties.filter((item) => item.isVendor).length,
-      agents: allParties.filter((item) => item.isAgent || item.isOverseasAgent)
-        .length,
-      shippingLines: allParties.filter((item) => item.isShippingLine).length,
-      transporters: allParties.filter((item) => item.isTransporter).length,
-      seaImportParties: allParties.filter((item) => item.isInSeaImport).length,
-      seaExportParties: allParties.filter((item) => item.isInSeaExport).length,
-      airImportParties: allParties.filter((item) => item.isInAirImport).length,
-      airExportParties: allParties.filter((item) => item.isInAirExport).length,
+      totalParties: all.length,
+      activeParties: all.filter((i) => i.isActive).length,
+      customers: all.filter((i) => i.isCustomer).length,
+      vendors: all.filter((i) => i.isVendor).length,
+      agents: all.filter((i) => i.isAgent || i.isOverseasAgent).length,
+      shippingLines: all.filter((i) => i.isShippingLine).length,
+      transporters: all.filter((i) => i.isTransporter).length,
+      seaImportParties: all.filter((i) => i.isInSeaImport).length,
+      seaExportParties: all.filter((i) => i.isInSeaExport).length,
+      airImportParties: all.filter((i) => i.isInAirImport).length,
+      airExportParties: all.filter((i) => i.isInAirExport).length,
     };
   };
 
-  // Get data for current tab with search filter
   const getCurrentTabData = () => {
-    let tabData = [];
+    let tabData: any[] = [];
     switch (activeTab) {
       case "ALL_PARTIES":
         tabData = getAllParties();
@@ -598,11 +754,9 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       default:
         tabData = getAllParties();
     }
-
     return tabData.filter((item: any) => searchInItem(item, searchText));
   };
 
-  // Group parties by type for categorized view
   const getGroupedParties = () => {
     const parties = getCurrentTabData();
     const grouped: Record<string, any[]> = {
@@ -613,54 +767,22 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       Transporters: [],
       "Other Parties": [],
     };
-
     parties.forEach((party: any) => {
-      if (party.isCustomer) {
-        grouped["Customers"].push(party);
-      } else if (party.isVendor) {
-        grouped["Vendors"].push(party);
-      } else if (party.isAgent || party.isOverseasAgent) {
+      if (party.isCustomer) grouped["Customers"].push(party);
+      else if (party.isVendor) grouped["Vendors"].push(party);
+      else if (party.isAgent || party.isOverseasAgent)
         grouped["Agents"].push(party);
-      } else if (party.isShippingLine) {
-        grouped["Shipping Lines"].push(party);
-      } else if (party.isTransporter) {
-        grouped["Transporters"].push(party);
-      } else {
-        grouped["Other Parties"].push(party);
-      }
+      else if (party.isShippingLine) grouped["Shipping Lines"].push(party);
+      else if (party.isTransporter) grouped["Transporters"].push(party);
+      else grouped["Other Parties"].push(party);
     });
-
-    // Remove empty groups
     Object.keys(grouped).forEach((key) => {
-      if (grouped[key].length === 0) {
-        delete grouped[key];
-      }
+      if (grouped[key].length === 0) delete grouped[key];
     });
-
     return grouped;
   };
 
-  const handleAddEditComplete = (updatedItem: any) => {
-    setShowForm(false);
-    setSelectedParty(null);
-    // Refresh data by fetching again
-    fetchParties();
-  };
-
-  const toggleGroupExpansion = (groupKey: string) => {
-    setExpandedGroups((prev) => ({
-      ...prev,
-      [groupKey]: !prev[groupKey],
-    }));
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "-";
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
-  };
-
-  // Generate columns based on the static field configuration
+  // ── Columns ────────────────────────────────────────────────────────────────
   const columns: ColumnDef<any>[] = [
     {
       accessorKey: "actions",
@@ -785,7 +907,14 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
         if (row.original.isOverseasAgent) types.push("Overseas Agent");
         if (row.original.isConsignee) types.push("Consignee");
         if (row.original.isShipper) types.push("Shipper");
-
+        if (row.original.isPrincipal) types.push("Principal");
+        if (row.original.isTerminal) types.push("Terminal");
+        if (row.original.isBondedCarrier) types.push("Bonded Carrier");
+        if (row.original.isInSeaImport) types.push("Sea Import");
+        if (row.original.isInSeaExport) types.push("Sea Export");
+        if (row.original.isInAirImport) types.push("Air Import");
+        if (row.original.isInAirExport) types.push("Air Export");
+        if (row.original.isInLogistics) types.push("Logistics");
         return (
           <div className='flex flex-wrap gap-1'>
             {types.slice(0, 2).map((type, index) => (
@@ -812,7 +941,6 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       cell: ({ row }) => {
         const creditLimit = row.original.creditLimitLC;
         const creditDays = row.original.allowedCreditDays;
-
         return (
           <div className='text-xs text-gray-600'>
             {creditLimit ? (
@@ -828,9 +956,8 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     {
       accessorKey: "isActive",
       header: "Status",
-      cell: ({ row }) => {
-        const isActive = row.getValue("isActive");
-        return isActive ? (
+      cell: ({ row }) =>
+        row.getValue("isActive") ? (
           <span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200'>
             Active
           </span>
@@ -838,66 +965,31 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
           <span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200'>
             Inactive
           </span>
-        );
-      },
+        ),
       enableColumnFilter: false,
     },
   ];
 
+  // ── Excel export ───────────────────────────────────────────────────────────
   const downloadExcelWithData = (dataToExport: any[], tabName: string) => {
     if (!dataToExport || dataToExport.length === 0) {
       alert("No data to export");
       return;
     }
-
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(`${tabName}`);
-
-    // Add headers
-    const headers = displayedFields.map((field) => field.displayName);
-    worksheet.addRow(headers);
-
-    // Add data rows
+    worksheet.addRow(displayedFields.map((f) => f.displayName));
     dataToExport.forEach((party: any) => {
       const row = displayedFields.map((field) => {
         const value = party[field.fieldName];
-
-        // Format dates for Excel
-        if (
-          field.fieldName === "createdAt" ||
-          field.fieldName === "updatedAt"
-        ) {
+        if (field.fieldName === "createdAt" || field.fieldName === "updatedAt")
           return value ? new Date(value) : "";
-        }
-
-        // Format boolean values
-        if (typeof value === "boolean") {
-          return value ? "Yes" : "No";
-        }
-
-        return value || "";
+        if (typeof value === "boolean") return value ? "Yes" : "No";
+        return value ?? "";
       });
       worksheet.addRow(row);
     });
-
-    // Format date columns
-    const dateColumns = displayedFields
-      .map((field, index) =>
-        field.fieldName === "createdAt" || field.fieldName === "updatedAt"
-          ? index + 1
-          : null
-      )
-      .filter((index) => index !== null);
-
-    dateColumns.forEach((colIndex: any) => {
-      worksheet.getColumn(colIndex).numFmt = "dd/mm/yyyy";
-    });
-
-    // Auto-fit columns
-    worksheet.columns = worksheet.columns.map((column) => {
-      return { ...column, width: 15 };
-    });
-
+    worksheet.columns = worksheet.columns.map((col) => ({ ...col, width: 15 }));
     workbook.xlsx.writeBuffer().then((buffer: any) => {
       saveAs(new Blob([buffer]), `${tabName}_Parties.xlsx`);
     });
@@ -906,12 +998,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
   const downloadSampleExcel = () => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("SampleParties");
-
-    // Add headers
-    const headers = displayedFields.map((field) => field.displayName);
-    worksheet.addRow(headers);
-
-    // Add sample data
+    worksheet.addRow(displayedFields.map((f) => f.displayName));
     const sampleRow = displayedFields.map((field) => {
       switch (field.fieldName) {
         case "partyCode":
@@ -941,98 +1028,171 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
         case "allowedCreditDays":
           return "30";
         default:
-          if (field.fieldName.includes("is")) {
-            return "No";
-          }
-          return `Sample ${field.displayName}`;
+          return field.type === "bool" ? "No" : `Sample ${field.displayName}`;
       }
     });
-
     worksheet.addRow(sampleRow);
-
-    // Auto-fit columns
-    worksheet.columns = worksheet.columns.map((column) => {
-      return { ...column, width: 15 };
-    });
-
+    worksheet.columns = worksheet.columns.map((col) => ({ ...col, width: 15 }));
     workbook.xlsx.writeBuffer().then((buffer: any) => {
       saveAs(new Blob([buffer]), "SampleFile_Parties.xlsx");
     });
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!event.target.files?.[0]) return;
+  // ── Excel import ───────────────────────────────────────────────────────────
 
-    readXlsxFile(event.target.files[0]).then((rows: any) => {
-      setIsLoading(true);
-      insertData(rows.slice(1)); // Skip header row
+  /**
+   * Build a lookup map:  displayName (lower-trimmed) → fieldConfig entry
+   * This lets us match Excel column headers to field definitions regardless
+   * of column order or whether the user uses an old/new sample template.
+   */
+  const buildHeaderMap = (): Record<string, (typeof fieldConfig)[0]> => {
+    const map: Record<string, (typeof fieldConfig)[0]> = {};
+    fieldConfig.forEach((field) => {
+      map[field.displayName.trim().toLowerCase()] = field;
     });
+    return map;
   };
 
-  const insertData = async (newData: any[]) => {
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files?.[0]) return;
+    const file = event.target.files[0];
+
+    readXlsxFile(file).then((rows: any[][]) => {
+      if (!rows || rows.length < 2) {
+        toast({
+          variant: "destructive",
+          title: "Empty File",
+          description: "The uploaded file has no data rows.",
+        });
+        return;
+      }
+
+      // Row 0 → header labels, Row 1+ → data
+      const headerRow: string[] = rows[0].map((h: any) =>
+        h != null ? String(h).trim().toLowerCase() : "",
+      );
+      const dataRows = rows.slice(1).filter((row) =>
+        // Skip completely empty rows
+        row.some((cell) => cell !== null && cell !== undefined && cell !== ""),
+      );
+
+      if (dataRows.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "No Data",
+          description: "No data rows found in the file after the header.",
+        });
+        return;
+      }
+
+      setIsLoading(true);
+      insertData(headerRow, dataRows);
+    });
+
+    // Reset so the same file can be re-uploaded
+    event.target.value = "";
+  };
+
+  const insertData = async (headerRow: string[], dataRows: any[][]) => {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+    const headerMap = buildHeaderMap();
+    let successCount = 0;
+    let failCount = 0;
 
     try {
       await Promise.all(
-        newData.map(async (row) => {
-          // Create payload object by mapping Excel columns to field names
-          const payload: any = {};
-          displayedFields.forEach((field, index) => {
-            if (index < row.length) {
-              let value = row[index];
+        dataRows.map(async (row) => {
+          // ── Build dto by matching each column header to its field ──────────
+          const dto: Record<string, any> = {};
 
-              // Handle boolean fields
-              if (
-                field.fieldName.startsWith("is") ||
-                field.fieldName === "trackIdAllowed" ||
-                field.fieldName === "idPasswordAllowed" ||
-                field.fieldName === "sendEmail" ||
-                field.fieldName === "canSeeBills" ||
-                field.fieldName === "canSeeLedger" ||
-                field.fieldName === "isProcessOwner" ||
-                field.fieldName === "clearanceByOps" ||
-                field.fieldName === "clearanceByAcm"
-              ) {
-                value =
-                  value === "Yes" ||
-                  value === "yes" ||
-                  value === true ||
-                  value === "TRUE";
-              }
-
-              // Handle numeric fields
-              if (
-                (field.fieldName.includes("Id") &&
-                  field.fieldName !== "partyId") ||
-                field.fieldName === "creditLimitLC" ||
-                field.fieldName === "creditLimitFC" ||
-                field.fieldName === "allowedCreditDays"
-              ) {
-                value = Number(value) || 0;
-              }
-
-              payload[field.fieldName] = value;
+          // Default all fields to safe zero/false/empty values first
+          fieldConfig.forEach((field) => {
+            switch (field.type) {
+              case "bool":
+                dto[field.apiKey] = false;
+                break;
+              case "int":
+                dto[field.apiKey] = 0;
+                break;
+              case "decimal":
+                dto[field.apiKey] = 0;
+                break;
+              default:
+                dto[field.apiKey] = "";
+                break;
             }
           });
 
-          await fetch(`${baseUrl}Party`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+          // Override with actual Excel values, matched by column header name
+          headerRow.forEach((header, colIndex) => {
+            const fieldDef = headerMap[header];
+            if (!fieldDef) return; // unknown column — skip gracefully
+
+            const rawValue = colIndex < row.length ? row[colIndex] : null;
+            dto[fieldDef.apiKey] = convertValue(rawValue, fieldDef.type);
           });
-        })
+
+          // Always treat as a new record
+          dto["PartyId"] = 0;
+
+          // ── Log the dto for debugging ──────────────────────────────────────
+          console.log("Importing party dto:", JSON.stringify(dto, null, 2));
+
+          try {
+            const response = await fetch(`${baseUrl}Party`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dto }),
+            });
+
+            if (response.ok) {
+              successCount++;
+            } else {
+              failCount++;
+              const errText = await response.text();
+              console.error(
+                `Failed to import row (${dto["PartyCode"] || "unknown"}):`,
+                errText,
+              );
+            }
+          } catch (err) {
+            failCount++;
+            console.error(
+              `Exception importing row (${dto["PartyCode"] || "unknown"}):`,
+              err,
+            );
+          }
+        }),
       );
 
       setIsLoading(false);
-      alert("Parties imported successfully! Refreshing data...");
-      fetchParties(); // Refresh data after import
+
+      if (failCount === 0) {
+        toast({
+          title: "Import Successful",
+          description: `${successCount} ${successCount === 1 ? "party" : "parties"} imported successfully.`,
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Partial Import",
+          description: `${successCount} imported, ${failCount} failed. Check the browser console for details.`,
+        });
+      }
+
+      fetchParties();
     } catch (error) {
       setIsLoading(false);
-      alert("Error importing Parties. Please check the file format.");
+      toast({
+        variant: "destructive",
+        title: "Import Failed",
+        description: "Unexpected error during import. Check the console.",
+      });
       console.error("Error importing data:", error);
     }
   };
 
+  // ── Delete ─────────────────────────────────────────────────────────────────
   const handleDelete = async (item: any) => {
     if (confirm(`Are you sure you want to delete "${item.partyName}"?`)) {
       try {
@@ -1040,101 +1200,29 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
         const response = await fetch(`${baseUrl}Party/${item.partyId}`, {
           method: "DELETE",
         });
-
         if (response.ok) {
           setData((prev: any) =>
-            prev.filter((record: any) => record.partyId !== item.partyId)
+            prev.filter((record: any) => record.partyId !== item.partyId),
           );
-          alert("Party deleted successfully.");
+          toast({
+            title: "Deleted",
+            description: "Party deleted successfully.",
+          });
         } else {
           throw new Error("Failed to delete Party");
         }
       } catch (error) {
-        alert("Error deleting Party. Please try again.");
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Error deleting Party. Please try again.",
+        });
         console.error("Error deleting Party:", error);
       }
     }
   };
 
-  // PDF Export Function
-  const downloadPDFWithData = (dataToExport: any[], tabName: string) => {
-    if (!dataToExport || dataToExport.length === 0) {
-      alert(`No data available to export for ${tabName}`);
-      return;
-    }
-
-    try {
-      const doc = new jsPDF();
-
-      // Header
-      doc.setFontSize(16);
-      doc.setTextColor(40, 116, 166);
-      doc.text(`${tabName} - Parties Report`, 20, 20);
-
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Export Date: ${new Date().toLocaleDateString()}`, 20, 30);
-      doc.text(`Total Records: ${dataToExport.length}`, 20, 37);
-
-      // Prepare table data
-      const tableHeaders = [
-        "Code",
-        "Name",
-        "Short Name",
-        "Contact Person",
-        "Email",
-        "Phone",
-        "Types",
-        "Status",
-      ];
-
-      const tableData = dataToExport.map((item) => [
-        item.partyCode?.toString() || "N/A",
-        (item.partyName?.toString() || "N/A").substring(0, 25),
-        (item.partyShortName?.toString() || "N/A").substring(0, 15),
-        (item.contactPersonName?.toString() || "N/A").substring(0, 20),
-        (item.email?.toString() || "N/A").substring(0, 25),
-        item.phone?.toString() || "N/A",
-        getPartyTypes(item).join(", ").substring(0, 30),
-        item.isActive ? "Active" : "Inactive",
-      ]);
-
-      // Use autoTable function
-      autoTable(doc, {
-        head: [tableHeaders],
-        body: tableData,
-        startY: 45,
-        theme: "striped",
-        headStyles: {
-          fillColor: [40, 116, 166],
-          textColor: [255, 255, 255],
-          fontStyle: "bold",
-        },
-        styles: {
-          fontSize: 8,
-          cellPadding: 2,
-          overflow: "linebreak",
-        },
-        columnStyles: {
-          0: { cellWidth: 20 },
-          1: { cellWidth: 30 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 25 },
-          4: { cellWidth: 30 },
-          5: { cellWidth: 20 },
-          6: { cellWidth: 35 },
-          7: { cellWidth: 15 },
-        },
-      });
-
-      doc.save(`${tabName}_Parties_${moment().format("YYYY-MM-DD")}.pdf`);
-    } catch (error) {
-      console.error("Error generating PDF:", error);
-      alert("Failed to generate PDF. Please check the console for details.");
-    }
-  };
-
-  // Helper function to get party types
+  // ── PDF export ─────────────────────────────────────────────────────────────
   const getPartyTypes = (party: any) => {
     const types = [];
     if (party.isCustomer) types.push("Customer");
@@ -1146,11 +1234,85 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     return types;
   };
 
-  // Statistics and Charts Component
+  const downloadPDFWithData = (dataToExport: any[], tabName: string) => {
+    if (!dataToExport || dataToExport.length === 0) {
+      alert(`No data available to export for ${tabName}`);
+      return;
+    }
+    try {
+      const doc = new jsPDF();
+      doc.setFontSize(16);
+      doc.setTextColor(40, 116, 166);
+      doc.text(`${tabName} - Parties Report`, 20, 20);
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Export Date: ${new Date().toLocaleDateString()}`, 20, 30);
+      doc.text(`Total Records: ${dataToExport.length}`, 20, 37);
+
+      const tableHeaders = [
+        "Code",
+        "Name",
+        "Short Name",
+        "Contact Person",
+        "Email",
+        "Phone",
+        "Types",
+        "Status",
+      ];
+      const tableData = dataToExport.map((item) => [
+        item.partyCode?.toString() || "N/A",
+        (item.partyName?.toString() || "N/A").substring(0, 25),
+        (item.partyShortName?.toString() || "N/A").substring(0, 15),
+        (item.contactPersonName?.toString() || "N/A").substring(0, 20),
+        (item.email?.toString() || "N/A").substring(0, 25),
+        item.phone?.toString() || "N/A",
+        getPartyTypes(item).join(", ").substring(0, 30),
+        item.isActive ? "Active" : "Inactive",
+      ]);
+
+      autoTable(doc, {
+        head: [tableHeaders],
+        body: tableData,
+        startY: 45,
+        theme: "striped",
+        headStyles: {
+          fillColor: [40, 116, 166],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        styles: { fontSize: 8, cellPadding: 2, overflow: "linebreak" },
+        columnStyles: {
+          0: { cellWidth: 20 },
+          1: { cellWidth: 30 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 25 },
+          4: { cellWidth: 30 },
+          5: { cellWidth: 20 },
+          6: { cellWidth: 35 },
+          7: { cellWidth: 15 },
+        },
+      });
+      doc.save(`${tabName}_Parties_${moment().format("YYYY-MM-DD")}.pdf`);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("Failed to generate PDF. Please check the console for details.");
+    }
+  };
+
+  // ── Add/Edit complete ──────────────────────────────────────────────────────
+  const handleAddEditComplete = () => {
+    setShowForm(false);
+    setSelectedParty(null);
+    fetchParties();
+  };
+
+  const toggleGroupExpansion = (groupKey: string) => {
+    setExpandedGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
+  };
+
+  // ── Statistics Component ───────────────────────────────────────────────────
   const PartiesStatsPage = () => {
     const stats = getPartiesStats();
-
-    // Data for charts
     const partyTypeData = [
       { name: "Customers", value: stats.customers, color: "#3b82f6" },
       { name: "Vendors", value: stats.vendors, color: "#10b981" },
@@ -1158,7 +1320,6 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       { name: "Shipping Lines", value: stats.shippingLines, color: "#ef4444" },
       { name: "Transporters", value: stats.transporters, color: "#8b5cf6" },
     ];
-
     const operationTypeData = [
       { name: "Sea Import", value: stats.seaImportParties, color: "#3b82f6" },
       { name: "Sea Export", value: stats.seaExportParties, color: "#60a5fa" },
@@ -1166,34 +1327,18 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       { name: "Air Export", value: stats.airExportParties, color: "#f87171" },
     ];
 
-    const statusData = [
-      { name: "Active", value: stats.activeParties, color: "#10b981" },
-      {
-        name: "Inactive",
-        value: stats.totalParties - stats.activeParties,
-        color: "#6b7280",
-      },
-    ];
-
-    // Export statistics PDF
     const exportStatsPDF = () => {
       const doc = new jsPDF();
-
-      // Header
       doc.setFontSize(20);
       doc.setTextColor(40, 116, 166);
       doc.text("Parties Statistics Report", 20, 20);
-
       doc.setFontSize(12);
       doc.setTextColor(0, 0, 0);
       doc.text(`Export Date: ${new Date().toLocaleDateString()}`, 20, 35);
       doc.text(`Total Parties: ${stats.totalParties}`, 20, 45);
-
-      // Statistics Summary
       doc.setFontSize(14);
       doc.setTextColor(40, 116, 166);
       doc.text("Statistics Summary", 20, 65);
-
       doc.setFontSize(11);
       doc.setTextColor(0, 0, 0);
       doc.text(`Active Parties: ${stats.activeParties}`, 30, 80);
@@ -1202,24 +1347,20 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       doc.text(`Agents: ${stats.agents}`, 30, 110);
       doc.text(`Shipping Lines: ${stats.shippingLines}`, 30, 120);
       doc.text(`Transporters: ${stats.transporters}`, 30, 130);
-
-      // Operations Summary
       doc.setFontSize(14);
       doc.setTextColor(40, 116, 166);
       doc.text("Operations Summary", 20, 150);
-
       doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
       doc.text(`Sea Import Parties: ${stats.seaImportParties}`, 30, 165);
       doc.text(`Sea Export Parties: ${stats.seaExportParties}`, 30, 175);
       doc.text(`Air Import Parties: ${stats.airImportParties}`, 30, 185);
       doc.text(`Air Export Parties: ${stats.airExportParties}`, 30, 195);
-
       doc.save(`Parties_Statistics_${moment().format("YYYY-MM-DD")}.pdf`);
     };
 
     return (
       <div className='space-y-4'>
-        {/* Header with Export Button */}
         <div className='flex justify-between items-center'>
           <h2 className='text-xl font-semibold text-gray-900'>
             Parties Statistics
@@ -1229,12 +1370,9 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
             size='sm'
             className='flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white'
           >
-            <FiDownload size={14} />
-            Export PDF Report
+            <FiDownload size={14} /> Export PDF Report
           </Button>
         </div>
-
-        {/* Summary Cards */}
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3'>
           <Card className='border border-blue-200 shadow-sm'>
             <CardHeader className='pb-2 pt-3 px-4'>
@@ -1252,7 +1390,6 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
               </div>
             </CardContent>
           </Card>
-
           <Card className='border border-green-200 shadow-sm'>
             <CardHeader className='pb-2 pt-3 px-4'>
               <CardTitle className='text-xs font-medium text-green-700 uppercase tracking-wide'>
@@ -1266,7 +1403,6 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
               <div className='text-xs text-gray-600'>Business clients</div>
             </CardContent>
           </Card>
-
           <Card className='border border-orange-200 shadow-sm'>
             <CardHeader className='pb-2 pt-3 px-4'>
               <CardTitle className='text-xs font-medium text-orange-700 uppercase tracking-wide'>
@@ -1280,7 +1416,6 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
               <div className='text-xs text-gray-600'>Service providers</div>
             </CardContent>
           </Card>
-
           <Card className='border border-purple-200 shadow-sm'>
             <CardHeader className='pb-2 pt-3 px-4'>
               <CardTitle className='text-xs font-medium text-purple-700 uppercase tracking-wide'>
@@ -1295,10 +1430,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
             </CardContent>
           </Card>
         </div>
-
-        {/* Charts Section */}
         <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
-          {/* Party Types Chart */}
           <Card className='border shadow-sm'>
             <CardHeader className='pb-3 pt-4 px-4'>
               <CardTitle className='text-sm font-semibold text-gray-900'>
@@ -1329,8 +1461,6 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
               </div>
             </CardContent>
           </Card>
-
-          {/* Operations Chart */}
           <Card className='border shadow-sm'>
             <CardHeader className='pb-3 pt-4 px-4'>
               <CardTitle className='text-sm font-semibold text-gray-900'>
@@ -1360,28 +1490,24 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     );
   };
 
-  // Render categorized view
+  // ── Render helpers ─────────────────────────────────────────────────────────
   const renderCategorizedView = () => {
     const groupedData = getGroupedParties();
-
     if (Object.keys(groupedData).length === 0) {
       return (
         <div className='flex flex-col items-center justify-center py-16'>
-          <div className='text-center'>
-            <FiUsers className='mx-auto h-12 w-12 text-gray-400 mb-3' />
-            <h3 className='text-base font-medium text-gray-900'>
-              No parties found
-            </h3>
-            <p className='mt-1 text-sm text-gray-500'>
-              {searchText
-                ? "Try adjusting your search terms"
-                : "Add your first party using the button above"}
-            </p>
-          </div>
+          <FiUsers className='mx-auto h-12 w-12 text-gray-400 mb-3' />
+          <h3 className='text-base font-medium text-gray-900'>
+            No parties found
+          </h3>
+          <p className='mt-1 text-sm text-gray-500'>
+            {searchText
+              ? "Try adjusting your search terms"
+              : "Add your first party using the button above"}
+          </p>
         </div>
       );
     }
-
     return (
       <div className='space-y-3'>
         {Object.entries(groupedData).map(([groupKey, items]) => (
@@ -1431,28 +1557,23 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     );
   };
 
-  // Render table view
   const renderTableView = () => {
     const currentData = getCurrentTabData();
-
     if (!currentData || currentData.length === 0) {
       return (
         <div className='flex flex-col items-center justify-center py-16'>
-          <div className='text-center'>
-            <FiUsers className='mx-auto h-12 w-12 text-gray-400 mb-3' />
-            <h3 className='text-base font-medium text-gray-900'>
-              No parties found
-            </h3>
-            <p className='mt-1 text-sm text-gray-500'>
-              {searchText
-                ? "Try adjusting your search terms"
-                : "Add your first party using the button above"}
-            </p>
-          </div>
+          <FiUsers className='mx-auto h-12 w-12 text-gray-400 mb-3' />
+          <h3 className='text-base font-medium text-gray-900'>
+            No parties found
+          </h3>
+          <p className='mt-1 text-sm text-gray-500'>
+            {searchText
+              ? "Try adjusting your search terms"
+              : "Add your first party using the button above"}
+          </p>
         </div>
       );
     }
-
     return (
       <AppDataTable
         data={currentData}
@@ -1465,6 +1586,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     );
   };
 
+  // ── Show form ──────────────────────────────────────────────────────────────
   if (showForm) {
     return (
       <div className='p-4 bg-gray-50 min-h-screen'>
@@ -1481,7 +1603,6 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
             <FiArrowLeft className='h-3.5 w-3.5' />
             Back to Parties List
           </Button>
-
           <div className='bg-white rounded-lg shadow-sm border p-4'>
             <PartiesForm
               type={selectedParty ? "edit" : "add"}
@@ -1496,10 +1617,11 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
 
   const currentTabData = getCurrentTabData();
 
+  // ── Main render ────────────────────────────────────────────────────────────
   return (
     <div className='p-4 bg-gray-50 min-h-screen'>
       <div className='max-w-7xl mx-auto'>
-        {/* Header Section */}
+        {/* Header */}
         <div className='flex items-center justify-between mb-4'>
           <div>
             <h1 className='text-xl font-bold text-gray-900'>
@@ -1536,7 +1658,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
           </div>
         </div>
 
-        {/* Search and Actions Bar */}
+        {/* Search & Actions Bar */}
         <div className='bg-white rounded-lg shadow-sm border p-3 mb-4'>
           <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-3'>
             <div className='flex items-center gap-2 flex-1 w-full md:w-auto'>
@@ -1589,7 +1711,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
           </div>
         </div>
 
-        {/* Tabs Section */}
+        {/* Tabs */}
         <Tabs
           defaultValue='ALL_PARTIES'
           value={activeTab}
@@ -1602,55 +1724,53 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
                 value='ALL_PARTIES'
                 className='text-xs py-2 px-3 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiUsers className='w-3.5 h-3.5 mr-1.5' />
-                All ({getAllParties().length})
+                <FiUsers className='w-3.5 h-3.5 mr-1.5' /> All (
+                {getAllParties().length})
               </TabsTrigger>
               <TabsTrigger
                 value='ACTIVE'
                 className='text-xs py-2 px-3 data-[state=active]:bg-green-50 data-[state=active]:text-green-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiBriefcase className='w-3.5 h-3.5 mr-1.5' />
-                Active ({getActiveParties().length})
+                <FiBriefcase className='w-3.5 h-3.5 mr-1.5' /> Active (
+                {getActiveParties().length})
               </TabsTrigger>
               <TabsTrigger
                 value='CUSTOMERS'
                 className='text-xs py-2 px-3 data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiUsers className='w-3.5 h-3.5 mr-1.5' />
-                Customers ({getCustomers().length})
+                <FiUsers className='w-3.5 h-3.5 mr-1.5' /> Customers (
+                {getCustomers().length})
               </TabsTrigger>
               <TabsTrigger
                 value='VENDORS'
                 className='text-xs py-2 px-3 data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiBriefcase className='w-3.5 h-3.5 mr-1.5' />
-                Vendors ({getVendors().length})
+                <FiBriefcase className='w-3.5 h-3.5 mr-1.5' /> Vendors (
+                {getVendors().length})
               </TabsTrigger>
               <TabsTrigger
                 value='AGENTS'
                 className='text-xs py-2 px-3 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiUsers className='w-3.5 h-3.5 mr-1.5' />
-                Agents ({getAgents().length})
+                <FiUsers className='w-3.5 h-3.5 mr-1.5' /> Agents (
+                {getAgents().length})
               </TabsTrigger>
               <TabsTrigger
                 value='LOGISTICS'
                 className='text-xs py-2 px-3 data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiTruck className='w-3.5 h-3.5 mr-1.5' />
-                Logistics ({getLogisticsParties().length})
+                <FiTruck className='w-3.5 h-3.5 mr-1.5' /> Logistics (
+                {getLogisticsParties().length})
               </TabsTrigger>
               <TabsTrigger
                 value='STATISTICS'
                 className='text-xs py-2 px-3 data-[state=active]:bg-pink-50 data-[state=active]:text-pink-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiFilePlus className='w-3.5 h-3.5 mr-1.5' />
-                Stats
+                <FiFilePlus className='w-3.5 h-3.5 mr-1.5' /> Stats
               </TabsTrigger>
             </TabsList>
           </div>
 
-          {/* Tab Contents */}
           {[
             "ALL_PARTIES",
             "ACTIVE",
@@ -1669,8 +1789,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
                   className='flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs'
                   disabled={!currentTabData || currentTabData.length === 0}
                 >
-                  <FiFilePlus className='h-3.5 w-3.5' />
-                  Export PDF
+                  <FiFilePlus className='h-3.5 w-3.5' /> Export PDF
                 </Button>
                 <Button
                   onClick={() =>
@@ -1680,8 +1799,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
                   className='flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs'
                   disabled={!currentTabData || currentTabData.length === 0}
                 >
-                  <FiDownload className='h-3.5 w-3.5' />
-                  Export Excel
+                  <FiDownload className='h-3.5 w-3.5' /> Export Excel
                 </Button>
               </div>
               <div className='bg-white rounded-lg shadow-sm border'>

@@ -54,6 +54,8 @@ const formSchema = z
     isConsignee: z.boolean().default(false),
     isShipper: z.boolean().default(false),
     isPrincipal: z.boolean().default(false),
+    isTerminal: z.boolean().default(false),
+    isBoundedCarrier: z.boolean().default(false),
     isNonGLParty: z.boolean().default(false),
     isInSeaImport: z.boolean().default(false),
     isInSeaExport: z.boolean().default(false),
@@ -118,7 +120,7 @@ const formSchema = z
       message:
         "Cannot select Customer or Vendor separately when Customer/Vendor is selected",
       path: ["isCustomerVendor"],
-    }
+    },
   )
   .refine(
     (data) => {
@@ -132,7 +134,7 @@ const formSchema = z
       message:
         "Cannot select Vendor or Customer/Vendor when Customer is selected",
       path: ["isCustomer"],
-    }
+    },
   )
   .refine(
     (data) => {
@@ -146,7 +148,7 @@ const formSchema = z
       message:
         "Cannot select Customer or Customer/Vendor when Vendor is selected",
       path: ["isVendor"],
-    }
+    },
   );
 
 export default function PartiesForm({
@@ -199,7 +201,7 @@ export default function PartiesForm({
           data.map((location: any) => ({
             value: location.unlocationId,
             label: `${location.uncode} - ${location.locationName}`,
-          }))
+          })),
         );
       } else {
         throw new Error("Failed to fetch UN locations");
@@ -240,7 +242,7 @@ export default function PartiesForm({
           data.map((account: any) => ({
             value: account.accountId,
             label: `${account.accountCode} - ${account.accountName}`,
-          }))
+          })),
         );
       } else {
         throw new Error("Failed to fetch GL accounts");
@@ -281,7 +283,7 @@ export default function PartiesForm({
           data.map((emp: any) => ({
             value: emp.employeeId,
             label: `${emp.employeeCode} - ${emp.firstName} ${emp.lastName}`,
-          }))
+          })),
         );
       } else {
         throw new Error("Failed to fetch sales representatives");
@@ -322,7 +324,7 @@ export default function PartiesForm({
           data.map((emp: any) => ({
             value: emp.employeeId,
             label: `${emp.employeeCode} - ${emp.firstName} ${emp.lastName}`,
-          }))
+          })),
         );
       } else {
         throw new Error("Failed to fetch documentation representatives");
@@ -363,7 +365,7 @@ export default function PartiesForm({
           data.map((emp: any) => ({
             value: emp.employeeId,
             label: `${emp.employeeCode} - ${emp.firstName} ${emp.lastName}`,
-          }))
+          })),
         );
       } else {
         throw new Error("Failed to fetch accounts representatives");
@@ -665,7 +667,7 @@ export default function PartiesForm({
                       <Select
                         options={unLocations}
                         value={unLocations.find(
-                          (option) => option.value === field.value
+                          (option) => option.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         placeholder={
@@ -739,13 +741,15 @@ export default function PartiesForm({
               </div>
 
               <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-                <ToggleField name='isAgent' label='Agent' />
-                <ToggleField name='isOverseasAgent' label='Overseas Agent' />
-                <ToggleField name='isShippingLine' label='Shipping Line' />
+                <ToggleField name='isAgent' label='Local Agent' />
+                <ToggleField name='isOverseasAgent' label='Origin Agent' />
+                <ToggleField name='isShippingLine' label='Carrier' />
                 <ToggleField name='isTransporter' label='Transporter' />
                 <ToggleField name='isConsignee' label='Consignee' />
                 <ToggleField name='isShipper' label='Shipper' />
                 <ToggleField name='isPrincipal' label='Principal' />
+                <ToggleField name='isTerminal' label='Terminal' />
+                <ToggleField name='isBoundedCarrier' label='Bounded Carrier' />
                 <ToggleField
                   name='isNonGLParty'
                   label='Non-GL Party'
@@ -1147,7 +1151,7 @@ export default function PartiesForm({
                             <Select
                               options={glAccounts}
                               value={glAccounts.find(
-                                (option) => option.value === field.value
+                                (option) => option.value === field.value,
                               )}
                               onChange={(val) => field.onChange(val?.value)}
                               placeholder={
@@ -1258,7 +1262,7 @@ export default function PartiesForm({
                       <Select
                         options={salesReps}
                         value={salesReps.find(
-                          (option) => option.value === field.value
+                          (option) => option.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         placeholder={
@@ -1285,7 +1289,7 @@ export default function PartiesForm({
                       <Select
                         options={docsReps}
                         value={docsReps.find(
-                          (option) => option.value === field.value
+                          (option) => option.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         placeholder={
@@ -1312,7 +1316,7 @@ export default function PartiesForm({
                       <Select
                         options={accountsReps}
                         value={accountsReps.find(
-                          (option) => option.value === field.value
+                          (option) => option.value === field.value,
                         )}
                         onChange={(val) => field.onChange(val?.value)}
                         placeholder={

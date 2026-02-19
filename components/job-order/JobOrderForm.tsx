@@ -340,7 +340,19 @@ export default function JobOrderForm({
       // Remarks
       remarks: "",
 
-      // ✅ REMOVED: dispatchNotes (not in schema)
+      // Clearance Flags
+      isClearanceGrounding: false,
+      isClearanceExamination: false,
+      isClearanceGroup: false,
+      isClearanceNoc: false,
+
+      // Dispatch Flags
+      isDispatchFi: false,
+      isDispatchObl: false,
+      isDispatchClearance: false,
+
+      // PSQCA Samples
+      psqcasamples: "",
 
       ...defaultState,
     },
@@ -554,7 +566,19 @@ export default function JobOrderForm({
       // Remarks
       remarks: jobData.remarks || "",
 
-      // ✅ REMOVED: dispatchNotes (not in schema)
+      // Clearance Flags
+      isClearanceGrounding: jobData.isClearanceGrounding || false,
+      isClearanceExamination: jobData.isClearanceExamination || false,
+      isClearanceGroup: jobData.isClearanceGroup || false,
+      isClearanceNoc: jobData.isClearanceNoc || false,
+
+      // Dispatch Flags
+      isDispatchFi: jobData.isDispatchFi || false,
+      isDispatchObl: jobData.isDispatchObl || false,
+      isDispatchClearance: jobData.isDispatchClearance || false,
+
+      // PSQCA Samples
+      psqcasamples: jobData.psqcasamples || "",
     });
 
     // Populate containers
@@ -1586,6 +1610,20 @@ export default function JobOrderForm({
 
         // Remarks
         remarks: values.remarks || null,
+
+        // Clearance Flags
+        isClearanceGrounding: values.isClearanceGrounding || false,
+        isClearanceExamination: values.isClearanceExamination || false,
+        isClearanceGroup: values.isClearanceGroup || false,
+        isClearanceNoc: values.isClearanceNoc || false,
+
+        // Dispatch Flags
+        isDispatchFi: values.isDispatchFi || false,
+        isDispatchObl: values.isDispatchObl || false,
+        isDispatchClearance: values.isDispatchClearance || false,
+
+        // PSQCA Samples
+        psqcasamples: values.psqcasamples || null,
 
         // Child Records
         jobEquipments: jobEquipments,

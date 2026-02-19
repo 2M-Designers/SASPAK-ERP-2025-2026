@@ -9,7 +9,7 @@ export const fetchParties = async (setLoading: (loading: boolean) => void) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         select:
-          "PartyId,PartyCode,PartyName,IsProcessOwner,IsShipper,IsConsignee,IsPrincipal,IsShippingLine,IsTransporter",
+          "PartyId,PartyCode,PartyName,IsProcessOwner,IsShipper,IsConsignee,IsPrincipal,IsShippingLine,IsTransporter, IsAgent",
         where: "IsActive == true",
         sortOn: "PartyName",
         page: "1",
@@ -30,6 +30,7 @@ export const fetchParties = async (setLoading: (loading: boolean) => void) => {
           isPrincipal: p.isPrincipal,
           isShippingLine: p.isShippingLine,
           isTransporter: p.isTransporter,
+          isAgent: p.isAgent, // Assuming there's an isAgent flag for local agents
         }));
 
         // Process Owners
@@ -56,9 +57,9 @@ export const fetchParties = async (setLoading: (loading: boolean) => void) => {
             label: `${p.partyCode} - ${p.partyName}`,
           }));
 
-        // Local Agents (Principal)
+        // Local Agents (Agent)
         const localAgents = data
-          .filter((p: any) => p.isPrincipal)
+          .filter((p: any) => p.isAgent)
           .map((p: any) => ({
             value: p.partyId,
             label: `${p.partyCode} - ${p.partyName}`,

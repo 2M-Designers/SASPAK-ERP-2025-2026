@@ -1,7 +1,7 @@
 import * as z from "zod";
 
 // ============================================
-// JOB MASTER SCHEMA - UPDATED TO MATCH DATABASE
+// JOB MASTER SCHEMA - UPDATED TO MATCH API METADATA
 // ============================================
 export const jobMasterSchema = z.object({
   // System Fields
@@ -63,7 +63,7 @@ export const jobMasterSchema = z.object({
   // Weight
   grossWeight: z.number().min(0).default(0),
   netWeight: z.number().min(0).default(0),
-  chargeableWeight: z.number().min(0).default(0), // ✅ Matches API: Decimal
+  chargeableWeight: z.number().min(0).default(0),
 
   // Dates
   etdDate: z.string().optional(),
@@ -105,25 +105,18 @@ export const jobMasterSchema = z.object({
   gdType: z.string().optional(),
   gddate: z.string().optional(),
   gdcharges: z.number().min(0).default(0),
-  gdclearedUs: z.string().optional(), // ⚠️ API: String, DB: Int32 - See note below
+  gdclearedUs: z.string().optional(),
   gdsecurityType: z.string().optional(),
   gdsecurityValue: z.string().optional(),
   gdsecurityExpiryDate: z.string().optional(),
 
-  // ⚠️ COMPLETION FIELDS - CRITICAL NOTES
-  // API metadata shows these as String, but your database expects:
-  // - gdclearedUs: Should be Int32 (it's an ID from SetupGdclearedUnderSection)
-  // - DelayInClearance: Should be Int32 (days count)
-  // - DelayInDispatch: Should be Int32 (days count)
-  //
-  // CURRENT: Keeping as strings to match API
-  // TO FIX COMPLETION TAB: Change these to z.number() as shown in comments below
+  // RMS & Completion Fields
   rmschannel: z.string().optional(),
   gdassignToGateOut: z.string().optional(),
   destuffingOn: z.string().optional(),
-  delayInClearance: z.string().optional(), // ⚠️ Should be: z.number().min(0).default(0)
+  delayInClearance: z.string().optional(),
   reasonOfDelayInClearance: z.string().optional(),
-  delayInDispatch: z.string().optional(), // ⚠️ Should be: z.number().min(0).default(0)
+  delayInDispatch: z.string().optional(),
   reasonOfDelayInDispatch: z.string().optional(),
 
   // Case & Rent Tracking
@@ -133,6 +126,21 @@ export const jobMasterSchema = z.object({
 
   // Remarks
   remarks: z.string().optional(),
+
+  // ✨✨✨ NEW FIELDS FROM API METADATA ✨✨✨
+  // Clearance Flags
+  isClearanceGrounding: z.boolean().default(false), // ✨ NEW: API IsClearanceGrounding
+  isClearanceExamination: z.boolean().default(false), // ✨ NEW: API IsClearanceExamination
+  isClearanceGroup: z.boolean().default(false), // ✨ NEW: API IsClearanceGroup
+  isClearanceNoc: z.boolean().default(false), // ✨ NEW: API IsClearanceNoc
+
+  // Dispatch Flags
+  isDispatchFi: z.boolean().default(false), // ✨ NEW: API IsDispatchFi
+  isDispatchObl: z.boolean().default(false), // ✨ NEW: API IsDispatchObl
+  isDispatchClearance: z.boolean().default(false), // ✨ NEW: API IsDispatchClearance
+
+  // PSQCA (Pakistan Standards & Quality Control Authority)
+  psqcasamples: z.string().optional(), // ✨ NEW: API Psqcasamples
 
   // Arrays for related data
   jobCharges: z.array(z.any()).optional(),
@@ -221,7 +229,7 @@ export const jobCommoditySchema = z.object({
 });
 
 // ============================================
-// JOB CHARGE SCHEMA - UPDATED
+// JOB CHARGE SCHEMA
 // ============================================
 export const jobChargeSchema = z.object({
   jobChargeId: z.number().optional(),
@@ -246,7 +254,7 @@ export const jobChargeSchema = z.object({
 });
 
 // ============================================
-// JOB EQUIPMENT DETENTION DETAIL SCHEMA - UPDATED
+// JOB EQUIPMENT DETENTION DETAIL SCHEMA
 // ============================================
 export const jobEquipmentDetentionDetailSchema = z.object({
   jobEquipmentDetentionDetailId: z.number().optional(),
@@ -261,18 +269,18 @@ export const jobEquipmentDetentionDetailSchema = z.object({
   condition: z.string().optional(),
   rentDays: z.number().min(0).default(0),
 
-  // ✅ MATCHES API METADATA
+  // Rent fields - MATCHES API METADATA
   rentAmountLc: z.number().min(0).default(0), // API: RentAmountLc
-  rentAmountFc: z.number().min(0).default(0), // API: RentAmountFc (was missing)
+  rentAmountFc: z.number().min(0).default(0), // API: RentAmountFc
   exchangeRate: z.number().min(0).default(0), // API: ExchangeRate
 
-  damage: z.string().optional(), // Note: API says String
-  dirty: z.string().optional(), // Note: API says String
+  damage: z.string().optional(), // API: String (not Decimal)
+  dirty: z.string().optional(), // API: String (not Decimal)
   version: z.number().optional(),
 });
 
 // ============================================
-// JOB EQUIPMENT HANDING OVER SCHEMA - UPDATED
+// JOB EQUIPMENT HANDING OVER SCHEMA
 // ============================================
 export const jobEquipmentHandingOverSchema = z.object({
   jobEquipmentHandingOverId: z.number().optional(),
@@ -291,7 +299,7 @@ export const jobEquipmentHandingOverSchema = z.object({
 });
 
 // ============================================
-// JOB GOODS DECLARATION SCHEMA - UPDATED
+// JOB GOODS DECLARATION SCHEMA
 // ============================================
 export const jobGoodsDeclarationSchema = z.object({
   id: z.number().optional(),
@@ -327,7 +335,7 @@ export const jobGoodsDeclarationSchema = z.object({
 });
 
 // ============================================
-// JOB INVOICE COMMODITY SCHEMA - UPDATED
+// JOB INVOICE COMMODITY SCHEMA
 // ============================================
 export const jobInvoiceCommoditySchema = z.object({
   jobInvoiceCommodityId: z.number().optional(),
@@ -344,7 +352,7 @@ export const jobInvoiceCommoditySchema = z.object({
 });
 
 // ============================================
-// JOB INVOICE SCHEMA - UPDATED
+// JOB INVOICE SCHEMA - MATCHES API METADATA
 // ============================================
 export const jobInvoiceSchema = z.object({
   jobInvoiceId: z.number().optional(),
@@ -353,14 +361,14 @@ export const jobInvoiceSchema = z.object({
   invoiceDate: z.string().optional(),
   issuedBy: z.string().optional(),
   shippingTerm: z.string().optional(),
-  goodsType: z.string().optional(),
+  goodsType: z.string().optional(), // API: GoodsType
 
   // LC (Letter of Credit) Fields
   lcNumber: z.string().optional(),
   lcValue: z.number().min(0).default(0),
   lcDate: z.string().optional(),
   lcIssuedBy: z.string().optional(),
-  lcCurrencyid: z.number().optional(),
+  lcCurrencyid: z.number().optional(), // Note: lowercase 'id' in API
   lcExchangeRate: z.number().min(0).default(0),
 
   // FL (Form L) Fields

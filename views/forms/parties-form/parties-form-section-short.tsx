@@ -132,7 +132,7 @@ const formSchema = z
       message:
         "Cannot select Customer or Vendor separately when Customer/Vendor is selected",
       path: ["isCustomerVendor"],
-    }
+    },
   )
   .refine(
     (data) => {
@@ -145,7 +145,7 @@ const formSchema = z
       message:
         "Cannot select Vendor or Customer/Vendor when Customer is selected",
       path: ["isCustomer"],
-    }
+    },
   )
   .refine(
     (data) => {
@@ -158,7 +158,7 @@ const formSchema = z
       message:
         "Cannot select Customer or Customer/Vendor when Vendor is selected",
       path: ["isVendor"],
-    }
+    },
   );
 
 export default function PartiesForm({
@@ -212,7 +212,7 @@ export default function PartiesForm({
           data.map((location: any) => ({
             value: location.unlocationId,
             label: `${location.uncode} - ${location.locationName}`,
-          }))
+          })),
         );
       }
     } catch (error) {
@@ -252,7 +252,7 @@ export default function PartiesForm({
           data.map((account: any) => ({
             value: account.accountId,
             label: `${account.accountCode} - ${account.accountName}`,
-          }))
+          })),
         );
       }
     } catch (error) {
@@ -270,7 +270,7 @@ export default function PartiesForm({
   const fetchEmployees = async (
     setter: any,
     setLoader: any,
-    repType: string
+    repType: string,
   ) => {
     setLoader(true);
     try {
@@ -295,7 +295,7 @@ export default function PartiesForm({
           data.map((emp: any) => ({
             value: emp.employeeId,
             label: `${emp.employeeCode} - ${emp.firstName} ${emp.lastName}`,
-          }))
+          })),
         );
       }
     } catch (error) {
@@ -317,12 +317,12 @@ export default function PartiesForm({
     fetchEmployees(
       setDocsReps,
       setLoadingDocsReps,
-      "documentation representatives"
+      "documentation representatives",
     );
     fetchEmployees(
       setAccountsReps,
       setLoadingAccountsReps,
-      "accounts representatives"
+      "accounts representatives",
     );
   }, []);
 
@@ -476,7 +476,7 @@ export default function PartiesForm({
           className={cn(
             "flex flex-row items-center justify-between rounded-lg border p-4 transition-all hover:shadow-md",
             highlight && "border-primary bg-primary/5",
-            disabled && "opacity-50 cursor-not-allowed"
+            disabled && "opacity-50 cursor-not-allowed",
           )}
         >
           <div className='space-y-0.5 flex-1'>
@@ -741,7 +741,7 @@ export default function PartiesForm({
                               <Select
                                 options={unLocations}
                                 value={unLocations.find(
-                                  (option) => option.value === field.value
+                                  (option) => option.value === field.value,
                                 )}
                                 onChange={(val) => field.onChange(val?.value)}
                                 placeholder={
@@ -820,7 +820,7 @@ export default function PartiesForm({
                             onChange={(checked) =>
                               handleCustomerVendorToggle(
                                 "isCustomerVendor",
-                                checked
+                                checked,
                               )
                             }
                             highlight={isCustomerVendor}
@@ -1449,7 +1449,8 @@ export default function PartiesForm({
                                     <Select
                                       options={glAccounts}
                                       value={glAccounts.find(
-                                        (option) => option.value === field.value
+                                        (option) =>
+                                          option.value === field.value,
                                       )}
                                       onChange={(val) =>
                                         field.onChange(val?.value)
@@ -1607,7 +1608,7 @@ export default function PartiesForm({
                                 <Select
                                   options={salesReps}
                                   value={salesReps.find(
-                                    (option) => option.value === field.value
+                                    (option) => option.value === field.value,
                                   )}
                                   onChange={(val) => field.onChange(val?.value)}
                                   placeholder={
@@ -1639,7 +1640,7 @@ export default function PartiesForm({
                                 <Select
                                   options={docsReps}
                                   value={docsReps.find(
-                                    (option) => option.value === field.value
+                                    (option) => option.value === field.value,
                                   )}
                                   onChange={(val) => field.onChange(val?.value)}
                                   placeholder={
@@ -1671,7 +1672,7 @@ export default function PartiesForm({
                                 <Select
                                   options={accountsReps}
                                   value={accountsReps.find(
-                                    (option) => option.value === field.value
+                                    (option) => option.value === field.value,
                                   )}
                                   onChange={(val) => field.onChange(val?.value)}
                                   placeholder={

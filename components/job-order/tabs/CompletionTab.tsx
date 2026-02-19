@@ -41,28 +41,6 @@ const RMS_CHANNEL_OPTIONS = [
   { value: "RED", label: "Red", color: "bg-red-500 text-white" },
 ];
 
-// Clearance Delay Type Options
-const CLEARANCE_DELAY_TYPES = [
-  { value: "GROUNDING", label: "Grounding" },
-  { value: "EXAMINATION", label: "Examination" },
-  { value: "GROUP", label: "Group" },
-  { value: "NOC", label: "NOC" },
-];
-
-// Dispatch Delay Type Options
-const DISPATCH_DELAY_TYPES = [
-  { value: "FI", label: "FI (Form I)" },
-  { value: "OBL", label: "OBL (Original Bill of Lading)" },
-  { value: "CLEARANCE", label: "Clearance" },
-];
-
-// PSQCA Options
-const PSQCA_OPTIONS = [
-  { value: "Submitted", label: "Submitted" },
-  { value: "Not Required", label: "Not Required" },
-  { value: "Pending", label: "Pending" },
-];
-
 interface GdClearedOption {
   value: number;
   label: string;
@@ -72,8 +50,6 @@ interface GdClearedOption {
 }
 
 export default function CompletionTab({ form, shippingType, toast }: any) {
-  const [clearanceDelayTypes, setClearanceDelayTypes] = useState<string[]>([]);
-  const [dispatchDelayTypes, setDispatchDelayTypes] = useState<string[]>([]);
   const [gdClearedOptions, setGdClearedOptions] = useState<GdClearedOption[]>(
     [],
   );
@@ -180,7 +156,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
         const gd = new Date(gdDate);
         const diffTime = gateOut.getTime() - gd.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        form.setValue("delayInClearance", Math.max(0, diffDays)); // ✅ FIXED NAME
+        form.setValue("delayInClearance", Math.max(0, diffDays).toString());
       } catch (error) {
         console.error("Error calculating clearance delay:", error);
       }
@@ -204,7 +180,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
           const arrival = new Date(vesselArrival);
           const diffTime = earliestDispatch.getTime() - arrival.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          form.setValue("delayInDispatch", Math.max(0, diffDays)); // ✅ FIXED NAME
+          form.setValue("delayInDispatch", Math.max(0, diffDays).toString());
         }
       } catch (error) {
         console.error("Error calculating dispatch delay:", error);
@@ -212,64 +188,28 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
     }
   }, [vesselArrival, form]);
 
-  // Handle multi-select for clearance delay types
-  const handleClearanceDelayTypeToggle = (value: string) => {
-    const updated = clearanceDelayTypes.includes(value)
-      ? clearanceDelayTypes.filter((t) => t !== value)
-      : [...clearanceDelayTypes, value];
-
-    setClearanceDelayTypes(updated);
-    form.setValue("delayInClearanceType", updated.join(",")); // ✅ FIXED NAME
-    console.log("Clearance delay types updated:", updated);
-  };
-
-  // Handle multi-select for dispatch delay types
-  const handleDispatchDelayTypeToggle = (value: string) => {
-    const updated = dispatchDelayTypes.includes(value)
-      ? dispatchDelayTypes.filter((t) => t !== value)
-      : [...dispatchDelayTypes, value];
-
-    setDispatchDelayTypes(updated);
-    form.setValue("delayInDispatchType", updated.join(",")); // ✅ FIXED NAME
-    console.log("Dispatch delay types updated:", updated);
-  };
-
-  // Load existing multi-select values
-  useEffect(() => {
-    const clearanceTypes = form.watch("delayInClearanceType"); // ✅ FIXED NAME
-    if (clearanceTypes) {
-      setClearanceDelayTypes(
-        clearanceTypes
-          .split(",")
-          .map((t: string) => t.trim())
-          .filter(Boolean),
-      );
-    }
-
-    const dispatchTypes = form.watch("delayInDispatchType"); // ✅ FIXED NAME
-    if (dispatchTypes) {
-      setDispatchDelayTypes(
-        dispatchTypes
-          .split(",")
-          .map((t: string) => t.trim())
-          .filter(Boolean),
-      );
-    }
-  }, []);
-
   // Get selected RMS channel for color badge
-  const selectedRmsChannel = form.watch("rmschannel"); // ✅ FIXED NAME
+  const selectedRmsChannel = form.watch("rmschannel");
   const rmsChannelOption = RMS_CHANNEL_OPTIONS.find(
     (opt) => opt.value === selectedRmsChannel,
   );
 
   // Get selected GD Cleared U/S for display
-  const selectedGdCleared = form.watch("gdclearedUs"); // ✅ FIXED NAME
+  const selectedGdCleared = form.watch("gdclearedUs");
   const selectedGdOption = gdClearedOptions.find(
     (opt) => opt.value === selectedGdCleared,
   );
 
-  const selectedPsqca = form.watch("psqcaSamples");
+  // ✨ NEW: Watch clearance flags
+  const isClearanceGrounding = form.watch("isClearanceGrounding");
+  const isClearanceExamination = form.watch("isClearanceExamination");
+  const isClearanceGroup = form.watch("isClearanceGroup");
+  const isClearanceNoc = form.watch("isClearanceNoc");
+
+  // ✨ NEW: Watch dispatch flags
+  const isDispatchFi = form.watch("isDispatchFi");
+  const isDispatchObl = form.watch("isDispatchObl");
+  const isDispatchClearance = form.watch("isDispatchClearance");
 
   // Check if shipping type is LCL
   const isLCL = shippingType === "LCL" || shippingType === "AIR";
@@ -291,7 +231,6 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
 
             {/* GD Cleared U/S Section */}
             <div className='grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200'>
-              {/* ✅ FIXED: gdclearedUs */}
               <FormField
                 control={form.control}
                 name='gdclearedUs'
@@ -378,7 +317,6 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                 )}
               />
 
-              {/* ✅ FIXED: gdsecurityValue */}
               <FormField
                 control={form.control}
                 name='gdsecurityValue'
@@ -404,7 +342,6 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                 )}
               />
 
-              {/* ✅ FIXED: gdsecurityExpiryDate */}
               <FormField
                 control={form.control}
                 name='gdsecurityExpiryDate'
@@ -430,7 +367,6 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
 
             {/* RMS Channel */}
             <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* ✅ FIXED: rmschannel */}
               <FormField
                 control={form.control}
                 name='rmschannel'
@@ -526,7 +462,6 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
 
             {/* GD Assign to Gate Out Date & PSQCA */}
             <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* ✅ FIXED: gdassignToGateOut */}
               <FormField
                 control={form.control}
                 name='gdassignToGateOut'
@@ -552,47 +487,155 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                 )}
               />
 
-              {/* PSQCA Samples */}
+              {/* ✨ UPDATED: psqcasamples (lowercase 's') as free text input */}
               <FormField
                 control={form.control}
-                name='psqcaSamples'
+                name='psqcasamples'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>PSQCA Samples</FormLabel>
-                    <Select
-                      key={`psqca-${field.value || "none"}`}
-                      value={field.value}
-                      onValueChange={(value) => {
-                        console.log("PSQCA status selected:", value);
-                        field.onChange(value);
-                      }}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder='Select Status' />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent
-                        position='popper'
-                        sideOffset={5}
-                        className='max-h-[300px] overflow-y-auto z-50'
-                      >
-                        {PSQCA_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {field.value && (
-                      <p className='text-xs text-green-600'>
-                        ✅ Selected: {field.value}
-                      </p>
-                    )}
+                    <FormControl>
+                      <Input
+                        placeholder='Enter PSQCA sample details'
+                        {...field}
+                        value={field.value || ""}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          console.log("PSQCA samples changed:", e.target.value);
+                        }}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+            </div>
+
+            {/* ✨ NEW: Clearance Flags Section */}
+            <div className='space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200'>
+              <div className='flex items-center gap-2'>
+                <Info className='h-5 w-5 text-blue-600' />
+                <h4 className='font-semibold text-gray-900'>
+                  Clearance Status Flags
+                </h4>
+              </div>
+
+              <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+                {/* isClearanceGrounding */}
+                <FormField
+                  control={form.control}
+                  name='isClearanceGrounding'
+                  render={({ field }) => (
+                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className='space-y-1 leading-none'>
+                        <FormLabel className='cursor-pointer'>
+                          Grounding
+                        </FormLabel>
+                        <p className='text-xs text-gray-500'>
+                          Clearance involves grounding
+                        </p>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                {/* isClearanceExamination */}
+                <FormField
+                  control={form.control}
+                  name='isClearanceExamination'
+                  render={({ field }) => (
+                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className='space-y-1 leading-none'>
+                        <FormLabel className='cursor-pointer'>
+                          Examination
+                        </FormLabel>
+                        <p className='text-xs text-gray-500'>
+                          Customs examination required
+                        </p>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                {/* isClearanceGroup */}
+                <FormField
+                  control={form.control}
+                  name='isClearanceGroup'
+                  render={({ field }) => (
+                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className='space-y-1 leading-none'>
+                        <FormLabel className='cursor-pointer'>
+                          Group Clearance
+                        </FormLabel>
+                        <p className='text-xs text-gray-500'>
+                          Part of group clearance
+                        </p>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                {/* isClearanceNoc */}
+                <FormField
+                  control={form.control}
+                  name='isClearanceNoc'
+                  render={({ field }) => (
+                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className='space-y-1 leading-none'>
+                        <FormLabel className='cursor-pointer'>
+                          NOC Required
+                        </FormLabel>
+                        <p className='text-xs text-gray-500'>
+                          No Objection Certificate
+                        </p>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Show active flags */}
+              {(isClearanceGrounding ||
+                isClearanceExamination ||
+                isClearanceGroup ||
+                isClearanceNoc) && (
+                <div className='flex flex-wrap gap-2 mt-2'>
+                  {isClearanceGrounding && (
+                    <Badge variant='secondary'>Grounding</Badge>
+                  )}
+                  {isClearanceExamination && (
+                    <Badge variant='secondary'>Examination</Badge>
+                  )}
+                  {isClearanceGroup && (
+                    <Badge variant='secondary'>Group Clearance</Badge>
+                  )}
+                  {isClearanceNoc && <Badge variant='secondary'>NOC</Badge>}
+                </div>
+              )}
             </div>
 
             {/* Delay in Clearance Section */}
@@ -604,8 +647,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                 </h4>
               </div>
 
-              <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-                {/* ✅ FIXED: delayInClearance (not delayInClearanceDays) */}
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                 <FormField
                   control={form.control}
                   name='delayInClearance'
@@ -619,9 +661,8 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                       </FormLabel>
                       <FormControl>
                         <Input
-                          type='number'
                           {...field}
-                          value={field.value || 0}
+                          value={field.value || "0"}
                           readOnly
                           className='bg-gray-100'
                         />
@@ -632,7 +673,6 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                   )}
                 />
 
-                {/* ✅ FIXED: reasonOfDelayInClearance */}
                 <FormField
                   control={form.control}
                   name='reasonOfDelayInClearance'
@@ -657,55 +697,102 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                     </FormItem>
                   )}
                 />
-
-                {/* ✅ delayInClearanceType (multi-select) */}
-                <FormItem>
-                  <FormLabel>
-                    Type{" "}
-                    <span className='text-xs text-gray-500'>
-                      (Multi-select)
-                    </span>
-                  </FormLabel>
-                  <div className='space-y-2 border rounded-md p-3 bg-white'>
-                    {CLEARANCE_DELAY_TYPES.map((type) => (
-                      <div
-                        key={type.value}
-                        className='flex items-center space-x-2'
-                      >
-                        <Checkbox
-                          id={`clearance-${type.value}`}
-                          checked={clearanceDelayTypes.includes(type.value)}
-                          onCheckedChange={() =>
-                            handleClearanceDelayTypeToggle(type.value)
-                          }
-                        />
-                        <label
-                          htmlFor={`clearance-${type.value}`}
-                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer'
-                        >
-                          {type.label}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                  {clearanceDelayTypes.length > 0 && (
-                    <div className='flex flex-wrap gap-1 mt-2'>
-                      {clearanceDelayTypes.map((type) => (
-                        <Badge
-                          key={type}
-                          variant='secondary'
-                          className='text-xs'
-                        >
-                          {
-                            CLEARANCE_DELAY_TYPES.find((t) => t.value === type)
-                              ?.label
-                          }
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </FormItem>
               </div>
+            </div>
+
+            {/* ✨ NEW: Dispatch Status Flags Section */}
+            <div className='space-y-4 p-4 bg-green-50 rounded-lg border border-green-200'>
+              <div className='flex items-center gap-2'>
+                <Info className='h-5 w-5 text-green-600' />
+                <h4 className='font-semibold text-gray-900'>
+                  Document Dispatch Status
+                </h4>
+              </div>
+
+              <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                {/* isDispatchFi */}
+                <FormField
+                  control={form.control}
+                  name='isDispatchFi'
+                  render={({ field }) => (
+                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className='space-y-1 leading-none'>
+                        <FormLabel className='cursor-pointer'>
+                          Form I Dispatched
+                        </FormLabel>
+                        <p className='text-xs text-gray-500'>
+                          FI documents sent
+                        </p>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                {/* isDispatchObl */}
+                <FormField
+                  control={form.control}
+                  name='isDispatchObl'
+                  render={({ field }) => (
+                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className='space-y-1 leading-none'>
+                        <FormLabel className='cursor-pointer'>
+                          OBL Dispatched
+                        </FormLabel>
+                        <p className='text-xs text-gray-500'>
+                          Original Bill of Lading sent
+                        </p>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                {/* isDispatchClearance */}
+                <FormField
+                  control={form.control}
+                  name='isDispatchClearance'
+                  render={({ field }) => (
+                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className='space-y-1 leading-none'>
+                        <FormLabel className='cursor-pointer'>
+                          Clearance Docs Dispatched
+                        </FormLabel>
+                        <p className='text-xs text-gray-500'>
+                          Clearance documents sent
+                        </p>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Show active dispatch flags */}
+              {(isDispatchFi || isDispatchObl || isDispatchClearance) && (
+                <div className='flex flex-wrap gap-2 mt-2'>
+                  {isDispatchFi && <Badge variant='secondary'>Form I</Badge>}
+                  {isDispatchObl && <Badge variant='secondary'>OBL</Badge>}
+                  {isDispatchClearance && (
+                    <Badge variant='secondary'>Clearance Docs</Badge>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Delay in Dispatch Section */}
@@ -717,8 +804,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                 </h4>
               </div>
 
-              <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-                {/* ✅ FIXED: delayInDispatch (not delayInDispatchDays) */}
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                 <FormField
                   control={form.control}
                   name='delayInDispatch'
@@ -732,9 +818,8 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                       </FormLabel>
                       <FormControl>
                         <Input
-                          type='number'
                           {...field}
-                          value={field.value || 0}
+                          value={field.value || "0"}
                           readOnly
                           className='bg-gray-100'
                         />
@@ -745,7 +830,6 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                   )}
                 />
 
-                {/* ✅ FIXED: reasonOfDelayInDispatch */}
                 <FormField
                   control={form.control}
                   name='reasonOfDelayInDispatch'
@@ -770,58 +854,10 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                     </FormItem>
                   )}
                 />
-
-                {/* ✅ delayInDispatchType (multi-select) */}
-                <FormItem>
-                  <FormLabel>
-                    Type{" "}
-                    <span className='text-xs text-gray-500'>
-                      (Multi-select)
-                    </span>
-                  </FormLabel>
-                  <div className='space-y-2 border rounded-md p-3 bg-white'>
-                    {DISPATCH_DELAY_TYPES.map((type) => (
-                      <div
-                        key={type.value}
-                        className='flex items-center space-x-2'
-                      >
-                        <Checkbox
-                          id={`dispatch-${type.value}`}
-                          checked={dispatchDelayTypes.includes(type.value)}
-                          onCheckedChange={() =>
-                            handleDispatchDelayTypeToggle(type.value)
-                          }
-                        />
-                        <label
-                          htmlFor={`dispatch-${type.value}`}
-                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer'
-                        >
-                          {type.label}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                  {dispatchDelayTypes.length > 0 && (
-                    <div className='flex flex-wrap gap-1 mt-2'>
-                      {dispatchDelayTypes.map((type) => (
-                        <Badge
-                          key={type}
-                          variant='secondary'
-                          className='text-xs'
-                        >
-                          {
-                            DISPATCH_DELAY_TYPES.find((t) => t.value === type)
-                              ?.label
-                          }
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </FormItem>
               </div>
             </div>
 
-            {/* ✅ FIXED: remarks (not completionRemarks) */}
+            {/* Remarks */}
             <FormField
               control={form.control}
               name='remarks'
