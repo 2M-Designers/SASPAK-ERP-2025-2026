@@ -344,25 +344,14 @@ export default function DetentionTab({
 
           {/* Master Fields */}
           <div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-4'>
-            {/* Depositor Dropdown */}
+            {/* ✅ FIXED: Depositor Dropdown - Removed key prop */}
             <div className='space-y-2'>
               <Label>Depositor</Label>
-              <Select
-                key={`depositor-${depositor || "none"}`}
-                value={depositor}
-                onValueChange={(value) => {
-                  console.log("Depositor selected:", value);
-                  setDepositor(value);
-                }}
-              >
+              <Select value={depositor || ""} onValueChange={setDepositor}>
                 <SelectTrigger>
                   <SelectValue placeholder='Select Depositor' />
                 </SelectTrigger>
-                <SelectContent
-                  position='popper'
-                  sideOffset={5}
-                  className='max-h-[300px] overflow-y-auto z-50'
-                >
+                <SelectContent position='popper' sideOffset={5}>
                   {depositorOptions.map((option) => (
                     <SelectItem key={option} value={option}>
                       {option}
@@ -596,10 +585,9 @@ export default function DetentionTab({
                               />
                             </TableCell>
 
-                            {/* Condition */}
+                            {/* ✅ FIXED: Condition - Removed key prop */}
                             <TableCell>
                               <Select
-                                key={`condition-${index}-${record.condition || "none"}`}
                                 value={record.condition || ""}
                                 onValueChange={(value) =>
                                   updateDetentionRecord(
@@ -612,11 +600,7 @@ export default function DetentionTab({
                                 <SelectTrigger className='h-9'>
                                   <SelectValue placeholder='Select' />
                                 </SelectTrigger>
-                                <SelectContent
-                                  position='popper'
-                                  sideOffset={5}
-                                  className='max-h-[300px] overflow-y-auto z-50'
-                                >
+                                <SelectContent position='popper' sideOffset={5}>
                                   {conditionOptions.map((option) => (
                                     <SelectItem key={option} value={option}>
                                       {option}

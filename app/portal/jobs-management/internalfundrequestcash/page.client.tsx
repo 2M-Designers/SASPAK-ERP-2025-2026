@@ -22,6 +22,7 @@ import {
   FiCheckCircle,
   FiClock,
   FiXCircle,
+  FiList,
 } from "react-icons/fi";
 import {
   Tooltip,
@@ -46,25 +47,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import moment from "moment";
 import { useToast } from "@/hooks/use-toast";
-import InternalFundRequestForm from "@/views/forms/internal-fund-request/InternalFundRequestForm";
+import InternalFundRequestForm from "@/views/forms/internal-fund-request/InternalFundRequestForm_MasterDetail";
 
 type InternalFundRequestPageProps = {
   initialData?: any[];
 };
 
-type InternalFundRequest = {
-  internalFundsRequestCashId: number;
+// MASTER-DETAIL TYPES
+type CashFundRequest = {
+  cashFundRequestId: number;
   jobId: number;
-  headCoaId: number;
-  beneficiaryCoaId: number;
-  headOfAccount?: string;
-  beneficiary?: string;
-  requestedAmount: number;
-  approvedAmount?: number;
+  jobNumber?: string;
+  totalRequestedAmount: number;
+  totalApprovedAmount: number;
   approvalStatus: string;
   approvedBy?: number;
   approvedOn?: string;
@@ -72,7 +80,21 @@ type InternalFundRequest = {
   createdOn: string;
   createdBy?: number;
   version: number;
-  jobNumber?: string;
+  internalCashFundsRequests: DetailLineItem[];
+};
+
+type DetailLineItem = {
+  internalFundsRequestCashId: number;
+  jobId: number;
+  headCoaId: number;
+  beneficiaryCoaId: number;
+  headOfAccount: string;
+  beneficiary: string;
+  requestedAmount: number;
+  approvedAmount: number;
+  cashFundRequestMasterId: number;
+  chargesId: number;
+  version: number;
 };
 
 // Cache manager to prevent duplicate fetches
@@ -191,18 +213,6 @@ class CacheManager {
     }
     return "-";
   }
-
-  async prefetchDetails(request: InternalFundRequest): Promise<{
-    jobNumber: string;
-    headOfAccount: string;
-    beneficiary: string;
-  }> {
-    return {
-      jobNumber: await this.getJobNumber(request.jobId),
-      headOfAccount: await this.getCoaName(request.headCoaId),
-      beneficiary: await this.getPartyName(request.beneficiaryCoaId),
-    };
-  }
 }
 
 const cacheManager = new CacheManager();
@@ -210,16 +220,16 @@ const cacheManager = new CacheManager();
 export default function InternalFundRequestPage({
   initialData,
 }: InternalFundRequestPageProps) {
-  const [data, setData] = useState<InternalFundRequest[]>(initialData || []);
+  const [data, setData] = useState<CashFundRequest[]>(initialData || []);
   const [isLoading, setIsLoading] = useState(!initialData);
   const [searchText, setSearchText] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [selectedRequest, setSelectedRequest] =
-    useState<InternalFundRequest | null>(null);
+    useState<CashFundRequest | null>(null);
   const [activeTab, setActiveTab] = useState("ALL_REQUESTS");
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedRequestDetails, setSelectedRequestDetails] =
-    useState<InternalFundRequest | null>(null);
+    useState<CashFundRequest | null>(null);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const { toast } = useToast();
 
@@ -232,38 +242,47 @@ export default function InternalFundRequestPage({
   ];
 
   const fetchFundRequests = useCallback(async () => {
+    console.log("🔄 Fetching master fund requests...");
     setIsLoading(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(
-        `${baseUrl}InternalCashFundsRequest/GetList`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            select:
-              "InternalFundsRequestCashId, JobId, Job.JobNumber, HeadCoaId, BeneficiaryCoaId, HeadOfAccount, Beneficiary, RequestedAmount, ApprovedAmount, ApprovalStatus, ApprovedBy, ApprovedOn, RequestedTo, CreatedOn, CreatedBy, Version",
-            where: "",
-            sortOn: "InternalFundsRequestCashId DESC",
-            page: "1",
-            pageSize: "100",
-          }),
-        },
-      );
+
+      // Fetch from MASTER endpoint
+      const url = `${baseUrl}CashFundRequest/GetList`;
+      console.log(`📡 Calling master endpoint: ${url}`);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          select:
+            "CashFundRequestId, JobId, Job.JobNumber, TotalRequestedAmount, TotalApprovedAmount, ApprovalStatus, ApprovedBy, ApprovedOn, RequestedTo, CreatedOn, CreatedBy, Version, InternalCashFundsRequests.InternalFundsRequestCashId, InternalCashFundsRequests.JobId, InternalCashFundsRequests.HeadCoaId, InternalCashFundsRequests.BeneficiaryCoaId, InternalCashFundsRequests.HeadOfAccount, InternalCashFundsRequests.Beneficiary, InternalCashFundsRequests.RequestedAmount, InternalCashFundsRequests.ApprovedAmount, InternalCashFundsRequests.ChargesId, InternalCashFundsRequests.Version",
+          where: "",
+          sortOn: "CashFundRequestId DESC",
+          page: "1",
+          pageSize: "100",
+        }),
+      });
 
       if (response.ok) {
         const requestData = await response.json();
+        console.log(`✅ Loaded ${requestData.length} master fund requests`);
+        console.log("Sample data:", requestData.slice(0, 2));
+
         setData(requestData);
 
         toast({
           title: "Success",
-          description: `Loaded ${requestData.length} fund requests`,
+          description: `Loaded ${requestData.length} fund request(s)`,
         });
       } else {
-        throw new Error("Failed to fetch fund requests");
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to fetch: ${response.status} ${response.statusText} - ${errorText}`,
+        );
       }
     } catch (error) {
-      console.error("Error fetching fund requests:", error);
+      console.error("❌ Error fetching master fund requests:", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -280,16 +299,20 @@ export default function InternalFundRequestPage({
     }
   }, [initialData, fetchFundRequests]);
 
-  const searchInItem = (item: InternalFundRequest, searchTerm: string) => {
+  const searchInItem = (item: CashFundRequest, searchTerm: string) => {
     if (!searchTerm) return true;
     const searchLower = searchTerm.toLowerCase();
 
     const searchableFields = [
       item.jobNumber,
-      item.headOfAccount,
-      item.beneficiary,
       item.approvalStatus,
-      item.requestedAmount?.toString(),
+      item.totalRequestedAmount?.toString(),
+      item.cashFundRequestId?.toString(),
+      // Also search in detail items
+      ...(item.internalCashFundsRequests || []).flatMap((detail) => [
+        detail.headOfAccount,
+        detail.beneficiary,
+      ]),
     ].filter(Boolean) as string[];
 
     return searchableFields.some((field) =>
@@ -297,7 +320,7 @@ export default function InternalFundRequestPage({
     );
   };
 
-  const filterByStatus = (request: InternalFundRequest) => {
+  const filterByStatus = (request: CashFundRequest) => {
     if (statusFilter === "ALL") return true;
     return request.approvalStatus === statusFilter;
   };
@@ -345,11 +368,15 @@ export default function InternalFundRequestPage({
       paidRequests: allRequests.filter((item) => item.approvalStatus === "PAID")
         .length,
       totalRequestedAmount: allRequests.reduce(
-        (sum, item) => sum + (item.requestedAmount || 0),
+        (sum, item) => sum + (item.totalRequestedAmount || 0),
         0,
       ),
       totalApprovedAmount: allRequests.reduce(
-        (sum, item) => sum + (item.approvedAmount || 0),
+        (sum, item) => sum + (item.totalApprovedAmount || 0),
+        0,
+      ),
+      totalLineItems: allRequests.reduce(
+        (sum, item) => sum + (item.internalCashFundsRequests?.length || 0),
         0,
       ),
     };
@@ -361,16 +388,18 @@ export default function InternalFundRequestPage({
     fetchFundRequests();
   };
 
-  const handleDelete = async (item: InternalFundRequest) => {
+  const handleDelete = async (item: CashFundRequest) => {
+    const lineItemCount = item.internalCashFundsRequests?.length || 0;
     if (
       confirm(
-        `Are you sure you want to delete this fund request for Job "${item.jobNumber}"?`,
+        `Are you sure you want to delete this fund request for Job "${item.jobNumber}"? This will delete the master record and all ${lineItemCount} line item(s).`,
       )
     ) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        // Delete master record (should cascade to details)
         const response = await fetch(
-          `${baseUrl}InternalCashFundsRequest/${item.internalFundsRequestCashId}`,
+          `${baseUrl}CashFundRequest/${item.cashFundRequestId}`,
           {
             method: "DELETE",
           },
@@ -379,14 +408,12 @@ export default function InternalFundRequestPage({
         if (response.ok) {
           setData((prev) =>
             prev.filter(
-              (record) =>
-                record.internalFundsRequestCashId !==
-                item.internalFundsRequestCashId,
+              (record) => record.cashFundRequestId !== item.cashFundRequestId,
             ),
           );
           toast({
             title: "Success",
-            description: "Fund request deleted successfully",
+            description: `Fund request deleted successfully (${lineItemCount} line items removed)`,
           });
         } else {
           throw new Error("Failed to delete fund request");
@@ -402,13 +429,13 @@ export default function InternalFundRequestPage({
     }
   };
 
-  const handleViewDetails = async (request: InternalFundRequest) => {
+  const handleViewDetails = async (request: CashFundRequest) => {
     setSelectedRequestDetails(request);
     setViewDialogOpen(true);
   };
 
   const downloadExcelWithData = (
-    dataToExport: InternalFundRequest[],
+    dataToExport: CashFundRequest[],
     tabName: string,
   ) => {
     if (!dataToExport || dataToExport.length === 0) {
@@ -425,11 +452,11 @@ export default function InternalFundRequestPage({
       const worksheet = workbook.addWorksheet(tabName);
 
       const headers = [
+        "Request ID",
         "Job Number",
-        "Head of Account",
-        "Beneficiary",
-        "Requested Amount",
-        "Approved Amount",
+        "Line Items",
+        "Total Requested",
+        "Total Approved",
         "Status",
         "Created On",
       ];
@@ -437,11 +464,11 @@ export default function InternalFundRequestPage({
 
       dataToExport.forEach((request) => {
         const row = [
+          request.cashFundRequestId || "",
           request.jobNumber || "",
-          request.headOfAccount || "",
-          request.beneficiary || "",
-          request.requestedAmount || 0,
-          request.approvedAmount || 0,
+          request.internalCashFundsRequests?.length || 0,
+          request.totalRequestedAmount || 0,
+          request.totalApprovedAmount || 0,
           request.approvalStatus || "",
           request.createdOn
             ? new Date(request.createdOn).toLocaleDateString()
@@ -476,7 +503,7 @@ export default function InternalFundRequestPage({
   };
 
   const downloadPDFWithData = (
-    dataToExport: InternalFundRequest[],
+    dataToExport: CashFundRequest[],
     tabName: string,
   ) => {
     if (!dataToExport || dataToExport.length === 0) {
@@ -495,19 +522,19 @@ export default function InternalFundRequestPage({
       doc.text(`${tabName} - Internal Fund Requests Report`, 20, 20);
 
       const tableHeaders = [
+        "Request ID",
         "Job No",
-        "Head of Account",
-        "Beneficiary",
+        "Items",
         "Requested",
         "Approved",
         "Status",
       ];
       const tableData = dataToExport.map((item) => [
+        item.cashFundRequestId?.toString() || "N/A",
         item.jobNumber?.toString() || "N/A",
-        item.headOfAccount || "N/A",
-        item.beneficiary || "N/A",
-        item.requestedAmount?.toString() || "0",
-        item.approvedAmount?.toString() || "0",
+        item.internalCashFundsRequests?.length.toString() || "0",
+        item.totalRequestedAmount?.toString() || "0",
+        item.totalApprovedAmount?.toString() || "0",
         item.approvalStatus || "N/A",
       ]);
 
@@ -554,7 +581,7 @@ export default function InternalFundRequestPage({
     }
   };
 
-  const columns: ColumnDef<InternalFundRequest>[] = [
+  const columns: ColumnDef<CashFundRequest>[] = [
     {
       accessorKey: "actions",
       header: "Actions",
@@ -619,6 +646,15 @@ export default function InternalFundRequestPage({
       ),
     },
     {
+      accessorKey: "cashFundRequestId",
+      header: "Request ID",
+      cell: ({ row }) => (
+        <div className='font-semibold text-sm text-blue-700'>
+          #{row.original.cashFundRequestId}
+        </div>
+      ),
+    },
+    {
       accessorKey: "jobNumber",
       header: "Job Number",
       cell: ({ row }) => (
@@ -633,45 +669,40 @@ export default function InternalFundRequestPage({
       ),
     },
     {
-      accessorKey: "headOfAccount",
-      header: "Head of Account",
-      cell: ({ row }) => (
-        <div className='text-sm text-gray-700'>
-          {row.getValue("headOfAccount") || "-"}
-        </div>
-      ),
+      accessorKey: "lineItems",
+      header: "Line Items",
+      cell: ({ row }) => {
+        const count = row.original.internalCashFundsRequests?.length || 0;
+        return (
+          <Badge variant='outline' className='flex items-center gap-1 w-fit'>
+            <FiList className='h-3 w-3' />
+            {count} item{count !== 1 ? "s" : ""}
+          </Badge>
+        );
+      },
     },
     {
-      accessorKey: "beneficiary",
-      header: "Beneficiary",
-      cell: ({ row }) => (
-        <div className='text-sm text-gray-700'>
-          {row.getValue("beneficiary") || "-"}
-        </div>
-      ),
-    },
-    {
-      accessorKey: "requestedAmount",
-      header: "Requested Amount",
+      accessorKey: "totalRequestedAmount",
+      header: "Total Requested",
       cell: ({ row }) => (
         <div className='text-sm font-medium text-gray-900'>
           {new Intl.NumberFormat("en-US", {
             style: "currency",
             currency: "PKR",
-          }).format(row.getValue("requestedAmount") || 0)}
+          }).format(row.getValue("totalRequestedAmount") || 0)}
         </div>
       ),
     },
     {
-      accessorKey: "approvedAmount",
-      header: "Approved Amount",
+      accessorKey: "totalApprovedAmount",
+      header: "Total Approved",
       cell: ({ row }) => (
         <div className='text-sm font-medium text-green-700'>
-          {row.original.approvedAmount
+          {row.original.totalApprovedAmount
             ? new Intl.NumberFormat("en-US", {
                 style: "currency",
                 currency: "PKR",
-              }).format(row.original.approvedAmount)
+              }).format(row.original.totalApprovedAmount)
             : "-"}
         </div>
       ),
@@ -701,124 +732,179 @@ export default function InternalFundRequestPage({
   ];
 
   const ViewRequestDialog = () => {
-    const [detailsLoading, setDetailsLoading] = useState(false);
-    const [enrichedRequest, setEnrichedRequest] = useState<any>(null);
-
-    useEffect(() => {
-      if (selectedRequestDetails && viewDialogOpen) {
-        setDetailsLoading(true);
-        cacheManager.prefetchDetails(selectedRequestDetails).then((details) => {
-          setEnrichedRequest({
-            ...selectedRequestDetails,
-            ...details,
-          });
-          setDetailsLoading(false);
-        });
-      } else {
-        setEnrichedRequest(null);
-      }
-    }, [selectedRequestDetails, viewDialogOpen]);
-
     return (
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className='max-w-2xl max-h-[80vh] overflow-y-auto'>
+        <DialogContent className='max-w-4xl max-h-[90vh] overflow-y-auto'>
           <DialogHeader>
             <DialogTitle className='flex items-center gap-2'>
               <FiEye className='h-5 w-5' />
               Fund Request Details
             </DialogTitle>
             <DialogDescription>
-              Details for Job {enrichedRequest?.jobNumber}
+              Request ID: #{selectedRequestDetails?.cashFundRequestId} | Job:{" "}
+              {selectedRequestDetails?.jobNumber}
             </DialogDescription>
           </DialogHeader>
 
-          {detailsLoading ? (
-            <div className='flex justify-center items-center py-8'>
-              <div className='text-center'>
-                <div className='animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4'></div>
-                <p className='text-sm text-gray-600'>Loading details...</p>
-              </div>
-            </div>
-          ) : (
-            enrichedRequest && (
-              <div className='space-y-4'>
-                <Card>
-                  <CardHeader className='py-3 px-4'>
-                    <CardTitle className='text-sm font-medium'>
-                      Request Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className='pt-0 px-4 pb-3'>
-                    <div className='space-y-1.5 text-xs'>
-                      <div className='flex justify-between'>
-                        <span className='text-gray-600'>Job Number:</span>
-                        <span className='font-medium'>
-                          {enrichedRequest.jobNumber}
-                        </span>
-                      </div>
-                      <div className='flex justify-between'>
-                        <span className='text-gray-600'>Head of Account:</span>
-                        <span className='font-medium'>
-                          {enrichedRequest.headOfAccount}
-                        </span>
-                      </div>
-                      <div className='flex justify-between'>
-                        <span className='text-gray-600'>Beneficiary:</span>
-                        <span className='font-medium'>
-                          {enrichedRequest.beneficiary}
-                        </span>
-                      </div>
-                      <div className='flex justify-between'>
-                        <span className='text-gray-600'>Requested Amount:</span>
-                        <span className='font-medium text-blue-700'>
-                          {new Intl.NumberFormat("en-US", {
-                            style: "currency",
-                            currency: "PKR",
-                          }).format(enrichedRequest.requestedAmount || 0)}
-                        </span>
-                      </div>
-                      {enrichedRequest.approvedAmount && (
-                        <div className='flex justify-between'>
-                          <span className='text-gray-600'>
-                            Approved Amount:
-                          </span>
-                          <span className='font-medium text-green-700'>
-                            {new Intl.NumberFormat("en-US", {
+          {selectedRequestDetails && (
+            <div className='space-y-4'>
+              {/* Master Information */}
+              <Card>
+                <CardHeader className='py-3 px-4 bg-blue-50'>
+                  <CardTitle className='text-sm font-medium flex items-center gap-2'>
+                    <Badge variant='default' className='bg-blue-600'>
+                      Master
+                    </Badge>
+                    Request Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className='pt-3 px-4 pb-3'>
+                  <div className='grid grid-cols-2 gap-3 text-sm'>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Request ID:</span>
+                      <span className='font-medium'>
+                        #{selectedRequestDetails.cashFundRequestId}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Job Number:</span>
+                      <span className='font-medium'>
+                        {selectedRequestDetails.jobNumber}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Total Requested:</span>
+                      <span className='font-medium text-blue-700'>
+                        {new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: "PKR",
+                        }).format(
+                          selectedRequestDetails.totalRequestedAmount || 0,
+                        )}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Total Approved:</span>
+                      <span className='font-medium text-green-700'>
+                        {selectedRequestDetails.totalApprovedAmount
+                          ? new Intl.NumberFormat("en-US", {
                               style: "currency",
                               currency: "PKR",
-                            }).format(enrichedRequest.approvedAmount)}
-                          </span>
-                        </div>
-                      )}
+                            }).format(
+                              selectedRequestDetails.totalApprovedAmount,
+                            )
+                          : "-"}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Status:</span>
+                      <span
+                        className={`font-medium inline-flex items-center px-2 py-0.5 rounded text-xs border ${getStatusBadge(
+                          selectedRequestDetails.approvalStatus,
+                        )}`}
+                      >
+                        {selectedRequestDetails.approvalStatus}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Line Items:</span>
+                      <span className='font-medium'>
+                        {selectedRequestDetails.internalCashFundsRequests
+                          ?.length || 0}{" "}
+                        items
+                      </span>
+                    </div>
+                    {selectedRequestDetails.approvedOn && (
                       <div className='flex justify-between'>
-                        <span className='text-gray-600'>Status:</span>
-                        <span className='font-medium'>
-                          {enrichedRequest.approvalStatus}
-                        </span>
-                      </div>
-                      {enrichedRequest.approvedOn && (
-                        <div className='flex justify-between'>
-                          <span className='text-gray-600'>Approved On:</span>
-                          <span className='font-medium'>
-                            {new Date(
-                              enrichedRequest.approvedOn,
-                            ).toLocaleDateString()}
-                          </span>
-                        </div>
-                      )}
-                      <div className='flex justify-between'>
-                        <span className='text-gray-600'>Created On:</span>
+                        <span className='text-gray-600'>Approved On:</span>
                         <span className='font-medium'>
                           {new Date(
-                            enrichedRequest.createdOn,
+                            selectedRequestDetails.approvedOn,
                           ).toLocaleDateString()}
                         </span>
                       </div>
+                    )}
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Created On:</span>
+                      <span className='font-medium'>
+                        {new Date(
+                          selectedRequestDetails.createdOn,
+                        ).toLocaleDateString()}
+                      </span>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Detail Line Items */}
+              <Card>
+                <CardHeader className='py-3 px-4 bg-gray-50'>
+                  <CardTitle className='text-sm font-medium flex items-center gap-2'>
+                    <Badge variant='outline' className='bg-white'>
+                      Details
+                    </Badge>
+                    Line Items (
+                    {selectedRequestDetails.internalCashFundsRequests?.length ||
+                      0}
+                    )
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className='pt-3 px-4 pb-3'>
+                  {selectedRequestDetails.internalCashFundsRequests &&
+                  selectedRequestDetails.internalCashFundsRequests.length >
+                    0 ? (
+                    <div className='border rounded-lg overflow-hidden'>
+                      <Table>
+                        <TableHeader>
+                          <TableRow className='bg-gray-50'>
+                            <TableHead className='w-[50px]'>#</TableHead>
+                            <TableHead>Head of Account</TableHead>
+                            <TableHead>Beneficiary</TableHead>
+                            <TableHead>Requested</TableHead>
+                            <TableHead>Approved</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedRequestDetails.internalCashFundsRequests.map(
+                            (detail, index) => (
+                              <TableRow key={detail.internalFundsRequestCashId}>
+                                <TableCell className='font-medium'>
+                                  {index + 1}
+                                </TableCell>
+                                <TableCell className='text-sm'>
+                                  {detail.headOfAccount}
+                                </TableCell>
+                                <TableCell className='text-sm'>
+                                  {detail.beneficiary}
+                                </TableCell>
+                                <TableCell className='text-sm font-medium'>
+                                  {new Intl.NumberFormat("en-US", {
+                                    style: "currency",
+                                    currency: "PKR",
+                                  }).format(detail.requestedAmount || 0)}
+                                </TableCell>
+                                <TableCell className='text-sm font-medium text-green-700'>
+                                  {detail.approvedAmount
+                                    ? new Intl.NumberFormat("en-US", {
+                                        style: "currency",
+                                        currency: "PKR",
+                                      }).format(detail.approvedAmount)
+                                    : "-"}
+                                </TableCell>
+                              </TableRow>
+                            ),
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                    <p className='text-sm text-gray-500 text-center py-4'>
+                      No line items available
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           )}
 
           <DialogFooter>
@@ -862,8 +948,8 @@ export default function InternalFundRequestPage({
             </CardHeader>
             <CardContent className='pt-0 pb-3 px-4'>
               <div className='text-xs text-gray-600'>
-                {stats.pendingRequests} pending • {stats.approvedRequests}{" "}
-                approved
+                {stats.totalLineItems} line items • {stats.pendingRequests}{" "}
+                pending
               </div>
             </CardContent>
           </Card>
@@ -961,7 +1047,7 @@ export default function InternalFundRequestPage({
               Internal Fund Request Management (Cash)
             </h1>
             <p className='text-xs text-gray-600 mt-0.5'>
-              Manage internal fund requests with complete tracking
+              Master-detail fund requests with complete tracking
             </p>
           </div>
           <div className='flex gap-2'>

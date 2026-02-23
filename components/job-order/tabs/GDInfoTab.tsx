@@ -57,7 +57,10 @@ export default function GDInfoTab({
   const [editingGDIndex, setEditingGDIndex] = useState<number | null>(null);
   const [insuranceType, setInsuranceType] = useState<"1percent" | "Rs">("Rs");
 
-  // ✅ NEW: Separate state for GD serial number (user input only)
+  // ✅ NEW: Customizable GD Number prefix (default "KAPS")
+  const [gdPrefix, setGdPrefix] = useState<string>("KAPS");
+
+  // ✅ NEW: Separate state for GD serial number (no length limit)
   const [gdSerialNumber, setGdSerialNumber] = useState<string>("1119");
 
   // ✅ NEW: Controlled state for Type dropdown
@@ -75,16 +78,22 @@ export default function GDInfoTab({
     }
   }, [form.watch("gdType")]);
 
-  // ✅ NEW: Extract serial number from existing GD Number on mount (Edit mode)
+  // ✅ NEW: Extract prefix and serial number from existing GD Number on mount (Edit mode)
   React.useEffect(() => {
     const existingGDNumber = form.watch("gdnumber");
 
     if (existingGDNumber && existingGDNumber.includes("-")) {
-      // Format: KAPS-TYPE-####-DDMMYYYY
+      // Format: PREFIX-TYPE-SERIAL-DDMMYYYY
       const parts = existingGDNumber.split("-");
 
       if (parts.length === 4) {
-        const serialFromGD = parts[2]; // Extract serial number (####)
+        const prefixFromGD = parts[0]; // Extract prefix (KAPS or custom)
+        const serialFromGD = parts[2]; // Extract serial number
+
+        if (prefixFromGD && prefixFromGD !== gdPrefix) {
+          console.log("Extracted prefix from GD:", prefixFromGD);
+          setGdPrefix(prefixFromGD);
+        }
 
         if (serialFromGD && serialFromGD !== gdSerialNumber) {
           console.log("Extracted serial number from GD:", serialFromGD);
@@ -100,25 +109,31 @@ export default function GDInfoTab({
     }, 500);
   }, []); // Run only once on mount
 
-  // ✅ NEW: Extract serial number from GD Number in edit mode
+  // ✅ NEW: Extract prefix, type and serial number from GD Number in edit mode
   React.useEffect(() => {
     const gdNumber = form.watch("gdnumber");
 
     if (gdNumber && gdNumber.includes("-")) {
-      // Parse format: KAPS-TYPE-####-DDMMYYYY
+      // Parse format: PREFIX-TYPE-SERIAL-DDMMYYYY
       const parts = gdNumber.split("-");
 
       if (parts.length === 4) {
-        const extractedSerial = parts[2]; // Get the #### part
+        const extractedPrefix = parts[0]; // Get the PREFIX part
         const extractedType = parts[1]; // Get the TYPE part
+        const extractedSerial = parts[2]; // Get the SERIAL part
 
         console.log("Extracted from GD Number:", {
+          prefix: extractedPrefix,
           type: extractedType,
           serial: extractedSerial,
           fullNumber: gdNumber,
         });
 
         // Only update if different to avoid infinite loops
+        if (extractedPrefix && extractedPrefix !== gdPrefix) {
+          setGdPrefix(extractedPrefix);
+        }
+
         if (extractedSerial && extractedSerial !== gdSerialNumber) {
           setGdSerialNumber(extractedSerial);
         }
@@ -168,17 +183,20 @@ export default function GDInfoTab({
     return today.toISOString().split("T")[0];
   };
 
-  // ✅ Format GD Number - KAPS-TYPE-####-DDMMYYYY
+  // ✅ Format GD Number - PREFIX-TYPE-SERIAL-DDMMYYYY
   const formatGDNumber = (
     prefix: string,
     type: string,
     serial: string,
     date: string,
   ): string => {
-    if (!type || !serial || !date) return "";
+    if (!prefix || !type || !serial || !date) return "";
 
-    // Pad serial to 4 digits
-    const paddedSerial = serial.padStart(4, "0");
+    // Clean prefix (remove spaces, convert to uppercase)
+    const cleanPrefix = prefix.trim().toUpperCase();
+
+    // Clean serial (remove non-alphanumeric characters)
+    const cleanSerial = serial.trim();
 
     // Convert date from YYYY-MM-DD to DDMMYYYY
     const dateParts = date.split("-");
@@ -186,10 +204,10 @@ export default function GDInfoTab({
 
     const formattedDate = `${dateParts[2]}${dateParts[1]}${dateParts[0]}`; // DDMMYYYY
 
-    return `${prefix}-${type}-${paddedSerial}-${formattedDate}`;
+    return `${cleanPrefix}-${type}-${cleanSerial}-${formattedDate}`;
   };
 
-  // ✅ Auto-generate GD Number when type, serial, or date changes
+  // ✅ Auto-generate GD Number when prefix, type, serial, or date changes
   // But only AFTER initial load is complete (prevents overwriting in edit mode)
   React.useEffect(() => {
     // Skip auto-generation during initial load
@@ -202,9 +220,9 @@ export default function GDInfoTab({
     const existingGDNumber = form.watch("gdnumber");
 
     // Only auto-generate if we have all required fields
-    if (selectedType && gdSerialNumber && gdDate) {
+    if (gdPrefix && selectedType && gdSerialNumber && gdDate) {
       const newGDNumber = formatGDNumber(
-        "KAPS",
+        gdPrefix,
         selectedType,
         gdSerialNumber,
         gdDate,
@@ -216,7 +234,13 @@ export default function GDInfoTab({
         form.setValue("gdnumber", newGDNumber);
       }
     }
-  }, [selectedType, gdSerialNumber, form.watch("gddate"), isInitialLoad]);
+  }, [
+    gdPrefix,
+    selectedType,
+    gdSerialNumber,
+    form.watch("gddate"),
+    isInitialLoad,
+  ]);
 
   // Calculate total assessed value from all items
   const calculateTotalAssessedValue = () => {
@@ -266,17 +290,17 @@ export default function GDInfoTab({
         "Levy CD",
         "Levy ST",
         "Levy RD",
-        "Levy ASD",
+        "Levy AST",
         "Levy IT",
         "Rate CD (%)",
         "Rate ST (%)",
         "Rate RD (%)",
-        "Rate ASD (%)",
+        "Rate AST (%)",
         "Rate IT (%)",
         "Payable CD",
         "Payable ST",
         "Payable RD",
-        "Payable ASD",
+        "Payable AST",
         "Payable IT",
       ];
 
@@ -407,17 +431,17 @@ export default function GDInfoTab({
         "Levy CD",
         "Levy ST",
         "Levy RD",
-        "Levy ASD",
+        "Levy AST",
         "Levy IT",
         "Rate CD (%)",
         "Rate ST (%)",
         "Rate RD (%)",
-        "Rate ASD (%)",
+        "Rate AST (%)",
         "Rate IT (%)",
         "Payable CD",
         "Payable ST",
         "Payable RD",
-        "Payable ASD",
+        "Payable AST",
         "Payable IT",
       ];
 
@@ -452,17 +476,17 @@ export default function GDInfoTab({
         levyCd: parseFloat(row["Levy CD"]) || 0,
         levySt: parseFloat(row["Levy ST"]) || 0,
         levyRd: parseFloat(row["Levy RD"]) || 0,
-        levyAsd: parseFloat(row["Levy ASD"]) || 0,
+        levyAsd: parseFloat(row["Levy AST"]) || 0,
         levyIt: parseFloat(row["Levy IT"]) || 0,
         rateCd: parseFloat(row["Rate CD (%)"]) || 0,
         rateSt: parseFloat(row["Rate ST (%)"]) || 0,
         rateRd: parseFloat(row["Rate RD (%)"]) || 0,
-        rateAsd: parseFloat(row["Rate ASD (%)"]) || 0,
+        rateAsd: parseFloat(row["Rate AST (%)"]) || 0,
         rateIt: parseFloat(row["Rate IT (%)"]) || 0,
         payableCd: parseFloat(row["Payable CD"]) || 0,
         payableSt: parseFloat(row["Payable ST"]) || 0,
         payableRd: parseFloat(row["Payable RD"]) || 0,
-        payableAsd: parseFloat(row["Payable ASD"]) || 0,
+        payableAsd: parseFloat(row["Payable AST"]) || 0,
         payableIt: parseFloat(row["Payable IT"]) || 0,
         version: 0,
       }));
@@ -647,21 +671,48 @@ export default function GDInfoTab({
           </Alert>
         )}
 
-        {/* ✅ NEW: Info about format */}
+        {/* ✅ NEW: Updated info about format with customizable prefix */}
         <Alert className='mb-4 bg-blue-50 border-blue-200'>
           <Info className='h-4 w-4 text-blue-600' />
           <AlertDescription className='text-sm text-blue-800'>
-            <strong>GD Number Format:</strong> KAPS-TYPE-####-DDMMYYYY
+            <strong>GD Number Format:</strong> PREFIX-TYPE-SERIAL-DDMMYYYY
             <br />
             <span className='text-xs'>
-              Select Type and Date, then enter only the 4-digit serial number
-              below.
+              Enter your prefix (default: KAPS), select Type and Date, then
+              enter the serial number (any length).
             </span>
           </AlertDescription>
         </Alert>
 
-        <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-          {/* Row 1: Type, Date, Serial Number (User Input) */}
+        <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
+          {/* ✅ NEW: Row 1 - GD Number Components */}
+          {/* ✅ NEW: Prefix Input (User can change from KAPS) */}
+          <div className='space-y-2'>
+            <Label htmlFor='gdPrefix'>
+              GD Prefix <span className='text-red-500'>*</span>
+              <span className='text-xs text-gray-500 ml-1'>
+                (e.g., KAPS, KAPT)
+              </span>
+            </Label>
+            <Input
+              id='gdPrefix'
+              type='text'
+              placeholder='KAPS'
+              value={gdPrefix}
+              onChange={(e) => {
+                const value = e.target.value
+                  .toUpperCase()
+                  .replace(/[^A-Z0-9]/g, ""); // Only letters and numbers
+                setGdPrefix(value);
+              }}
+              className='font-mono text-lg'
+              maxLength={10}
+            />
+            <p className='text-xs text-gray-500'>
+              Default: KAPS (customizable)
+            </p>
+          </div>
+
           <div className='space-y-2'>
             <Label>
               Type <span className='text-red-500'>*</span>
@@ -670,8 +721,7 @@ export default function GDInfoTab({
               </span>
             </Label>
             <Select
-              key={`type-select-${selectedType || "none"}`}
-              defaultValue={selectedType}
+              value={selectedType || ""}
               onValueChange={(value) => {
                 console.log("Type selected:", value);
                 setSelectedType(value);
@@ -684,11 +734,7 @@ export default function GDInfoTab({
               <SelectTrigger>
                 <SelectValue placeholder='Select Type' />
               </SelectTrigger>
-              <SelectContent
-                position='popper'
-                sideOffset={5}
-                className='max-h-[300px] overflow-y-auto z-50'
-              >
+              <SelectContent position='popper' sideOffset={5}>
                 <SelectItem value='HC'>HC - Home Consumption</SelectItem>
                 <SelectItem value='IB'>IB - Import Bond</SelectItem>
                 <SelectItem value='EB'>EB - Export Bond</SelectItem>
@@ -706,6 +752,28 @@ export default function GDInfoTab({
                 ✅ Selected: {selectedType}
               </p>
             )}
+          </div>
+
+          {/* ✅ UPDATED: Serial Number Input (No length limit) */}
+          <div className='space-y-2'>
+            <Label htmlFor='gdSerialNumber'>
+              Serial Number <span className='text-red-500'>*</span>
+              <span className='text-xs text-gray-500 ml-1'>(any length)</span>
+            </Label>
+            <Input
+              id='gdSerialNumber'
+              type='text'
+              placeholder='1119'
+              value={gdSerialNumber}
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^0-9]/g, ""); // Only digits
+                setGdSerialNumber(value);
+              }}
+              className='font-mono text-lg'
+            />
+            <p className='text-xs text-gray-500'>
+              Enter serial number (e.g., 1119, 0001, 123456)
+            </p>
           </div>
 
           <div className='space-y-2'>
@@ -726,30 +794,7 @@ export default function GDInfoTab({
             </p>
           </div>
 
-          {/* ✅ NEW: Serial Number Input (User enters ONLY the 4-digit number) */}
-          <div className='space-y-2'>
-            <Label htmlFor='gdSerialNumber'>
-              Serial Number <span className='text-red-500'>*</span>
-              <span className='text-xs text-gray-500 ml-1'>(4 digits)</span>
-            </Label>
-            <Input
-              id='gdSerialNumber'
-              type='text'
-              maxLength={4}
-              placeholder='1119'
-              value={gdSerialNumber}
-              onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, ""); // Only digits
-                setGdSerialNumber(value);
-              }}
-              className='font-mono text-lg'
-            />
-            <p className='text-xs text-gray-500'>
-              Enter 4-digit serial number (e.g., 1119, 0001)
-            </p>
-          </div>
-
-          {/* Exchange Rate */}
+          {/* Row 2: Exchange Rate & Charges */}
           <div className='space-y-2'>
             <Label htmlFor='jobInvoiceExchRate'>
               Exchange Rate{" "}
@@ -764,7 +809,6 @@ export default function GDInfoTab({
             />
           </div>
 
-          {/* Row 4: Financial Calculations */}
           <div className='space-y-2'>
             <Label htmlFor='gdcharges'>
               {freightType === "Collect" ? "Freight Charges" : "Other Charges"}
@@ -799,11 +843,7 @@ export default function GDInfoTab({
                 <SelectTrigger className='w-[120px]'>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent
-                  position='popper'
-                  sideOffset={5}
-                  className='max-h-[300px] overflow-y-auto z-50'
-                >
+                <SelectContent position='popper' sideOffset={5}>
                   <SelectItem value='1percent'>1% of AV</SelectItem>
                   <SelectItem value='Rs'>Rs.</SelectItem>
                 </SelectContent>
@@ -875,7 +915,7 @@ export default function GDInfoTab({
         )}
       </div>
 
-      {/* Detail Grid Section */}
+      {/* Detail Grid Section - SAME AS BEFORE */}
       <div className='bg-white p-6 rounded-lg border'>
         <div className='flex items-center justify-between mb-4'>
           <h3 className='text-lg font-semibold'>GD Detail Items</h3>
@@ -951,7 +991,6 @@ export default function GDInfoTab({
             .styled-scrollbar::-webkit-scrollbar-corner {
               background: #f1f1f1;
             }
-            /* Firefox */
             .styled-scrollbar {
               scrollbar-width: thick;
               scrollbar-color: #888 #f1f1f1;
@@ -1136,7 +1175,7 @@ export default function GDInfoTab({
         )}
       </div>
 
-      {/* Add/Edit Dialog */}
+      {/* Add/Edit Dialog - TRUNCATED FOR BREVITY - SAME AS BEFORE */}
       <Dialog open={isGDDialogOpen} onOpenChange={setIsGDDialogOpen}>
         <DialogContent className='max-w-4xl max-h-[90vh] overflow-y-auto'>
           <DialogHeader>
@@ -1149,6 +1188,7 @@ export default function GDInfoTab({
           </DialogHeader>
 
           <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+            {/* All the form fields from before - same code */}
             <div className='space-y-2'>
               <Label>Unit Type</Label>
               <Input
@@ -1354,7 +1394,7 @@ export default function GDInfoTab({
                   />
                 </div>
                 <div className='space-y-2'>
-                  <Label>ASD %</Label>
+                  <Label>AST %</Label>
                   <Input
                     type='number'
                     step='0.01'
@@ -1430,7 +1470,7 @@ export default function GDInfoTab({
                   />
                 </div>
                 <div className='space-y-2'>
-                  <Label>ASD</Label>
+                  <Label>AST</Label>
                   <Input
                     type='number'
                     step='0.01'

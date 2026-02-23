@@ -16,9 +16,9 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "InternalFundsRequestCashId, JobId, Job.JobNumber, HeadCoaId, BeneficiaryCoaId, HeadOfAccount, Beneficiary, RequestedAmount, ApprovedAmount, ApprovalStatus, ApprovedBy, ApprovedOn, RequestedTo, CreatedOn, CreatedBy, version",
+      "cashFundRequestId,jobId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version",
     where: "",
-    sortOn: "InternalFundsRequestCashId",
+    sortOn: "cashFundRequestId",
     page: "1",
     pageSize: "50", // Start with a reasonable page size
   };

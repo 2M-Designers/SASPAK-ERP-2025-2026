@@ -243,9 +243,11 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                     <Select
                       value={field.value?.toString() || ""}
                       onValueChange={(value) => {
-                        const numericValue = value ? parseInt(value, 10) : null;
-                        console.log("GD Cleared U/S selected:", numericValue);
-                        field.onChange(numericValue);
+                        console.log(
+                          "GD Cleared U/S selected:",
+                          field.value?.toString(),
+                        );
+                        field.onChange(field.value?.toString());
                       }}
                       disabled={loadingGdOptions}
                     >
@@ -261,11 +263,11 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                                 <Loader2 className='h-4 w-4 animate-spin' />
                                 Loading...
                               </span>
-                            ) : field.value ? (
+                            ) : field.value?.toString() ? (
                               selectedGdOption ? (
                                 `${selectedGdOption.sectionCode} - ${selectedGdOption.sectionName}`
                               ) : (
-                                `Section ${field.value}`
+                                `Section ${field.value?.toString()}`
                               )
                             ) : (
                               "Select section"

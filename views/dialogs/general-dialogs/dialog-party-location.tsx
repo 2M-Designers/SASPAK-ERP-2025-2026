@@ -26,12 +26,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 
-// Validation Schema
 const formSchema = z.object({
   partyLocationId: z.number().optional(),
   partyId: z.number().min(1, "Party is required"),
   unlocationId: z.number().min(1, "UN Location is required"),
-  locationCode: z.string().optional(), // Auto-generated
+  locationCode: z.string().optional(),
   locationName: z.string().min(1, "Location Name is required"),
   addressLine1: z.string().min(1, "Address Line 1 is required"),
   addressLine2: z.string().optional(),
@@ -93,7 +92,7 @@ export default function PartyLocationDialog({
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      partyLocationId: defaultState.partyLocationId || undefined,
+      partyLocationId: defaultState.partyLocationId ?? undefined,
       partyId: defaultState.partyId || 0,
       unlocationId: defaultState.unlocationId || 0,
       locationCode: defaultState.locationCode || "",
@@ -115,11 +114,11 @@ export default function PartyLocationDialog({
       isActive:
         defaultState.isActive !== undefined ? defaultState.isActive : true,
       remarks: defaultState.remarks || "",
-      version: defaultState.version || 0,
+      version:
+        typeof defaultState.version === "number" ? defaultState.version : 0,
     },
   });
 
-  // Fetch parties and UN locations when dialog opens
   useEffect(() => {
     if (open) {
       fetchParties();
@@ -133,9 +132,7 @@ export default function PartyLocationDialog({
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       const response = await fetch(`${baseUrl}Party/GetList`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           select: "PartyId,PartyName,PartyCode",
           where: "IsActive == true",
@@ -144,7 +141,6 @@ export default function PartyLocationDialog({
           pageSize: "100",
         }),
       });
-
       if (response.ok) {
         const data = await response.json();
         setParties(data);
@@ -169,9 +165,7 @@ export default function PartyLocationDialog({
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       const response = await fetch(`${baseUrl}UNLocation/GetList`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           select:
             "UnlocationId,LocationName,Uncode,IsCountry,IsCity,IsSeaPort,IsDryPort",
@@ -181,7 +175,6 @@ export default function PartyLocationDialog({
           pageSize: "100",
         }),
       });
-
       if (response.ok) {
         const data = await response.json();
         setUnlocations(data);
@@ -209,10 +202,16 @@ export default function PartyLocationDialog({
     return types.length > 0 ? ` (${types.join(", ")})` : "";
   };
 
+  // Fires when Zod validation FAILS — shows exactly which fields are blocking submit
+  const onInvalid = (errors: any) => {
+    console.group("❌ Form Validation Failed (Zod blocked submit)");
+    console.log("Fix these fields before the API call can be made:", errors);
+    console.groupEnd();
+  };
+
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     const user = localStorage.getItem("user");
     let userID = 0;
-
     if (user) {
       try {
         const u = JSON.parse(user);
@@ -224,23 +223,45 @@ export default function PartyLocationDialog({
 
     const isUpdate = type === "edit";
 
-    // Create payload - handle optional fields
     const payload = {
-      ...values,
+      ...(isUpdate && values.partyLocationId !== undefined
+        ? { partyLocationId: Number(values.partyLocationId) }
+        : {}),
+      partyId: Number(values.partyId),
+      unlocationId: Number(values.unlocationId),
+      locationCode: isUpdate ? values.locationCode || "" : "",
+      locationName: values.locationName,
+      addressLine1: values.addressLine1,
       addressLine2: values.addressLine2 || "",
       postalCode: values.postalCode || "",
+      phone: values.phone,
       fax: values.fax || "",
       email: values.email || "",
+      contactPersonName: values.contactPersonName,
       contactPersonDesignation: values.contactPersonDesignation || "",
       contactPersonPhone: values.contactPersonPhone || "",
       contactPersonEmail: values.contactPersonEmail || "",
+      isHeadOffice: values.isHeadOffice,
+      isActive: values.isActive,
       remarks: values.remarks || "",
-      // For add operation, send empty location code (will be auto-generated)
-      ...(!isUpdate ? { locationCode: "" } : {}),
-      //...(isUpdate ? { UpdatedBy: userID } : { CreatedBy: userID }),
+      version: Number(values.version ?? 0),
+      ...(isUpdate ? { updatedBy: userID } : { createdBy: userID }),
     };
 
-    console.log("Party Location Payload:", payload);
+    // ── DEBUG: LOG EVERYTHING BEFORE SENDING ───────────────────────────────────
+    console.group(`🚀 PartyLocation ${isUpdate ? "PUT" : "POST"}`);
+    console.log("📋 Operation   :", isUpdate ? "PUT (Update)" : "POST (Add)");
+    console.log("👤 UserID      :", userID);
+    console.log("🔑 User in LS  :", localStorage.getItem("user"));
+    console.log("📦 Form values :", values);
+    console.log("📤 Payload     :", JSON.stringify(payload, null, 2));
+    console.log(
+      "🌐 URL         :",
+      process.env.NEXT_PUBLIC_BASE_URL + "PartyLocation",
+    );
+    console.groupEnd();
+    // ──────────────────────────────────────────────────────────────────────────
+
     setIsLoading(true);
 
     try {
@@ -248,38 +269,53 @@ export default function PartyLocationDialog({
         process.env.NEXT_PUBLIC_BASE_URL + "PartyLocation",
         {
           method: isUpdate ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
-        }
+        },
       );
 
+      // Read body ONCE as text so we can log it before parsing
+      const responseData = await response.text();
+
+      // ── DEBUG: LOG RAW RESPONSE ─────────────────────────────────────────────
+      console.group("📥 API Response");
+      console.log("🔢 Status      :", response.status, response.statusText);
+      console.log("✅ OK          :", response.ok);
+      console.log("📄 Raw body    :", responseData);
+      // ────────────────────────────────────────────────────────────────────────
+
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData: any = {};
+        try {
+          errorData = JSON.parse(responseData);
+        } catch {
+          errorData = {
+            message: responseData || `HTTP Error: ${response.status}`,
+          };
+        }
+        console.error("❌ Error body  :", errorData);
+        console.groupEnd();
         throw new Error(errorData.message || `HTTP Error: ${response.status}`);
       }
 
-      const responseData = await response.text();
       const jsonData = responseData ? JSON.parse(responseData) : null;
+      console.log("✅ Parsed data :", jsonData);
+      console.groupEnd();
+      // ── END DEBUG ────────────────────────────────────────────────────────────
 
       if (jsonData?.statusCode >= 400) {
         throw new Error(jsonData.message || "Unknown error occurred");
       }
 
       setOpen(false);
-
-      handleAddEdit({
-        ...values,
-        ...jsonData,
-      });
-
+      handleAddEdit({ ...values, ...jsonData });
       toast({
         title: `Party Location ${
           type === "edit" ? "updated" : "added"
         } successfully.`,
       });
     } catch (error: any) {
+      console.error("💥 Caught error:", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -315,25 +351,24 @@ export default function PartyLocationDialog({
         </DialogHeader>
 
         <Form {...form}>
+          {/* onInvalid catches Zod validation failures and logs them */}
           <form
-            onSubmit={form.handleSubmit(onSubmit)}
+            onSubmit={form.handleSubmit(onSubmit, onInvalid)}
             className='flex flex-col gap-4'
           >
             {/* Location Code Display */}
             <div className='p-3 bg-gray-50 rounded-md'>
-              <div>
-                <FormLabel className='text-sm font-medium text-gray-600'>
-                  Location Code
-                </FormLabel>
-                <div className='mt-1 text-sm text-gray-900'>
-                  {type === "edit" ? (
-                    form.watch("locationCode") || "Not available"
-                  ) : (
-                    <span className='text-blue-600'>
-                      Auto-generated by system
-                    </span>
-                  )}
-                </div>
+              <FormLabel className='text-sm font-medium text-gray-600'>
+                Location Code
+              </FormLabel>
+              <div className='mt-1 text-sm text-gray-900'>
+                {type === "edit" ? (
+                  form.watch("locationCode") || "Not available"
+                ) : (
+                  <span className='text-blue-600'>
+                    Auto-generated by system
+                  </span>
+                )}
               </div>
             </div>
 
@@ -537,7 +572,6 @@ export default function PartyLocationDialog({
               </h3>
 
               <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-                {/* Contact Person Name */}
                 <FormField
                   control={form.control}
                   name='contactPersonName'
@@ -555,7 +589,6 @@ export default function PartyLocationDialog({
                   )}
                 />
 
-                {/* Contact Person Designation */}
                 <FormField
                   control={form.control}
                   name='contactPersonDesignation'
@@ -572,7 +605,6 @@ export default function PartyLocationDialog({
               </div>
 
               <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-                {/* Contact Person Phone */}
                 <FormField
                   control={form.control}
                   name='contactPersonPhone'
@@ -587,7 +619,6 @@ export default function PartyLocationDialog({
                   )}
                 />
 
-                {/* Contact Person Email */}
                 <FormField
                   control={form.control}
                   name='contactPersonEmail'
@@ -610,7 +641,6 @@ export default function PartyLocationDialog({
 
             {/* Status Settings */}
             <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* Is Head Office */}
               <FormField
                 control={form.control}
                 name='isHeadOffice'
@@ -635,7 +665,6 @@ export default function PartyLocationDialog({
                 )}
               />
 
-              {/* Is Active */}
               <FormField
                 control={form.control}
                 name='isActive'
@@ -680,42 +709,28 @@ export default function PartyLocationDialog({
               )}
             />
 
-            {/* Hidden fields */}
-            <div className='hidden'>
-              <FormField
-                control={form.control}
-                name='partyLocationId'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input type='hidden' {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name='locationCode'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input type='hidden' {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name='version'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input type='hidden' {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            </div>
+            {/* Hidden fields — partyLocationId uses setValueAs to return undefined
+                (not NaN) when empty on ADD, which satisfies Zod's optional number type.
+                version falls back to 0 instead of NaN for the same reason. */}
+            <input
+              type='hidden'
+              {...form.register("partyLocationId", {
+                setValueAs: (v) =>
+                  v === "" || v === undefined || isNaN(Number(v))
+                    ? undefined
+                    : Number(v),
+              })}
+            />
+            <input type='hidden' {...form.register("locationCode")} />
+            <input
+              type='hidden'
+              {...form.register("version", {
+                setValueAs: (v) =>
+                  v === "" || v === undefined || isNaN(Number(v))
+                    ? 0
+                    : Number(v),
+              })}
+            />
 
             <div className='flex justify-end gap-3 pt-4'>
               <Button

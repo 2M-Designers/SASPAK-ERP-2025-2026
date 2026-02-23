@@ -105,7 +105,7 @@ export const jobMasterSchema = z.object({
   gdType: z.string().optional(),
   gddate: z.string().optional(),
   gdcharges: z.number().min(0).default(0),
-  gdclearedUs: z.number().optional(),
+  gdclearedUs: z.string().optional(),
   gdsecurityType: z.string().optional(),
   gdsecurityValue: z.string().optional(),
   gdsecurityExpiryDate: z.string().optional(),
