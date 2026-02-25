@@ -47,6 +47,7 @@ type InternalFundRequestFormProps = {
 // Updated LineItem type - NO jobId/jobNumber (moved to master)
 type LineItem = {
   id: string;
+  internalFundsRequestCashId?: number; // Store existing detail ID for edit mode
   headCoaId: number | null;
   headOfAccount: string;
   beneficiaryCoaId: number | null;
@@ -84,6 +85,19 @@ type User = {
   departmentId?: number;
 };
 
+// UUID generator polyfill for crypto.randomUUID()
+const generateUUID = (): string => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback UUID v4 generator
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 export default function InternalFundRequestForm({
   type,
   defaultState,
@@ -97,7 +111,7 @@ export default function InternalFundRequestForm({
   // DETAIL LEVEL FIELDS (line items)
   const [lineItems, setLineItems] = useState<LineItem[]>([
     {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       headCoaId: null,
       headOfAccount: "",
       beneficiaryCoaId: null,
@@ -376,7 +390,7 @@ export default function InternalFundRequestForm({
 
   const addLineItem = () => {
     const newItem = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       headCoaId: null,
       headOfAccount: "",
       beneficiaryCoaId: null,
@@ -573,12 +587,14 @@ export default function InternalFundRequestForm({
     e.preventDefault();
 
     console.log("=".repeat(80));
-    console.log("MASTER-DETAIL SUBMISSION");
+    console.log(
+      type === "edit" ? "UPDATE REQUEST (PUT)" : "CREATE REQUEST (POST)",
+    );
     console.log("=".repeat(80));
+    console.log("Mode:", type);
     console.log("Master Job ID:", masterJobId);
     console.log("Master Job Number:", masterJobNumber);
     console.log("Line items count:", lineItems.length);
-    console.log("Current line items:", lineItems);
 
     if (!validateForm()) {
       console.log("Form validation failed");
@@ -597,76 +613,115 @@ export default function InternalFundRequestForm({
       );
 
       // Build master-detail payload
-      const payload = {
+      const payload: any = {
         jobId: masterJobId,
         totalRequestedAmount: totalRequestedAmount,
-        totalApprovedAmount: 0,
+        totalApprovedAmount:
+          type === "edit" ? defaultState?.totalApprovedAmount || 0 : 0,
         approvalStatus: approvalStatus,
-        approvedBy: null,
-        approvedOn: null,
+        approvedBy: type === "edit" ? defaultState?.approvedBy : null,
+        approvedOn: type === "edit" ? defaultState?.approvedOn : null,
         requestedTo: selectedRequestor,
-        createdBy: userId,
-        createdOn: new Date().toISOString(),
-        internalCashFundsRequests: lineItems.map((item) => ({
-          jobId: masterJobId, // Same as master
-          headCoaId: item.headCoaId,
-          beneficiaryCoaId: item.beneficiaryCoaId,
-          headOfAccount: item.headOfAccount,
-          beneficiary: item.beneficiary,
-          requestedAmount: item.requestedAmount,
-          approvedAmount: 0,
-          createdOn: new Date().toISOString(),
-          chargesId: item.headCoaId, // ChargesId is same as HeadCoaId
-          version: 0,
-        })),
-        version: 0,
+        createdBy: type === "edit" ? defaultState?.createdBy : userId,
+        createdOn:
+          type === "edit" ? defaultState?.createdOn : new Date().toISOString(),
+        internalCashFundsRequests: lineItems.map((item) => {
+          const detailPayload: any = {
+            jobId: masterJobId,
+            headCoaId: item.headCoaId,
+            beneficiaryCoaId: item.beneficiaryCoaId,
+            headOfAccount: item.headOfAccount,
+            beneficiary: item.beneficiary,
+            requestedAmount: item.requestedAmount,
+            chargesId: item.headCoaId,
+          };
+
+          // Preserve existing detail IDs and metadata when editing
+          if (type === "edit" && item.internalFundsRequestCashId) {
+            detailPayload.internalFundsRequestCashId =
+              item.internalFundsRequestCashId;
+            detailPayload.cashFundRequestMasterId =
+              defaultState.cashFundRequestId;
+            detailPayload.approvedAmount = 0;
+            detailPayload.version = 0;
+            // Find original createdOn if available
+            const originalDetail =
+              defaultState?.internalCashFundsRequests?.find(
+                (d: any) =>
+                  (d.internalFundsRequestCashId ||
+                    d.InternalFundsRequestCashId) ===
+                  item.internalFundsRequestCashId,
+              );
+            detailPayload.createdOn =
+              originalDetail?.createdOn ||
+              originalDetail?.CreatedOn ||
+              new Date().toISOString();
+          } else {
+            // New line item
+            detailPayload.approvedAmount = 0;
+            detailPayload.createdOn = new Date().toISOString();
+            detailPayload.version = 0;
+          }
+
+          return detailPayload;
+        }),
+        version: type === "edit" ? defaultState?.version || 0 : 0,
       };
 
+      // CRITICAL: Add master ID for edit mode
+      if (type === "edit" && defaultState?.cashFundRequestId) {
+        payload.cashFundRequestId = defaultState.cashFundRequestId;
+        console.log(
+          "✅ Edit mode: Including cashFundRequestId",
+          payload.cashFundRequestId,
+        );
+      }
+
       console.log("-".repeat(80));
-      console.log("📦 MASTER-DETAIL PAYLOAD:");
+      console.log(`📦 ${type === "edit" ? "UPDATE" : "CREATE"} PAYLOAD:`);
       console.log(JSON.stringify(payload, null, 2));
       console.log("-".repeat(80));
 
+      // Use PUT for edit, POST for add
+      const method = type === "edit" ? "PUT" : "POST";
       const endpoint = `${baseUrl}InternalCashFundsRequest`;
-      console.log("📡 Sending POST to:", endpoint);
+
+      console.log(`📡 ${method} ${endpoint}`);
 
       const response = await fetch(endpoint, {
-        method: "POST",
+        method: method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      console.log(
-        `📡 Response Status: ${response.status} ${response.statusText}`,
-      );
+      console.log(`📡 Response: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("❌ POST FAILED!");
+        console.error(`❌ ${method} FAILED!`);
         console.error("Status:", response.status);
         console.error("Response:", errorText);
         throw new Error(
-          `Failed to create fund request: ${response.status} - ${errorText}`,
+          `Failed to ${type === "edit" ? "update" : "create"}: ${response.status} - ${errorText}`,
         );
       }
 
       const result = await response.json();
-      console.log("✅ SUCCESS! Server Response:");
+      console.log("✅ SUCCESS!");
       console.log(JSON.stringify(result, null, 2));
-      console.log("=".repeat(80));
 
       toast({
         title: "Success",
-        description: `Fund request created with ${lineItems.length} line item(s). Total: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "PKR" }).format(totalRequestedAmount)}`,
+        description: `Fund request ${type === "edit" ? "updated" : "created"} with ${lineItems.length} line item(s). Total: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "PKR" }).format(totalRequestedAmount)}`,
       });
 
       handleAddEdit(result);
     } catch (error) {
-      console.error("💥 Error submitting form:", error);
+      console.error("💥 Error:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: `Failed to create fund request: ${error instanceof Error ? error.message : "Unknown error"}`,
+        description: `Failed to ${type === "edit" ? "update" : "create"} fund request: ${error instanceof Error ? error.message : "Unknown error"}`,
       });
     } finally {
       setIsSubmitting(false);
@@ -676,12 +731,23 @@ export default function InternalFundRequestForm({
   // Pre-populate form for edit mode
   useEffect(() => {
     if (type === "edit" && defaultState) {
+      console.log("=== EDIT MODE: Loading data ===");
+      console.log("defaultState:", defaultState);
+
       // Set master job
       if (defaultState.jobId) {
         setMasterJobId(defaultState.jobId);
         const job = jobs.find((j) => j.jobId === defaultState.jobId);
         if (job) {
           setMasterJobNumber(job.jobNumber);
+          console.log("✅ Master job set:", job.jobNumber);
+        } else if (defaultState.jobNumber) {
+          // Fallback if job not found in list
+          setMasterJobNumber(defaultState.jobNumber);
+          console.log(
+            "✅ Master job set from defaultState:",
+            defaultState.jobNumber,
+          );
         }
       }
 
@@ -693,30 +759,49 @@ export default function InternalFundRequestForm({
         );
         if (requestor) {
           setRequestorName(requestor.fullName || requestor.username);
+          console.log("✅ Requestor set:", requestor.fullName);
         }
       }
 
       // Set approval status
       if (defaultState.approvalStatus) {
         setApprovalStatus(defaultState.approvalStatus);
+        console.log("✅ Approval status set:", defaultState.approvalStatus);
       }
 
       // Set line items from detail records
-      if (
-        defaultState.internalCashFundsRequests &&
-        defaultState.internalCashFundsRequests.length > 0
-      ) {
-        setLineItems(
-          defaultState.internalCashFundsRequests.map((detail: any) => ({
-            id: crypto.randomUUID(),
-            headCoaId: detail.headCoaId || null,
-            headOfAccount: detail.headOfAccount || "",
-            beneficiaryCoaId: detail.beneficiaryCoaId || null,
-            beneficiary: detail.beneficiary || "",
-            partiesAccount: "",
-            requestedAmount: detail.requestedAmount || 0,
-          })),
-        );
+      // Handle both camelCase and PascalCase
+      const detailRecords =
+        defaultState.internalCashFundsRequests ||
+        defaultState.InternalCashFundsRequests ||
+        [];
+
+      console.log("Detail records found:", detailRecords.length);
+      console.log("Detail records:", detailRecords);
+
+      if (detailRecords && detailRecords.length > 0) {
+        const mappedItems = detailRecords.map((detail: any) => ({
+          id: generateUUID(),
+          // IMPORTANT: Store existing detail ID for updates
+          internalFundsRequestCashId:
+            detail.internalFundsRequestCashId ||
+            detail.InternalFundsRequestCashId,
+          // Handle both camelCase and PascalCase
+          headCoaId: detail.headCoaId || detail.HeadCoaId || null,
+          headOfAccount: detail.headOfAccount || detail.HeadOfAccount || "",
+          beneficiaryCoaId:
+            detail.beneficiaryCoaId || detail.BeneficiaryCoaId || null,
+          beneficiary: detail.beneficiary || detail.Beneficiary || "",
+          partiesAccount: detail.partiesAccount || detail.PartiesAccount || "",
+          requestedAmount:
+            detail.requestedAmount || detail.RequestedAmount || 0,
+        }));
+
+        console.log("✅ Mapped line items:", mappedItems);
+        setLineItems(mappedItems);
+      } else {
+        console.warn("⚠️ No detail records found in defaultState");
+        console.warn("Available keys:", Object.keys(defaultState));
       }
     }
   }, [type, defaultState, users, jobs]);

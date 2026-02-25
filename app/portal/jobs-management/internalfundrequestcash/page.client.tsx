@@ -248,7 +248,7 @@ export default function InternalFundRequestPage({
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
       // Fetch from MASTER endpoint
-      const url = `${baseUrl}CashFundRequest/GetList`;
+      const url = `${baseUrl}InternalCashFundsRequest/GetList`;
       console.log(`📡 Calling master endpoint: ${url}`);
 
       const response = await fetch(url, {
@@ -256,9 +256,9 @@ export default function InternalFundRequestPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           select:
-            "CashFundRequestId, JobId, Job.JobNumber, TotalRequestedAmount, TotalApprovedAmount, ApprovalStatus, ApprovedBy, ApprovedOn, RequestedTo, CreatedOn, CreatedBy, Version, InternalCashFundsRequests.InternalFundsRequestCashId, InternalCashFundsRequests.JobId, InternalCashFundsRequests.HeadCoaId, InternalCashFundsRequests.BeneficiaryCoaId, InternalCashFundsRequests.HeadOfAccount, InternalCashFundsRequests.Beneficiary, InternalCashFundsRequests.RequestedAmount, InternalCashFundsRequests.ApprovedAmount, InternalCashFundsRequests.ChargesId, InternalCashFundsRequests.Version",
+            "cashFundRequestId,jobId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version",
           where: "",
-          sortOn: "CashFundRequestId DESC",
+          sortOn: "cashFundRequestId DESC",
           page: "1",
           pageSize: "100",
         }),
@@ -292,6 +292,55 @@ export default function InternalFundRequestPage({
       setIsLoading(false);
     }
   }, [toast]);
+
+  // Fetch complete request details by ID for editing
+  const fetchRequestDetails = async (
+    id: number,
+  ): Promise<CashFundRequest | null> => {
+    console.log(`🔍 Fetching full details for request ID: ${id}`);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const url = `${baseUrl}InternalCashFundsRequest/${id}`;
+      console.log(`📡 GET ${url}`);
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (response.ok) {
+        const fullData = await response.json();
+        console.log("✅ Full request data loaded:");
+        console.log("Master:", {
+          id: fullData.cashFundRequestId,
+          jobId: fullData.jobId,
+          jobNumber: fullData.job?.jobNumber,
+        });
+        console.log(
+          "Details count:",
+          fullData.internalCashFundsRequests?.length || 0,
+        );
+        console.log("Details:", fullData.internalCashFundsRequests);
+
+        // Add jobNumber from nested job object if not present
+        if (fullData.job?.jobNumber && !fullData.jobNumber) {
+          fullData.jobNumber = fullData.job.jobNumber;
+        }
+
+        return fullData;
+      } else {
+        throw new Error(`Failed to fetch: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("❌ Error:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load request details",
+      });
+      return null;
+    }
+  };
 
   useEffect(() => {
     if (!initialData) {
@@ -399,7 +448,7 @@ export default function InternalFundRequestPage({
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
         // Delete master record (should cascade to details)
         const response = await fetch(
-          `${baseUrl}CashFundRequest/${item.cashFundRequestId}`,
+          `${baseUrl}InternalCashFundsRequest/${item.cashFundRequestId}`,
           {
             method: "DELETE",
           },
@@ -607,9 +656,26 @@ export default function InternalFundRequestPage({
               <TooltipTrigger asChild>
                 <button
                   className='p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors'
-                  onClick={() => {
-                    setSelectedRequest(row.original);
-                    setShowForm(true);
+                  onClick={async () => {
+                    console.log("=== EDIT BUTTON CLICKED ===");
+                    console.log("Request ID:", row.original.cashFundRequestId);
+
+                    // Fetch full details with nested line items
+                    const fullDetails = await fetchRequestDetails(
+                      row.original.cashFundRequestId,
+                    );
+
+                    if (fullDetails) {
+                      console.log(
+                        "Full details loaded with",
+                        fullDetails.internalCashFundsRequests?.length || 0,
+                        "line items",
+                      );
+                      setSelectedRequest(fullDetails);
+                      setShowForm(true);
+                    } else {
+                      console.error("Failed to load full details");
+                    }
                   }}
                 >
                   <FiEdit size={14} />
