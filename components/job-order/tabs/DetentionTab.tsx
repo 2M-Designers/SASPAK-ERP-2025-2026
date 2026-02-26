@@ -87,10 +87,7 @@ export default function DetentionTab({
   const [advanceRent, setAdvanceRent] = useState<number>(0);
   const [uptoDate, setUptoDate] = useState<string>("");
 
-  // Additional fields state
-  const [caseSubmittedDate, setCaseSubmittedDate] = useState<string>("");
-  const [rentInvoiceDate, setRentInvoiceDate] = useState<string>("");
-  const [refundReceivedDate, setRefundReceivedDate] = useState<string>("");
+  // ✅ REMOVED: Local state for additional dates - now using form fields
 
   // ✅ Get transporter NAME from dispatch records (for display)
   const getTransporterNameForContainer = (containerNumber: string): string => {
@@ -803,7 +800,7 @@ export default function DetentionTab({
         </CardContent>
       </Card>
 
-      {/* Additional Fields */}
+      {/* ✅ FIXED: Additional Fields - Now connected to form */}
       <Card>
         <CardHeader className='py-3 px-4 border-b'>
           <h3 className='text-lg font-semibold'>Additional Information</h3>
@@ -811,29 +808,35 @@ export default function DetentionTab({
         <CardContent className='p-4'>
           <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
             <div className='space-y-2'>
-              <Label>Case Submitted to Line on</Label>
+              <Label htmlFor='caseSubmittedToLineOn'>
+                Case Submitted to Line on
+              </Label>
               <Input
+                id='caseSubmittedToLineOn'
                 type='date'
-                value={caseSubmittedDate || ""}
-                onChange={(e) => setCaseSubmittedDate(e.target.value)}
+                {...form.register("caseSubmittedToLineOn")}
               />
             </div>
 
             <div className='space-y-2'>
-              <Label>Rent Invoice Issued on</Label>
+              <Label htmlFor='rentInvoiceIssuedOn'>
+                Rent Invoice Issued on
+              </Label>
               <Input
+                id='rentInvoiceIssuedOn'
                 type='date'
-                value={rentInvoiceDate || ""}
-                onChange={(e) => setRentInvoiceDate(e.target.value)}
+                {...form.register("rentInvoiceIssuedOn")}
               />
             </div>
 
             <div className='space-y-2'>
-              <Label>Refund/Balance Received on</Label>
+              <Label htmlFor='refundBalanceReceivedOn'>
+                Refund/Balance Received on
+              </Label>
               <Input
+                id='refundBalanceReceivedOn'
                 type='date'
-                value={refundReceivedDate || ""}
-                onChange={(e) => setRefundReceivedDate(e.target.value)}
+                {...form.register("refundBalanceReceivedOn")}
               />
             </div>
           </div>

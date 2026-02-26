@@ -882,8 +882,8 @@ export default function DispatchTab({
         <textarea
           className='w-full min-h-[100px] p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
           placeholder='Enter any additional dispatch notes or instructions...'
-          value={form.watch("dispatchNotes") || ""}
-          onChange={(e) => form.setValue("dispatchNotes", e.target.value)}
+          value={form.watch("dispatchAddress") || ""}
+          onChange={(e) => form.setValue("dispatchAddress", e.target.value)}
         />
       </div>
     </TabsContent>
