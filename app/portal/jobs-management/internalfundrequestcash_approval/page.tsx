@@ -11,16 +11,16 @@ interface GetListRequest {
 }
 
 export default async function HomePage() {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  //process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
   const requestBody: GetListRequest = {
     select:
-      "InternalFundsRequestCashId, JobId, Job.JobNumber, HeadCoaId, BeneficiaryCoaId, HeadOfAccount, Beneficiary, RequestedAmount, ApprovedAmount, ApprovalStatus, ApprovedBy, ApprovedOn, RequestedTo, CreatedOn, CreatedBy, version",
+      "cashFundRequestId,jobId,job.jobNumber,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version",
     where: "",
-    sortOn: "InternalFundsRequestCashId",
+    sortOn: "cashFundRequestId DESC",
     page: "1",
-    pageSize: "50", // Start with a reasonable page size
+    pageSize: "100", // Start with a reasonable page size
   };
 
   try {

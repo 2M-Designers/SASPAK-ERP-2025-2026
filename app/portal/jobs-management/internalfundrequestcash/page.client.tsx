@@ -61,6 +61,7 @@ import autoTable from "jspdf-autotable";
 import moment from "moment";
 import { useToast } from "@/hooks/use-toast";
 import InternalFundRequestForm from "@/views/forms/internal-fund-request/InternalFundRequestForm_MasterDetail";
+import InternalFundRequestApprovalForm from "@/views/forms/internal-fund-request/InternalFundRequestForm_Approval";
 
 type InternalFundRequestPageProps = {
   initialData?: any[];
@@ -97,126 +98,6 @@ type DetailLineItem = {
   version: number;
 };
 
-// Cache manager to prevent duplicate fetches
-class CacheManager {
-  private jobCache: Map<number, string> = new Map();
-  private partyCache: Map<number, string> = new Map();
-  private coaCache: Map<number, string> = new Map();
-  private pendingJobFetches: Map<number, Promise<string>> = new Map();
-  private pendingPartyFetches: Map<number, Promise<string>> = new Map();
-  private pendingCoaFetches: Map<number, Promise<string>> = new Map();
-
-  async getJobNumber(jobId: number | undefined): Promise<string> {
-    if (!jobId) return "-";
-
-    if (this.jobCache.has(jobId)) {
-      return this.jobCache.get(jobId)!;
-    }
-
-    if (this.pendingJobFetches.has(jobId)) {
-      return this.pendingJobFetches.get(jobId)!;
-    }
-
-    const fetchPromise = this.fetchJobNumber(jobId);
-    this.pendingJobFetches.set(jobId, fetchPromise);
-
-    const result = await fetchPromise;
-    this.pendingJobFetches.delete(jobId);
-
-    return result;
-  }
-
-  async getPartyName(partyId: number | undefined): Promise<string> {
-    if (!partyId) return "-";
-
-    if (this.partyCache.has(partyId)) {
-      return this.partyCache.get(partyId)!;
-    }
-
-    if (this.pendingPartyFetches.has(partyId)) {
-      return this.pendingPartyFetches.get(partyId)!;
-    }
-
-    const fetchPromise = this.fetchPartyName(partyId);
-    this.pendingPartyFetches.set(partyId, fetchPromise);
-
-    const result = await fetchPromise;
-    this.pendingPartyFetches.delete(partyId);
-
-    return result;
-  }
-
-  async getCoaName(coaId: number | undefined): Promise<string> {
-    if (!coaId) return "-";
-
-    if (this.coaCache.has(coaId)) {
-      return this.coaCache.get(coaId)!;
-    }
-
-    if (this.pendingCoaFetches.has(coaId)) {
-      return this.pendingCoaFetches.get(coaId)!;
-    }
-
-    const fetchPromise = this.fetchCoaName(coaId);
-    this.pendingCoaFetches.set(coaId, fetchPromise);
-
-    const result = await fetchPromise;
-    this.pendingCoaFetches.delete(coaId);
-
-    return result;
-  }
-
-  private async fetchJobNumber(jobId: number): Promise<string> {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Job/${jobId}`);
-      if (response.ok) {
-        const data = await response.json();
-        const jobNumber = data.jobNumber || "-";
-        this.jobCache.set(jobId, jobNumber);
-        return jobNumber;
-      }
-    } catch (err) {
-      console.error(`Error fetching job ${jobId}:`, err);
-    }
-    return "-";
-  }
-
-  private async fetchPartyName(partyId: number): Promise<string> {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Party/${partyId}`);
-      if (response.ok) {
-        const data = await response.json();
-        const partyName = data.partyName || data.partyCode || "-";
-        this.partyCache.set(partyId, partyName);
-        return partyName;
-      }
-    } catch (err) {
-      console.error(`Error fetching party ${partyId}:`, err);
-    }
-    return "-";
-  }
-
-  private async fetchCoaName(coaId: number): Promise<string> {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}ChargesMaster/${coaId}`);
-      if (response.ok) {
-        const data = await response.json();
-        const coaName = data.chargeDescription || data.chargeCode || "-";
-        this.coaCache.set(coaId, coaName);
-        return coaName;
-      }
-    } catch (err) {
-      console.error(`Error fetching COA ${coaId}:`, err);
-    }
-    return "-";
-  }
-}
-
-const cacheManager = new CacheManager();
-
 export default function InternalFundRequestPage({
   initialData,
 }: InternalFundRequestPageProps) {
@@ -224,7 +105,10 @@ export default function InternalFundRequestPage({
   const [isLoading, setIsLoading] = useState(!initialData);
   const [searchText, setSearchText] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [showApprovalForm, setShowApprovalForm] = useState(false);
   const [selectedRequest, setSelectedRequest] =
+    useState<CashFundRequest | null>(null);
+  const [selectedRequestForApproval, setSelectedRequestForApproval] =
     useState<CashFundRequest | null>(null);
   const [activeTab, setActiveTab] = useState("ALL_REQUESTS");
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -247,7 +131,6 @@ export default function InternalFundRequestPage({
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-      // Fetch from MASTER endpoint
       const url = `${baseUrl}InternalCashFundsRequest/GetList`;
       console.log(`📡 Calling master endpoint: ${url}`);
 
@@ -256,7 +139,7 @@ export default function InternalFundRequestPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           select:
-            "cashFundRequestId,jobId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version",
+            "cashFundRequestId,jobId,job.jobNumber,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version",
           where: "",
           sortOn: "cashFundRequestId DESC",
           page: "1",
@@ -267,13 +150,21 @@ export default function InternalFundRequestPage({
       if (response.ok) {
         const requestData = await response.json();
         console.log(`✅ Loaded ${requestData.length} master fund requests`);
-        console.log("Sample data:", requestData.slice(0, 2));
 
-        setData(requestData);
+        const processedData = requestData.map((item: any) => ({
+          ...item,
+          jobNumber: item.job?.jobNumber || item.jobNumber || "-",
+          internalCashFundsRequests: item.internalCashFundsRequests || [],
+          totalRequestedAmount: Number(item.totalRequestedAmount) || 0,
+          totalApprovedAmount: Number(item.totalApprovedAmount) || 0,
+        }));
+
+        console.log("Sample processed data:", processedData.slice(0, 2));
+        setData(processedData);
 
         toast({
           title: "Success",
-          description: `Loaded ${requestData.length} fund request(s)`,
+          description: `Loaded ${processedData.length} fund request(s)`,
         });
       } else {
         const errorText = await response.text();
@@ -293,7 +184,7 @@ export default function InternalFundRequestPage({
     }
   }, [toast]);
 
-  // Fetch complete request details by ID for editing
+  // Fetch complete request details by ID
   const fetchRequestDetails = async (
     id: number,
   ): Promise<CashFundRequest | null> => {
@@ -345,6 +236,15 @@ export default function InternalFundRequestPage({
   useEffect(() => {
     if (!initialData) {
       fetchFundRequests();
+    } else {
+      const processedInitialData = initialData.map((item: any) => ({
+        ...item,
+        jobNumber: item.job?.jobNumber || item.jobNumber || "-",
+        internalCashFundsRequests: item.internalCashFundsRequests || [],
+        totalRequestedAmount: Number(item.totalRequestedAmount) || 0,
+        totalApprovedAmount: Number(item.totalApprovedAmount) || 0,
+      }));
+      setData(processedInitialData);
     }
   }, [initialData, fetchFundRequests]);
 
@@ -357,7 +257,6 @@ export default function InternalFundRequestPage({
       item.approvalStatus,
       item.totalRequestedAmount?.toString(),
       item.cashFundRequestId?.toString(),
-      // Also search in detail items
       ...(item.internalCashFundsRequests || []).flatMap((detail) => [
         detail.headOfAccount,
         detail.beneficiary,
@@ -437,6 +336,12 @@ export default function InternalFundRequestPage({
     fetchFundRequests();
   };
 
+  const handleApprovalComplete = (updatedItem: any) => {
+    setShowApprovalForm(false);
+    setSelectedRequestForApproval(null);
+    fetchFundRequests();
+  };
+
   const handleDelete = async (item: CashFundRequest) => {
     const lineItemCount = item.internalCashFundsRequests?.length || 0;
     if (
@@ -446,7 +351,6 @@ export default function InternalFundRequestPage({
     ) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        // Delete master record (should cascade to details)
         const response = await fetch(
           `${baseUrl}InternalCashFundsRequest/${item.cashFundRequestId}`,
           {
@@ -479,8 +383,54 @@ export default function InternalFundRequestPage({
   };
 
   const handleViewDetails = async (request: CashFundRequest) => {
-    setSelectedRequestDetails(request);
+    if (
+      !request.internalCashFundsRequests ||
+      request.internalCashFundsRequests.length === 0
+    ) {
+      setIsLoading(true);
+      const fullDetails = await fetchRequestDetails(request.cashFundRequestId);
+      setIsLoading(false);
+
+      if (fullDetails) {
+        setSelectedRequestDetails(fullDetails);
+        setData((prev) =>
+          prev.map((item) =>
+            item.cashFundRequestId === fullDetails.cashFundRequestId
+              ? {
+                  ...item,
+                  internalCashFundsRequests:
+                    fullDetails.internalCashFundsRequests || [],
+                }
+              : item,
+          ),
+        );
+      } else {
+        setSelectedRequestDetails(request);
+      }
+    } else {
+      setSelectedRequestDetails(request);
+    }
     setViewDialogOpen(true);
+  };
+
+  const handleApproveClick = async (request: CashFundRequest) => {
+    console.log("=== APPROVE BUTTON CLICKED ===");
+    console.log("Request ID:", request.cashFundRequestId);
+
+    const fullDetails = await fetchRequestDetails(request.cashFundRequestId);
+
+    if (fullDetails) {
+      console.log("✅ Full details loaded for approval");
+      setSelectedRequestForApproval(fullDetails);
+      setShowApprovalForm(true);
+    } else {
+      console.error("❌ Failed to load full details");
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load request details for approval",
+      });
+    }
   };
 
   const downloadExcelWithData = (
@@ -514,7 +464,7 @@ export default function InternalFundRequestPage({
       dataToExport.forEach((request) => {
         const row = [
           request.cashFundRequestId || "",
-          request.jobNumber || "",
+          request.jobNumber || "-",
           request.internalCashFundsRequests?.length || 0,
           request.totalRequestedAmount || 0,
           request.totalApprovedAmount || 0,
@@ -580,7 +530,7 @@ export default function InternalFundRequestPage({
       ];
       const tableData = dataToExport.map((item) => [
         item.cashFundRequestId?.toString() || "N/A",
-        item.jobNumber?.toString() || "N/A",
+        item.jobNumber?.toString() || "-",
         item.internalCashFundsRequests?.length.toString() || "0",
         item.totalRequestedAmount?.toString() || "0",
         item.totalApprovedAmount?.toString() || "0",
@@ -651,6 +601,26 @@ export default function InternalFundRequestPage({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+          {/* Show Approve button ONLY for PENDING requests */}
+          {row.original.approvalStatus === "PENDING" && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className='p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-md transition-colors'
+                    onClick={() => handleApproveClick(row.original)}
+                  >
+                    <FiCheckCircle size={14} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className='text-xs'>Approve Request</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -660,7 +630,6 @@ export default function InternalFundRequestPage({
                     console.log("=== EDIT BUTTON CLICKED ===");
                     console.log("Request ID:", row.original.cashFundRequestId);
 
-                    // Fetch full details with nested line items
                     const fullDetails = await fetchRequestDetails(
                       row.original.cashFundRequestId,
                     );
@@ -686,6 +655,7 @@ export default function InternalFundRequestPage({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -808,13 +778,12 @@ export default function InternalFundRequestPage({
             </DialogTitle>
             <DialogDescription>
               Request ID: #{selectedRequestDetails?.cashFundRequestId} | Job:{" "}
-              {selectedRequestDetails?.jobNumber}
+              {selectedRequestDetails?.jobNumber || "-"}
             </DialogDescription>
           </DialogHeader>
 
           {selectedRequestDetails && (
             <div className='space-y-4'>
-              {/* Master Information */}
               <Card>
                 <CardHeader className='py-3 px-4 bg-blue-50'>
                   <CardTitle className='text-sm font-medium flex items-center gap-2'>
@@ -835,7 +804,7 @@ export default function InternalFundRequestPage({
                     <div className='flex justify-between'>
                       <span className='text-gray-600'>Job Number:</span>
                       <span className='font-medium'>
-                        {selectedRequestDetails.jobNumber}
+                        {selectedRequestDetails.jobNumber || "-"}
                       </span>
                     </div>
                     <div className='flex justify-between'>
@@ -902,7 +871,6 @@ export default function InternalFundRequestPage({
                 </CardContent>
               </Card>
 
-              {/* Detail Line Items */}
               <Card>
                 <CardHeader className='py-3 px-4 bg-gray-50'>
                   <CardTitle className='text-sm font-medium flex items-center gap-2'>
@@ -933,15 +901,17 @@ export default function InternalFundRequestPage({
                         <TableBody>
                           {selectedRequestDetails.internalCashFundsRequests.map(
                             (detail, index) => (
-                              <TableRow key={detail.internalFundsRequestCashId}>
+                              <TableRow
+                                key={detail.internalFundsRequestCashId || index}
+                              >
                                 <TableCell className='font-medium'>
                                   {index + 1}
                                 </TableCell>
                                 <TableCell className='text-sm'>
-                                  {detail.headOfAccount}
+                                  {detail.headOfAccount || "-"}
                                 </TableCell>
                                 <TableCell className='text-sm'>
-                                  {detail.beneficiary}
+                                  {detail.beneficiary || "-"}
                                 </TableCell>
                                 <TableCell className='text-sm font-medium'>
                                   {new Intl.NumberFormat("en-US", {
@@ -1074,6 +1044,39 @@ export default function InternalFundRequestPage({
     );
   };
 
+  // Show Approval Form
+  if (showApprovalForm && selectedRequestForApproval) {
+    return (
+      <div className='p-4 bg-gray-50 min-h-screen'>
+        <div className='max-w-7xl mx-auto'>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              setShowApprovalForm(false);
+              setSelectedRequestForApproval(null);
+            }}
+            className='mb-3 gap-1.5'
+          >
+            <FiArrowLeft className='h-3.5 w-3.5' />
+            Back to Request List
+          </Button>
+          <div className='bg-white rounded-lg shadow-sm border p-4'>
+            <InternalFundRequestApprovalForm
+              requestData={selectedRequestForApproval}
+              onApprovalComplete={handleApprovalComplete}
+              onCancel={() => {
+                setShowApprovalForm(false);
+                setSelectedRequestForApproval(null);
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show Edit Form
   if (showForm) {
     return (
       <div className='p-4 bg-gray-50 min-h-screen'>
