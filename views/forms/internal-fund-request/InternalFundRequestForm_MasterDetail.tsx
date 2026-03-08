@@ -44,10 +44,12 @@ type InternalFundRequestFormProps = {
   handleAddEdit: (data: any) => void;
 };
 
-// Updated LineItem type - NO jobId/jobNumber (moved to master)
+// Updated LineItem type - NOW includes jobId on each line
 type LineItem = {
   id: string;
   internalFundsRequestCashId?: number; // Store existing detail ID for edit mode
+  jobId: number | null; // NOW ON DETAIL LEVEL - each line has its own job
+  jobNumber: string;
   headCoaId: number | null;
   headOfAccount: string;
   beneficiaryCoaId: number | null;
@@ -103,15 +105,15 @@ export default function InternalFundRequestForm({
   defaultState,
   handleAddEdit,
 }: InternalFundRequestFormProps) {
-  // MASTER LEVEL FIELDS
-  const [masterJobId, setMasterJobId] = useState<number | null>(null);
-  const [masterJobNumber, setMasterJobNumber] = useState("");
+  // MASTER LEVEL FIELDS - NO JOB ID (moved to details)
   const [approvalStatus, setApprovalStatus] = useState("PENDING");
 
-  // DETAIL LEVEL FIELDS (line items)
+  // DETAIL LEVEL FIELDS (line items) - NOW WITH jobId on each line
   const [lineItems, setLineItems] = useState<LineItem[]>([
     {
       id: generateUUID(),
+      jobId: null,
+      jobNumber: "",
       headCoaId: null,
       headOfAccount: "",
       beneficiaryCoaId: null,
@@ -363,34 +365,25 @@ export default function InternalFundRequestForm({
               .includes(requestorSearch.toLowerCase()),
         );
 
-  // MASTER JOB CHANGE HANDLER - applies to all line items
-  const handleMasterJobChange = (jobId: string) => {
-    console.log("=== handleMasterJobChange START ===");
-    console.log("Selected jobId (as string):", jobId);
-    console.log("Available jobs:", jobs);
-
+  // Handle line item job change - each line has its own job
+  const handleLineJobChange = (lineId: string, jobId: string) => {
+    console.log("handleLineJobChange:", { lineId, jobId });
     const selectedJob = jobs.find((j) => j.jobId.toString() === jobId);
-    console.log("Found job:", selectedJob);
 
     if (selectedJob) {
-      console.log("Setting master job:", {
-        jobId: selectedJob.jobId,
-        jobNumber: selectedJob.jobNumber,
-      });
-
-      setMasterJobId(selectedJob.jobId);
-      setMasterJobNumber(selectedJob.jobNumber);
-
-      console.log("Master job set - applies to all line items");
-    } else {
-      console.error("❌ Job not found for ID:", jobId);
+      updateLineItem(lineId, "jobId", selectedJob.jobId);
+      updateLineItem(lineId, "jobNumber", selectedJob.jobNumber);
+      console.log(
+        `Updated line job: ID=${selectedJob.jobId}, Number=${selectedJob.jobNumber}`,
+      );
     }
-    console.log("=== handleMasterJobChange END ===");
   };
 
   const addLineItem = () => {
-    const newItem = {
+    const newItem: LineItem = {
       id: generateUUID(),
+      jobId: null,
+      jobNumber: "",
       headCoaId: null,
       headOfAccount: "",
       beneficiaryCoaId: null,
@@ -536,11 +529,6 @@ export default function InternalFundRequestForm({
   const validateForm = (): boolean => {
     const errors: string[] = [];
 
-    // Check master job
-    if (!masterJobId) {
-      errors.push("Job Number is required (applies to all line items)");
-    }
-
     // Check requestor
     if (!selectedRequestor) {
       errors.push("User (Requestor) is required");
@@ -553,6 +541,8 @@ export default function InternalFundRequestForm({
 
     lineItems.forEach((item, index) => {
       console.log(`Validating line ${index + 1}:`, {
+        jobId: item.jobId,
+        jobNumber: item.jobNumber,
         headCoaId: item.headCoaId,
         headOfAccount: item.headOfAccount,
         beneficiaryCoaId: item.beneficiaryCoaId,
@@ -560,6 +550,9 @@ export default function InternalFundRequestForm({
         amount: item.requestedAmount,
       });
 
+      if (!item.jobId) {
+        errors.push(`Line ${index + 1}: Job Number is required`);
+      }
       if (!item.headCoaId) {
         errors.push(`Line ${index + 1}: Head of account is required`);
       }
@@ -592,9 +585,15 @@ export default function InternalFundRequestForm({
     );
     console.log("=".repeat(80));
     console.log("Mode:", type);
-    console.log("Master Job ID:", masterJobId);
-    console.log("Master Job Number:", masterJobNumber);
     console.log("Line items count:", lineItems.length);
+    console.log(
+      "Line items with jobs:",
+      lineItems.map((item) => ({
+        lineId: item.id.substring(0, 8),
+        jobId: item.jobId,
+        jobNumber: item.jobNumber,
+      })),
+    );
 
     if (!validateForm()) {
       console.log("Form validation failed");
@@ -612,9 +611,9 @@ export default function InternalFundRequestForm({
         0,
       );
 
-      // Build master-detail payload
+      // Build master-detail payload - NO jobId at master level
       const payload: any = {
-        jobId: masterJobId,
+        jobId: null, // Explicitly null - jobId moved to detail level
         totalRequestedAmount: totalRequestedAmount,
         totalApprovedAmount:
           type === "edit" ? defaultState?.totalApprovedAmount || 0 : 0,
@@ -622,12 +621,12 @@ export default function InternalFundRequestForm({
         approvedBy: type === "edit" ? defaultState?.approvedBy : null,
         approvedOn: type === "edit" ? defaultState?.approvedOn : null,
         requestedTo: selectedRequestor,
-        createdBy: type === "edit" ? defaultState?.createdBy : userId,
+        createdBy: type === "edit" ? defaultState?.createdBy || userId : userId,
         createdOn:
           type === "edit" ? defaultState?.createdOn : new Date().toISOString(),
         internalCashFundsRequests: lineItems.map((item) => {
           const detailPayload: any = {
-            jobId: masterJobId,
+            jobId: item.jobId, // NOW ON DETAIL LEVEL - each line has its own job
             headCoaId: item.headCoaId,
             beneficiaryCoaId: item.beneficiaryCoaId,
             headOfAccount: item.headOfAccount,
@@ -638,12 +637,14 @@ export default function InternalFundRequestForm({
 
           // Preserve existing detail IDs and metadata when editing
           if (type === "edit" && item.internalFundsRequestCashId) {
+            // EXISTING line item
             detailPayload.internalFundsRequestCashId =
               item.internalFundsRequestCashId;
             detailPayload.cashFundRequestMasterId =
               defaultState.cashFundRequestId;
             detailPayload.approvedAmount = 0;
             detailPayload.version = 0;
+            detailPayload.createdBy = null; // Preserve as null for existing items
             // Find original createdOn if available
             const originalDetail =
               defaultState?.internalCashFundsRequests?.find(
@@ -656,10 +657,19 @@ export default function InternalFundRequestForm({
               originalDetail?.createdOn ||
               originalDetail?.CreatedOn ||
               new Date().toISOString();
-          } else {
-            // New line item
+          } else if (type === "edit") {
+            // NEW line item added during edit
+            detailPayload.cashFundRequestMasterId =
+              defaultState.cashFundRequestId;
             detailPayload.approvedAmount = 0;
             detailPayload.createdOn = new Date().toISOString();
+            detailPayload.createdBy = null;
+            detailPayload.version = 0;
+          } else {
+            // CREATE mode - brand new request
+            detailPayload.approvedAmount = 0;
+            detailPayload.createdOn = new Date().toISOString();
+            detailPayload.createdBy = null;
             detailPayload.version = 0;
           }
 
@@ -684,14 +694,54 @@ export default function InternalFundRequestForm({
 
       // Use PUT for edit, POST for add
       const method = type === "edit" ? "PUT" : "POST";
-      const endpoint = `${baseUrl}InternalCashFundsRequest`;
+
+      // FIX: For PUT, include the ID in the URL path
+      let endpoint = `${baseUrl}InternalCashFundsRequest`;
+      if (type === "edit" && defaultState?.cashFundRequestId) {
+        endpoint = `${baseUrl}InternalCashFundsRequest`;
+      }
 
       console.log(`📡 ${method} ${endpoint}`);
+
+      // IMPORTANT: For PUT, add all required API fields and wrap in dto
+      let finalPayload;
+      if (method === "PUT") {
+        const completePayload = {
+          ...payload,
+          createdByNavigation: null,
+          job: null,
+          requestedToNavigation: null,
+          createdAt: "0001-01-01T00:00:00",
+          updatedAt: "0001-01-01T00:00:00",
+          createLog: null,
+          updateLog: null,
+          internalCashFundsRequests: payload.internalCashFundsRequests.map(
+            (item: any) => ({
+              ...item,
+              beneficiaryCoa: null,
+              charges: null,
+              headCoa: null,
+              createdAt: "0001-01-01T00:00:00",
+              updatedAt: "0001-01-01T00:00:00",
+              createLog: null,
+              updateLog: null,
+            }),
+          ),
+        };
+        //finalPayload = { dto: completePayload };
+        finalPayload = completePayload;
+        console.log("✅ Added API fields and wrapped in dto");
+        console.log("📦 FINAL DTO-WRAPPED PAYLOAD:");
+        console.log(JSON.stringify(finalPayload, null, 2));
+      } else {
+        finalPayload = payload;
+        console.log("✅ Using camelCase payload for POST");
+      }
 
       const response = await fetch(endpoint, {
         method: method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(finalPayload),
       });
 
       console.log(`📡 Response: ${response.status} ${response.statusText}`);
@@ -734,23 +784,6 @@ export default function InternalFundRequestForm({
       console.log("=== EDIT MODE: Loading data ===");
       console.log("defaultState:", defaultState);
 
-      // Set master job
-      if (defaultState.jobId) {
-        setMasterJobId(defaultState.jobId);
-        const job = jobs.find((j) => j.jobId === defaultState.jobId);
-        if (job) {
-          setMasterJobNumber(job.jobNumber);
-          console.log("✅ Master job set:", job.jobNumber);
-        } else if (defaultState.jobNumber) {
-          // Fallback if job not found in list
-          setMasterJobNumber(defaultState.jobNumber);
-          console.log(
-            "✅ Master job set from defaultState:",
-            defaultState.jobNumber,
-          );
-        }
-      }
-
       // Set requestor
       if (defaultState.requestedTo) {
         setSelectedRequestor(defaultState.requestedTo);
@@ -780,22 +813,33 @@ export default function InternalFundRequestForm({
       console.log("Detail records:", detailRecords);
 
       if (detailRecords && detailRecords.length > 0) {
-        const mappedItems = detailRecords.map((detail: any) => ({
-          id: generateUUID(),
-          // IMPORTANT: Store existing detail ID for updates
-          internalFundsRequestCashId:
-            detail.internalFundsRequestCashId ||
-            detail.InternalFundsRequestCashId,
-          // Handle both camelCase and PascalCase
-          headCoaId: detail.headCoaId || detail.HeadCoaId || null,
-          headOfAccount: detail.headOfAccount || detail.HeadOfAccount || "",
-          beneficiaryCoaId:
-            detail.beneficiaryCoaId || detail.BeneficiaryCoaId || null,
-          beneficiary: detail.beneficiary || detail.Beneficiary || "",
-          partiesAccount: detail.partiesAccount || detail.PartiesAccount || "",
-          requestedAmount:
-            detail.requestedAmount || detail.RequestedAmount || 0,
-        }));
+        const mappedItems = detailRecords.map((detail: any) => {
+          // Find job for this detail line
+          const detailJobId = detail.jobId || detail.JobId;
+          const job = jobs.find((j) => j.jobId === detailJobId);
+
+          return {
+            id: generateUUID(),
+            // IMPORTANT: Store existing detail ID for updates
+            internalFundsRequestCashId:
+              detail.internalFundsRequestCashId ||
+              detail.InternalFundsRequestCashId,
+            // NOW each line has its own job
+            jobId: detailJobId || null,
+            jobNumber:
+              job?.jobNumber || detail.jobNumber || detail.JobNumber || "",
+            // Handle both camelCase and PascalCase
+            headCoaId: detail.headCoaId || detail.HeadCoaId || null,
+            headOfAccount: detail.headOfAccount || detail.HeadOfAccount || "",
+            beneficiaryCoaId:
+              detail.beneficiaryCoaId || detail.BeneficiaryCoaId || null,
+            beneficiary: detail.beneficiary || detail.Beneficiary || "",
+            partiesAccount:
+              detail.partiesAccount || detail.PartiesAccount || "",
+            requestedAmount:
+              detail.requestedAmount || detail.RequestedAmount || 0,
+          };
+        });
 
         console.log("✅ Mapped line items:", mappedItems);
         setLineItems(mappedItems);
@@ -880,8 +924,8 @@ export default function InternalFundRequestForm({
             </Badge>
           </div>
           <CardDescription className='pt-2'>
-            Fill in the master information and line item details. All items will
-            be under the same job number.
+            Fill in the request information and line item details. Each line
+            item can have its own job number.
           </CardDescription>
         </CardHeader>
         <CardContent className='p-4'>
@@ -891,11 +935,11 @@ export default function InternalFundRequestForm({
               <Info className='h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0' />
               <div>
                 <h3 className='font-semibold text-blue-900 mb-1'>
-                  Master-Detail Fund Request
+                  Internal Fund Request (Cash)
                 </h3>
                 <p className='text-sm text-blue-700'>
-                  • Select ONE job number that applies to all line items
-                  <br />• Add multiple expense heads under the same job
+                  • Each line item can have its own job number
+                  <br />• Add multiple expense heads for different jobs
                   <br />• Press{" "}
                   <kbd className='px-1 py-0.5 bg-gray-100 border rounded text-xs'>
                     Tab
@@ -922,75 +966,10 @@ export default function InternalFundRequestForm({
               <Badge variant='default' className='bg-blue-600'>
                 Master
               </Badge>
-              Request Information (Applies to All Line Items)
+              Request Information
             </h3>
 
             <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* Master Job Selection */}
-              <div>
-                <Label
-                  htmlFor='masterJob'
-                  className='text-sm font-medium text-gray-700 mb-2 block'
-                >
-                  Job Number <span className='text-red-500'>*</span>
-                </Label>
-                <Select
-                  value={masterJobId?.toString() || ""}
-                  onValueChange={handleMasterJobChange}
-                >
-                  <SelectTrigger className='w-full h-10'>
-                    <SelectValue placeholder='Select Job'>
-                      {masterJobNumber || "Select Job"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent
-                    className='max-h-[300px] w-[350px]'
-                    position='popper'
-                    sideOffset={5}
-                  >
-                    <div className='sticky top-0 bg-white p-2 border-b z-50'>
-                      <div className='relative'>
-                        <FiSearch className='absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4' />
-                        <Input
-                          placeholder='Search jobs...'
-                          value={jobSearch}
-                          onChange={(e) => setJobSearch(e.target.value)}
-                          className='pl-8 h-8'
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                        />
-                      </div>
-                    </div>
-                    <div className='max-h-[250px] overflow-y-auto'>
-                      {filteredJobs.length === 0 ? (
-                        <div className='p-4 text-center text-gray-500'>
-                          No jobs found
-                        </div>
-                      ) : (
-                        filteredJobs.map((job) => (
-                          <SelectItem
-                            key={job.jobId}
-                            value={job.jobId.toString()}
-                          >
-                            <div className='flex flex-col'>
-                              <span className='font-medium'>
-                                {job.jobNumber}
-                              </span>
-                              <span className='text-xs text-gray-500'>
-                                {job.operationType} - {job.status}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))
-                      )}
-                    </div>
-                  </SelectContent>
-                </Select>
-                <p className='text-xs text-blue-600 mt-1'>
-                  This job will be applied to ALL line items below
-                </p>
-              </div>
-
               {/* Requestor Selection */}
               <div>
                 <Label
@@ -1077,6 +1056,9 @@ export default function InternalFundRequestForm({
                       <TableHead className='w-[50px] sticky left-0 bg-gray-50 z-20 border-r'>
                         #
                       </TableHead>
+                      <TableHead className='min-w-[200px]'>
+                        Job Number <span className='text-red-500'>*</span>
+                      </TableHead>
                       <TableHead className='min-w-[220px]'>
                         Head of Account <span className='text-red-500'>*</span>
                       </TableHead>
@@ -1102,6 +1084,67 @@ export default function InternalFundRequestForm({
                       >
                         <TableCell className='font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 border-r'>
                           {index + 1}
+                        </TableCell>
+
+                        {/* Job Number */}
+                        <TableCell>
+                          <Select
+                            value={item.jobId?.toString() || ""}
+                            onValueChange={(value) => {
+                              console.log("Job onValueChange:", value);
+                              handleLineJobChange(item.id, value);
+                            }}
+                          >
+                            <SelectTrigger className='h-9 text-sm'>
+                              <SelectValue placeholder='Select Job'>
+                                {item.jobNumber || "Select Job"}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent
+                              className='max-h-[300px] w-[300px]'
+                              position='popper'
+                              sideOffset={5}
+                            >
+                              <div className='sticky top-0 bg-white p-2 border-b z-50'>
+                                <div className='relative'>
+                                  <FiSearch className='absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4' />
+                                  <Input
+                                    placeholder='Search jobs...'
+                                    value={jobSearch}
+                                    onChange={(e) =>
+                                      setJobSearch(e.target.value)
+                                    }
+                                    className='pl-8 h-8'
+                                    onClick={(e) => e.stopPropagation()}
+                                    onKeyDown={(e) => e.stopPropagation()}
+                                  />
+                                </div>
+                              </div>
+                              <div className='max-h-[250px] overflow-y-auto'>
+                                {filteredJobs.length === 0 ? (
+                                  <div className='p-4 text-center text-gray-500'>
+                                    No jobs found
+                                  </div>
+                                ) : (
+                                  filteredJobs.map((job) => (
+                                    <SelectItem
+                                      key={job.jobId}
+                                      value={job.jobId.toString()}
+                                    >
+                                      <div className='flex flex-col'>
+                                        <span className='font-medium'>
+                                          {job.jobNumber}
+                                        </span>
+                                        <span className='text-xs text-gray-500'>
+                                          {job.operationType} - {job.status}
+                                        </span>
+                                      </div>
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </div>
+                            </SelectContent>
+                          </Select>
                         </TableCell>
 
                         {/* Head of Account */}
@@ -1301,13 +1344,7 @@ export default function InternalFundRequestForm({
 
           {/* Summary Card */}
           <div className='bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg p-4'>
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-              <div className='bg-white p-3 rounded border shadow-sm'>
-                <p className='text-sm text-gray-600'>Master Job</p>
-                <p className='text-lg font-bold text-blue-700'>
-                  {masterJobNumber || "Not Selected"}
-                </p>
-              </div>
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
               <div className='bg-white p-3 rounded border shadow-sm'>
                 <p className='text-sm text-gray-600'>Total Line Items</p>
                 <p className='text-2xl font-bold text-blue-700'>
@@ -1329,8 +1366,8 @@ export default function InternalFundRequestForm({
             <div className='mt-4 pt-3 border-t border-blue-200'>
               <p className='text-xs text-blue-700 flex items-center gap-2'>
                 <Info className='h-3 w-3' />
-                Master-Detail: One job number for all line items • Press
-                Ctrl+Enter to submit
+                Each line item has its own job number • Press Ctrl+Enter to
+                submit
               </p>
             </div>
           </div>
@@ -1351,7 +1388,7 @@ export default function InternalFundRequestForm({
         </Button>
         <Button
           type='submit'
-          disabled={isSubmitting || lineItems.length === 0 || !masterJobId}
+          disabled={isSubmitting || lineItems.length === 0}
           className='bg-blue-600 hover:bg-blue-700 gap-2'
         >
           {isSubmitting ? (

@@ -143,44 +143,36 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
     loadGdClearedOptions();
   }, [toast]);
 
-  // ✅ FIXED: Calculate Clearance Delay - WITH INFINITE LOOP PREVENTION
+  // ✅ FIXED: Calculate Clearance Delay Days automatically
+  // Formula: GD Assign to Gate Out Date (Completion) - GD Date (GD Info Tab)
   useEffect(() => {
-    const subscription = form.watch((formValues: any, { name }: any) => {
-      // ✅ PREVENT INFINITE LOOP: Skip if the delay field itself changed
-      if (name === "delayInClearance") {
-        console.log("⏭️ Skipping clearance calculation (delay field changed)");
-        return;
-      }
-
+    const subscription = form.watch((formValues: any) => {
       const gdAssignToGateOut = formValues.gdassignToGateOut;
       const gdDate = formValues.gddate;
+
+      console.log("Clearance delay watch triggered:", {
+        gdAssignToGateOut,
+        gdDate,
+        formValues: formValues,
+      });
 
       if (gdAssignToGateOut && gdDate) {
         try {
           const assignToGateOut = new Date(gdAssignToGateOut);
           const gd = new Date(gdDate);
-
-          if (isNaN(assignToGateOut.getTime()) || isNaN(gd.getTime())) {
-            return;
-          }
-
           const diffTime = assignToGateOut.getTime() - gd.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           const calculatedDelay = Math.max(0, diffDays);
 
-          // Only update if the value actually changed
-          const currentDelay = formValues.delayInClearance;
-          if (currentDelay !== calculatedDelay.toString()) {
-            console.log(
-              "✅ Clearance delay calculated:",
-              calculatedDelay,
-              "days",
-            );
-            form.setValue("delayInClearance", calculatedDelay.toString(), {
-              shouldValidate: false,
-              shouldDirty: false,
-            });
-          }
+          console.log("✅ Clearance delay calculated:", {
+            gdAssignToGateOut,
+            gdDate,
+            diffDays: calculatedDelay,
+          });
+
+          form.setValue("delayInClearance", calculatedDelay.toString(), {
+            shouldValidate: false,
+          });
         } catch (error) {
           console.error("Error calculating clearance delay:", error);
         }
@@ -190,17 +182,18 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
     return () => subscription.unsubscribe();
   }, [form]);
 
-  // ✅ FIXED: Calculate Dispatch Delay - WITH INFINITE LOOP PREVENTION
+  // ✅ FIXED: Calculate Dispatch Delay Days automatically
+  // Formula: Dispatch Date (Dispatch Tab) - Expected Arrival Date (Shipping Tab)
   useEffect(() => {
-    const subscription = form.watch((formValues: any, { name }: any) => {
-      // ✅ PREVENT INFINITE LOOP: Skip if the delay field itself changed
-      if (name === "delayInDispatch") {
-        console.log("⏭️ Skipping dispatch calculation (delay field changed)");
-        return;
-      }
-
+    const subscription = form.watch((formValues: any) => {
       const dispatchRecords = formValues.dispatchRecords || [];
       const etaDate = formValues.etaDate;
+
+      console.log("Dispatch delay watch triggered:", {
+        dispatchRecordsCount: dispatchRecords.length,
+        etaDate,
+        dispatchRecords: dispatchRecords,
+      });
 
       if (dispatchRecords.length > 0 && etaDate) {
         try {
@@ -209,37 +202,30 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
             .filter(Boolean)
             .map((d: string) => new Date(d));
 
+          console.log(
+            "Dispatch dates found:",
+            dispatchDates.map((d: Date) => d.toISOString()),
+          );
+
           if (dispatchDates.length > 0) {
             const earliestDispatch = new Date(
               Math.min(...dispatchDates.map((d: Date) => d.getTime())),
             );
             const expectedArrival = new Date(etaDate);
-
-            if (
-              isNaN(earliestDispatch.getTime()) ||
-              isNaN(expectedArrival.getTime())
-            ) {
-              return;
-            }
-
             const diffTime =
               earliestDispatch.getTime() - expectedArrival.getTime();
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             const calculatedDelay = Math.max(0, diffDays);
 
-            // Only update if the value actually changed
-            const currentDelay = formValues.delayInDispatch;
-            if (currentDelay !== calculatedDelay.toString()) {
-              console.log(
-                "✅ Dispatch delay calculated:",
-                calculatedDelay,
-                "days",
-              );
-              form.setValue("delayInDispatch", calculatedDelay.toString(), {
-                shouldValidate: false,
-                shouldDirty: false,
-              });
-            }
+            console.log("✅ Dispatch delay calculated:", {
+              earliestDispatch: earliestDispatch.toISOString(),
+              etaDate,
+              diffDays: calculatedDelay,
+            });
+
+            form.setValue("delayInDispatch", calculatedDelay.toString(), {
+              shouldValidate: false,
+            });
           }
         } catch (error) {
           console.error("Error calculating dispatch delay:", error);
@@ -262,13 +248,13 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
     (opt) => opt.value === selectedGdCleared,
   );
 
-  // Watch clearance flags
+  // ✨ NEW: Watch clearance flags
   const isClearanceGrounding = form.watch("isClearanceGrounding");
   const isClearanceExamination = form.watch("isClearanceExamination");
   const isClearanceGroup = form.watch("isClearanceGroup");
   const isClearanceNoc = form.watch("isClearanceNoc");
 
-  // Watch dispatch flags
+  // ✨ NEW: Watch dispatch flags
   const isDispatchFi = form.watch("isDispatchFi");
   const isDispatchObl = form.watch("isDispatchObl");
   const isDispatchClearance = form.watch("isDispatchClearance");
@@ -539,6 +525,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                 )}
               />
 
+              {/* ✨ UPDATED: psqcasamples (lowercase 's') as free text input */}
               <FormField
                 control={form.control}
                 name='psqcasamples'
@@ -562,7 +549,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
               />
             </div>
 
-            {/* Clearance Flags Section */}
+            {/* ✨ NEW: Clearance Flags Section */}
             <div className='space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200'>
               <div className='flex items-center gap-2'>
                 <Info className='h-5 w-5 text-blue-600' />
@@ -572,6 +559,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
               </div>
 
               <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+                {/* isClearanceGrounding */}
                 <FormField
                   control={form.control}
                   name='isClearanceGrounding'
@@ -595,6 +583,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                   )}
                 />
 
+                {/* isClearanceExamination */}
                 <FormField
                   control={form.control}
                   name='isClearanceExamination'
@@ -618,6 +607,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                   )}
                 />
 
+                {/* isClearanceGroup */}
                 <FormField
                   control={form.control}
                   name='isClearanceGroup'
@@ -641,6 +631,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                   )}
                 />
 
+                {/* isClearanceNoc */}
                 <FormField
                   control={form.control}
                   name='isClearanceNoc'
@@ -665,6 +656,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                 />
               </div>
 
+              {/* Show active flags */}
               {(isClearanceGrounding ||
                 isClearanceExamination ||
                 isClearanceGroup ||
@@ -684,7 +676,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
               )}
             </div>
 
-            {/* Delay in Clearance Section */}
+            {/* ✅ UPDATED: Delay in Clearance Section */}
             <div className='space-y-4 p-4 bg-orange-50 rounded-lg border border-orange-200'>
               <div className='flex items-center gap-2'>
                 <AlertCircle className='h-5 w-5 text-orange-600' />
@@ -748,7 +740,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
               </div>
             </div>
 
-            {/* Dispatch Status Flags Section */}
+            {/* ✨ NEW: Dispatch Status Flags Section */}
             <div className='space-y-4 p-4 bg-green-50 rounded-lg border border-green-200'>
               <div className='flex items-center gap-2'>
                 <Info className='h-5 w-5 text-green-600' />
@@ -758,6 +750,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
               </div>
 
               <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                {/* isDispatchFi */}
                 <FormField
                   control={form.control}
                   name='isDispatchFi'
@@ -781,6 +774,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                   )}
                 />
 
+                {/* isDispatchObl */}
                 <FormField
                   control={form.control}
                   name='isDispatchObl'
@@ -804,6 +798,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                   )}
                 />
 
+                {/* isDispatchClearance */}
                 <FormField
                   control={form.control}
                   name='isDispatchClearance'
@@ -828,6 +823,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
                 />
               </div>
 
+              {/* Show active dispatch flags */}
               {(isDispatchFi || isDispatchObl || isDispatchClearance) && (
                 <div className='flex flex-wrap gap-2 mt-2'>
                   {isDispatchFi && <Badge variant='secondary'>Form I</Badge>}
@@ -839,7 +835,7 @@ export default function CompletionTab({ form, shippingType, toast }: any) {
               )}
             </div>
 
-            {/* Delay in Dispatch Section */}
+            {/* ✅ UPDATED: Delay in Dispatch Section */}
             <div className='space-y-4 p-4 bg-red-50 rounded-lg border border-red-200'>
               <div className='flex items-center gap-2'>
                 <AlertCircle className='h-5 w-5 text-red-600' />

@@ -47,8 +47,11 @@ type ApprovalFormProps = {
   onCancel: () => void;
 };
 
+// jobId is now per detail line, jobNumber resolved from jobs list
 type LineItemApproval = {
   internalFundsRequestCashId: number;
+  jobId: number | null;
+  jobNumber: string;
   headCoaId: number;
   beneficiaryCoaId: number;
   headOfAccount: string;
@@ -59,7 +62,13 @@ type LineItemApproval = {
   createdOn: string;
   version?: number;
   cashFundRequestMasterId?: number;
-  jobId?: number;
+};
+
+type Job = {
+  jobId: number;
+  jobNumber: string;
+  operationType: string;
+  status: string;
 };
 
 export default function InternalFundRequestApprovalForm({
@@ -68,6 +77,7 @@ export default function InternalFundRequestApprovalForm({
   onCancel,
 }: ApprovalFormProps) {
   const [lineItems, setLineItems] = useState<LineItemApproval[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [remarks, setRemarks] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
@@ -82,7 +92,6 @@ export default function InternalFundRequestApprovalForm({
     const storedUserId = localStorage.getItem("userId");
     if (storedUserId) {
       setUserId(parseInt(storedUserId, 10));
-      console.log("Approver userId:", parseInt(storedUserId, 10));
     } else {
       console.error("No userId found in localStorage");
       toast({
@@ -93,46 +102,86 @@ export default function InternalFundRequestApprovalForm({
     }
   }, [toast]);
 
-  // Initialize line items from request data
+  // Fetch jobs list to resolve job numbers
   useEffect(() => {
-    if (requestData?.internalCashFundsRequests) {
-      console.log("=== APPROVAL FORM: Loading data ===");
-      console.log("Request data:", requestData);
+    const fetchJobs = async () => {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        const response = await fetch(`${baseUrl}Job/GetList`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            select: "JobId, JobNumber, OperationType, Status",
+            where: "",
+            sortOn: "JobId DESC",
+            page: "1",
+            pageSize: "100",
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setJobs(data);
+        }
+      } catch (error) {
+        console.error("Error fetching jobs:", error);
+      }
+    };
+    fetchJobs();
+  }, []);
 
-      const items = requestData.internalCashFundsRequests.map(
-        (detail: any) => ({
-          internalFundsRequestCashId:
-            detail.internalFundsRequestCashId ||
-            detail.InternalFundsRequestCashId,
-          headCoaId: detail.headCoaId || detail.HeadCoaId,
-          beneficiaryCoaId: detail.beneficiaryCoaId || detail.BeneficiaryCoaId,
-          headOfAccount: detail.headOfAccount || detail.HeadOfAccount || "",
-          beneficiary: detail.beneficiary || detail.Beneficiary || "",
-          requestedAmount:
-            detail.requestedAmount || detail.RequestedAmount || 0,
-          approvedAmount:
-            detail.approvedAmount ||
-            detail.ApprovedAmount ||
-            detail.requestedAmount ||
-            detail.RequestedAmount ||
-            0,
-          chargesId:
-            detail.chargesId ||
-            detail.ChargesId ||
-            detail.headCoaId ||
-            detail.HeadCoaId,
-          createdOn:
-            detail.createdOn || detail.CreatedOn || new Date().toISOString(),
-          version: detail.version || 0,
-          cashFundRequestMasterId: requestData.cashFundRequestId,
-          jobId: requestData.jobId,
-        }),
-      );
+  // Initialize line items — jobId comes from each DETAIL record, not master
+  useEffect(() => {
+    if (!requestData?.internalCashFundsRequests) return;
 
-      console.log("✅ Initialized approval line items:", items);
-      setLineItems(items);
-    }
-  }, [requestData]);
+    console.log("=== APPROVAL FORM: Loading data ===");
+    console.log("Request data:", requestData);
+
+    const items = requestData.internalCashFundsRequests.map((detail: any) => {
+      const detailJobId = detail.jobId ?? detail.JobId ?? null;
+
+      // Resolve job number: prefer embedded job object, then jobs list, then raw id
+      const jobObj =
+        detail.job || detail.Job || jobs.find((j) => j.jobId === detailJobId);
+
+      const jobNumber =
+        jobObj?.jobNumber ||
+        jobObj?.JobNumber ||
+        detail.jobNumber ||
+        detail.JobNumber ||
+        (detailJobId ? `#${detailJobId}` : "-");
+
+      return {
+        internalFundsRequestCashId:
+          detail.internalFundsRequestCashId ||
+          detail.InternalFundsRequestCashId,
+        jobId: detailJobId,
+        jobNumber,
+        headCoaId: detail.headCoaId || detail.HeadCoaId,
+        beneficiaryCoaId: detail.beneficiaryCoaId || detail.BeneficiaryCoaId,
+        headOfAccount: detail.headOfAccount || detail.HeadOfAccount || "",
+        beneficiary: detail.beneficiary || detail.Beneficiary || "",
+        requestedAmount: detail.requestedAmount || detail.RequestedAmount || 0,
+        approvedAmount:
+          detail.approvedAmount ||
+          detail.ApprovedAmount ||
+          detail.requestedAmount ||
+          detail.RequestedAmount ||
+          0,
+        chargesId:
+          detail.chargesId ||
+          detail.ChargesId ||
+          detail.headCoaId ||
+          detail.HeadCoaId,
+        createdOn:
+          detail.createdOn || detail.CreatedOn || new Date().toISOString(),
+        version: detail.version ?? 0,
+        cashFundRequestMasterId: requestData.cashFundRequestId,
+      };
+    });
+
+    console.log("✅ Initialized approval line items:", items);
+    setLineItems(items);
+  }, [requestData, jobs]);
 
   const updateApprovedAmount = (index: number, amount: number) => {
     setLineItems((prev) => {
@@ -142,13 +191,9 @@ export default function InternalFundRequestApprovalForm({
     });
   };
 
-  // Auto-fill all approved amounts to requested amounts
   const autoFillApprovedAmounts = () => {
     setLineItems((prev) =>
-      prev.map((item) => ({
-        ...item,
-        approvedAmount: item.requestedAmount,
-      })),
+      prev.map((item) => ({ ...item, approvedAmount: item.requestedAmount })),
     );
     toast({
       title: "Auto-filled",
@@ -156,7 +201,6 @@ export default function InternalFundRequestApprovalForm({
     });
   };
 
-  // Calculate totals
   const totals = {
     totalRequested: lineItems.reduce(
       (sum, item) => sum + (item.requestedAmount || 0),
@@ -169,12 +213,10 @@ export default function InternalFundRequestApprovalForm({
   };
 
   const handleApprove = () => {
-    // Validate approved amounts
     const hasInvalidAmounts = lineItems.some(
       (item) =>
         item.approvedAmount < 0 || item.approvedAmount > item.requestedAmount,
     );
-
     if (hasInvalidAmounts) {
       toast({
         variant: "destructive",
@@ -183,13 +225,10 @@ export default function InternalFundRequestApprovalForm({
       });
       return;
     }
-
     setShowApproveDialog(true);
   };
 
-  const handleReject = () => {
-    setShowRejectDialog(true);
-  };
+  const handleReject = () => setShowRejectDialog(true);
 
   const confirmApproval = async () => {
     setShowApproveDialog(false);
@@ -214,17 +253,15 @@ export default function InternalFundRequestApprovalForm({
     console.log("=".repeat(80));
     console.log(`APPROVAL UPDATE: ${status}`);
     console.log("=".repeat(80));
-    console.log("Request ID:", requestData.cashFundRequestId);
-    console.log("Approver ID:", userId);
 
     setIsSubmitting(true);
 
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-      // Build the payload exactly as shown in the working example
+      // jobId is null at MASTER level — it lives on each detail line
       const payload = {
-        jobId: requestData.jobId,
+        jobId: null,
         totalRequestedAmount:
           requestData.totalRequestedAmount || totals.totalRequested,
         totalApprovedAmount: status === "APPROVED" ? totals.totalApproved : 0,
@@ -234,47 +271,41 @@ export default function InternalFundRequestApprovalForm({
         requestedTo: requestData.requestedTo,
         createdBy: requestData.createdBy,
         createdOn: requestData.createdOn,
-        internalCashFundsRequests: lineItems.map((item) => {
-          // Create the base line item with all required fields
-          const lineItem: any = {
-            jobId: requestData.jobId,
-            headCoaId: item.headCoaId,
-            beneficiaryCoaId: item.beneficiaryCoaId,
-            headOfAccount: item.headOfAccount,
-            beneficiary: item.beneficiary,
-            requestedAmount: item.requestedAmount,
-            chargesId: item.chargesId,
-            approvedAmount: status === "APPROVED" ? item.approvedAmount : 0,
-          };
-
-          // Add optional fields if they exist
-          if (item.internalFundsRequestCashId) {
-            lineItem.internalFundsRequestCashId =
-              item.internalFundsRequestCashId;
-          }
-
-          if (requestData.cashFundRequestId) {
-            lineItem.cashFundRequestMasterId = requestData.cashFundRequestId;
-          }
-
-          if (item.version !== undefined) {
-            lineItem.version = item.version;
-          }
-
-          if (item.createdOn) {
-            lineItem.createdOn = item.createdOn;
-          }
-
-          return lineItem;
-        }),
-        version: requestData.version || 1,
         cashFundRequestId: requestData.cashFundRequestId,
+        version: requestData.version || 1,
+        createdByNavigation: null,
+        job: null,
+        requestedToNavigation: null,
+        createdAt: "0001-01-01T00:00:00",
+        updatedAt: "0001-01-01T00:00:00",
+        createLog: null,
+        updateLog: null,
+        internalCashFundsRequests: lineItems.map((item) => ({
+          internalFundsRequestCashId: item.internalFundsRequestCashId,
+          cashFundRequestMasterId: requestData.cashFundRequestId,
+          jobId: item.jobId, // jobId on each detail line
+          headCoaId: item.headCoaId,
+          beneficiaryCoaId: item.beneficiaryCoaId,
+          headOfAccount: item.headOfAccount,
+          beneficiary: item.beneficiary,
+          requestedAmount: item.requestedAmount,
+          approvedAmount: status === "APPROVED" ? item.approvedAmount : 0,
+          chargesId: item.chargesId,
+          version: item.version ?? 0,
+          createdOn: item.createdOn,
+          createdBy: null,
+          beneficiaryCoa: null,
+          charges: null,
+          headCoa: null,
+          createdAt: "0001-01-01T00:00:00",
+          updatedAt: "0001-01-01T00:00:00",
+          createLog: null,
+          updateLog: null,
+        })),
       };
 
-      console.log("-".repeat(80));
       console.log("📦 APPROVAL PAYLOAD:");
       console.log(JSON.stringify(payload, null, 2));
-      console.log("-".repeat(80));
 
       const endpoint = `${baseUrl}InternalCashFundsRequest`;
       console.log(`📡 PUT ${endpoint}`);
@@ -285,16 +316,14 @@ export default function InternalFundRequestApprovalForm({
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify(payload), // Send payload directly, not wrapped in dto
+        body: JSON.stringify(payload),
       });
 
       console.log(`📡 Response: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("❌ PUT FAILED!");
-        console.error("Status:", response.status);
-        console.error("Response:", errorText);
+        console.error("❌ PUT FAILED!", response.status, errorText);
 
         let errorMessage = `Failed to ${status.toLowerCase()}`;
         try {
@@ -309,14 +338,11 @@ export default function InternalFundRequestApprovalForm({
         } catch {
           errorMessage = errorText || errorMessage;
         }
-
         throw new Error(errorMessage);
       }
 
       const result = await response.json();
-      console.log("✅ SUCCESS!");
-      console.log(JSON.stringify(result, null, 2));
-      console.log("=".repeat(80));
+      console.log("✅ SUCCESS!", result);
 
       toast({
         title: "Success",
@@ -355,7 +381,6 @@ export default function InternalFundRequestApprovalForm({
         amountInputRefs.current[index + 1]?.focus();
       }
     }
-
     if (e.key === "ArrowUp" && index > 0) {
       e.preventDefault();
       amountInputRefs.current[index - 1]?.focus();
@@ -381,7 +406,6 @@ export default function InternalFundRequestApprovalForm({
 
   return (
     <div className='space-y-4'>
-      {/* Add global styles */}
       <style jsx global>{`
         .approval-table-wrapper::-webkit-scrollbar {
           width: 14px;
@@ -436,6 +460,8 @@ export default function InternalFundRequestApprovalForm({
                 <p className='text-sm text-purple-700'>
                   • Review each line item carefully before approving
                   <br />
+                  • Each line item may belong to a different job number
+                  <br />
                   • Approved amounts can be less than or equal to requested
                   amounts
                   <br />
@@ -452,7 +478,7 @@ export default function InternalFundRequestApprovalForm({
             </div>
           </div>
 
-          {/* Master Information (Read-Only) */}
+          {/* Master Information — NO Job Number here anymore */}
           <div className='mb-4 p-4 border-2 border-purple-300 rounded-lg bg-purple-50'>
             <h3 className='text-sm font-semibold text-purple-900 mb-3 flex items-center gap-2'>
               <Badge variant='default' className='bg-purple-600'>
@@ -461,17 +487,11 @@ export default function InternalFundRequestApprovalForm({
               Request Information
             </h3>
 
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
               <div className='bg-white p-3 rounded border shadow-sm'>
                 <p className='text-xs text-gray-600 mb-1'>Request ID</p>
                 <p className='text-base font-bold text-purple-700'>
                   #{requestData?.cashFundRequestId}
-                </p>
-              </div>
-              <div className='bg-white p-3 rounded border shadow-sm'>
-                <p className='text-xs text-gray-600 mb-1'>Job Number</p>
-                <p className='text-base font-bold text-blue-700'>
-                  {requestData?.job?.jobNumber || requestData?.jobNumber || "-"}
                 </p>
               </div>
               <div className='bg-white p-3 rounded border shadow-sm'>
@@ -494,7 +514,7 @@ export default function InternalFundRequestApprovalForm({
             </div>
           </div>
 
-          {/* Line Items for Approval */}
+          {/* Line Items for Approval — Job Number column added */}
           <div className='mb-4'>
             <div className='flex items-center justify-between mb-3'>
               <h3 className='text-sm font-semibold text-gray-900 flex items-center gap-2'>
@@ -524,6 +544,9 @@ export default function InternalFundRequestApprovalForm({
                   <TableHeader>
                     <TableRow className='bg-gray-50'>
                       <TableHead className='w-[50px]'>#</TableHead>
+                      <TableHead className='min-w-[160px]'>
+                        Job Number
+                      </TableHead>
                       <TableHead className='min-w-[220px]'>
                         Head of Account
                       </TableHead>
@@ -555,6 +578,17 @@ export default function InternalFundRequestApprovalForm({
                           <TableCell className='font-medium'>
                             {index + 1}
                           </TableCell>
+
+                          {/* Job Number — per detail line */}
+                          <TableCell>
+                            <Badge
+                              variant='outline'
+                              className='bg-blue-50 text-blue-700 border-blue-300 font-semibold'
+                            >
+                              {item.jobNumber || "-"}
+                            </Badge>
+                          </TableCell>
+
                           <TableCell className='text-sm font-medium'>
                             {item.headOfAccount}
                           </TableCell>
@@ -662,7 +696,6 @@ export default function InternalFundRequestApprovalForm({
               </div>
             </div>
 
-            {/* Warning if over-approved */}
             {difference > 0 && (
               <div className='mt-4 p-3 bg-red-50 border border-red-200 rounded-lg'>
                 <div className='flex items-start gap-2'>
@@ -685,7 +718,7 @@ export default function InternalFundRequestApprovalForm({
             )}
           </div>
 
-          {/* Remarks (Optional) */}
+          {/* Remarks */}
           <div className='mt-4'>
             <Label
               htmlFor='remarks'
@@ -765,7 +798,9 @@ export default function InternalFundRequestApprovalForm({
                   }).format(totals.totalApproved)}
                 </p>
                 <p className='text-xs text-green-700 mt-1'>
-                  {lineItems.length} line item(s) will be approved
+                  {lineItems.length} line item(s) across{" "}
+                  {new Set(lineItems.map((i) => i.jobId).filter(Boolean)).size}{" "}
+                  job(s) will be approved
                 </p>
               </div>
               {difference !== 0 && (

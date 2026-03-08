@@ -359,20 +359,6 @@ export default function JobOrderForm({
     },
   });
 
-  // ✅✅✅ CRITICAL FIX: Sync dispatchRecords state with form ✅✅✅
-  useEffect(() => {
-    // @ts-ignore - dispatchRecords not in schema but needed for cross-tab calculations
-    form.setValue("dispatchRecords", dispatchRecords, {
-      shouldValidate: false,
-      shouldDirty: false,
-    });
-    console.log(
-      "📦 Synced dispatch records to form:",
-      dispatchRecords.length,
-      "records",
-    );
-  }, [dispatchRecords]);
-
   const fclForm = useForm<FclContainerFormValues>({
     resolver: zodResolver(fclContainerSchema),
     defaultValues: {
@@ -596,7 +582,6 @@ export default function JobOrderForm({
       psqcasamples: jobData.psqcasamples || "",
     });
 
-    // [REST OF YOUR POPULATE FORM CODE - keeping it exactly as is]
     // Populate containers
     if (jobData.jobEquipments && Array.isArray(jobData.jobEquipments)) {
       const transformedContainers = jobData.jobEquipments.map(
@@ -774,7 +759,7 @@ export default function JobOrderForm({
       Array.isArray(jobData.jobGoodsDeclarations)
     ) {
       const transformedGDs = jobData.jobGoodsDeclarations.map((gd: any) => ({
-        JobGoodsDeclarationId: gd.JobGoodsDeclarationId || 0,
+        id: gd.id || 0,
         jobId: gd.jobId || 0,
         unitType: gd.unitType || "",
         quantity: gd.quantity || 0,
@@ -870,7 +855,6 @@ export default function JobOrderForm({
     });
   };
 
-  // [KEEPING ALL YOUR OTHER useEffect AND FUNCTIONS EXACTLY AS THEY ARE]
   // Load all data on mount
   useEffect(() => {
     const loadData = async () => {
@@ -960,8 +944,11 @@ export default function JobOrderForm({
     return () => subscription.unsubscribe();
   }, [invoiceItemForm]);
 
-  // [KEEPING YOUR handleFormSubmit AND onSubmit EXACTLY AS THEY ARE]
+  // ============================================
+  // ✅ NEW: HANDLE FORM SUBMISSION WITH NATIVE CONFIRMATION
+  // ============================================
   const handleFormSubmit = (values: any) => {
+    // Show native browser confirmation with keyboard tips
     const confirmed = window.confirm(
       "⚠️ CONFIRM SAVE\n\n" +
         "Are you sure you want to save this job order?\n\n" +
@@ -982,16 +969,20 @@ export default function JobOrderForm({
     }
   };
 
+  // ============================================
+  // ON SUBMIT - UPDATED TO MATCH NEW SCHEMA
+  // ============================================
   const onSubmit = async (values: any) => {
-    // [KEEPING YOUR ENTIRE onSubmit FUNCTION - IT'S ALREADY COMPLETE]
     try {
       setIsSubmitting(true);
 
       const companyId = parseInt(localStorage.getItem("companyId") || "1");
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
+      // ✅ AUTO-GENERATE JOB NUMBER IF EMPTY
       const jobNumber = values.jobNumber?.trim() || `JOB-${Date.now()}`;
 
+      // For UPDATE operations, fetch latest data to get current version numbers
       let latestVersions: any = {};
       if (type === "edit" && values.jobId) {
         console.log("=== FETCHING LATEST VERSIONS ===");
@@ -1014,6 +1005,7 @@ export default function JobOrderForm({
               detentionRecords: new Map(),
             };
 
+            // Map invoice versions
             if (latestData.jobInvoices) {
               latestData.jobInvoices.forEach((inv: any) => {
                 const invId = inv.jobInvoiceId;
@@ -1031,6 +1023,7 @@ export default function JobOrderForm({
               });
             }
 
+            // Map commodity versions
             if (latestData.jobCommodities) {
               latestData.jobCommodities.forEach((comm: any) => {
                 latestVersions.commodities.set(
@@ -1040,6 +1033,7 @@ export default function JobOrderForm({
               });
             }
 
+            // Map charge versions
             if (latestData.jobCharges) {
               latestData.jobCharges.forEach((charge: any) => {
                 latestVersions.charges.set(
@@ -1049,6 +1043,7 @@ export default function JobOrderForm({
               });
             }
 
+            // Map equipment versions
             if (latestData.jobEquipments) {
               latestData.jobEquipments.forEach((eq: any) => {
                 latestVersions.equipments.set(
@@ -1058,12 +1053,14 @@ export default function JobOrderForm({
               });
             }
 
+            // Map goods declaration versions
             if (latestData.jobGoodsDeclarations) {
               latestData.jobGoodsDeclarations.forEach((gd: any) => {
                 latestVersions.goodsDeclarations.set(gd.id, gd.version || 0);
               });
             }
 
+            // Map dispatch records versions
             if (latestData.jobEquipmentHandingOvers) {
               latestData.jobEquipmentHandingOvers.forEach((dispatch: any) => {
                 latestVersions.dispatchRecords.set(
@@ -1073,6 +1070,7 @@ export default function JobOrderForm({
               });
             }
 
+            // Map detention records versions
             if (latestData.jobEquipmentDetentionDetails) {
               latestData.jobEquipmentDetentionDetails.forEach(
                 (detention: any) => {
@@ -1124,6 +1122,7 @@ export default function JobOrderForm({
         );
       }
 
+      // ✅✅✅ COMPLETE INVOICE MAPPING - ALL FIELDS INCLUDED ✅✅✅
       const jobInvoices = invoices.map((invoice) => {
         console.log("=== MAPPING INVOICE ===");
         console.log("Original invoice:", JSON.stringify(invoice, null, 2));
@@ -1134,6 +1133,7 @@ export default function JobOrderForm({
             ? (latestVersions.invoices?.get(invoiceId) ?? invoice.version ?? 0)
             : invoice.version || 0;
 
+        // ✅ Map invoice items with ALL fields
         const mappedInvoiceItems = (invoice.items || []).map((item: any) => {
           const itemId = item.invoiceItemId || 0;
           const latestItemVersion =
@@ -1147,8 +1147,8 @@ export default function JobOrderForm({
             jobInvoiceCommodityId: itemId,
             jobInvoiceId: invoiceId,
             description: item.description || "",
-            hscodeId: item.hsCodeId || null,
-            originId: item.originId || null,
+            hscodeId: item.hsCodeId || null, // ✅ Correct field name
+            originId: item.originId || null, // ✅ ADDED
             quantity: item.quantity || 0,
             dutiableValue: item.dutiableValue || 0,
             assessableValue: item.assessableValue || 0,
@@ -1158,31 +1158,32 @@ export default function JobOrderForm({
           };
         });
 
+        // ✅ Build complete invoice with ALL 17+ fields
         const mappedInvoice = {
           jobInvoiceId: invoiceId,
-          jobId: values.jobId || 0,
+          jobId: values.jobId || 0, // ✅ CRITICAL
           invoiceNumber: invoice.invoiceNumber || null,
           invoiceDate: invoice.invoiceDate
             ? new Date(invoice.invoiceDate).toISOString()
             : null,
           issuedBy: invoice.invoiceIssuedByPartyId?.toString() || "",
-          shippingTerm: invoice.shippingTerm || null,
-          goodsType: invoice.goodsType || null,
-          lcNumber: invoice.lcNumber || null,
+          shippingTerm: invoice.shippingTerm || null, // ✅ ADDED
+          goodsType: invoice.goodsType || null, // ✅ ADDED
+          lcNumber: invoice.lcNumber || null, // ✅ ADDED
           lcValue: invoice.lcValue || 0,
           lcDate: invoice.lcDate
             ? new Date(invoice.lcDate).toISOString()
-            : null,
+            : null, // ✅ ADDED
           lcIssuedBy: invoice.lcIssuedByBankId?.toString() || "",
-          lcCurrencyid: invoice.lcCurrencyId || null,
+          lcCurrencyid: invoice.lcCurrencyId || null, // ✅ ADDED (lowercase 'id')
           lcExchangeRate: invoice.lcExchangeRate || 0,
-          flNumber: invoice.fiNumber || null,
+          flNumber: invoice.fiNumber || null, // ✅ ADDED (fi→fl)
           flDate: invoice.fiDate
             ? new Date(invoice.fiDate).toISOString()
-            : null,
+            : null, // ✅ ADDED
           expiryDate: invoice.fiExpiryDate
             ? new Date(invoice.fiExpiryDate).toISOString()
-            : null,
+            : null, // ✅ ADDED
           invoiceStatus: invoice.invoiceStatus || "DRAFT",
           version: latestInvoiceVersion,
           jobInvoiceCommodities: mappedInvoiceItems,
@@ -1197,6 +1198,7 @@ export default function JobOrderForm({
       console.log("Total invoices:", jobInvoices.length);
       console.log("Invoice payload:", JSON.stringify(jobInvoices, null, 2));
 
+      // Map containers
       const jobEquipments = fclContainers.map((container) => {
         const equipmentId = container.jobEquipmentId || 0;
         const latestEquipmentVersion =
@@ -1209,17 +1211,21 @@ export default function JobOrderForm({
         return {
           jobEquipmentId: equipmentId,
           companyId: companyId,
-          jobNumber: jobNumber,
+          // Basic Information
+          jobNumber: jobNumber, // ✅ Use the generated/entered job number
           jobId: values.jobId || 0,
           containerNo: container.containerNo || "",
           containerTypeId: container.containerTypeId || null,
           containerSizeId: container.containerSizeId || null,
           tareWeight: container.tareWeight || 0,
           sealNo: container.sealNo || null,
+
           eirReceivedOn: container.eirReceivedOn || null,
           eirSubmitted: container.eirSubmitted || false,
           eirDocumentId: container.eirDocumentId || 0,
+
           rentInvoiceIssuedOn: container.rentInvoiceIssuedOn || null,
+
           containerRentFc: container.containerRentFc || 0,
           containerRentLc: container.containerRentLc || 0,
           damageDirtyFc: container.damageDirtyFc || 0,
@@ -1229,6 +1235,7 @@ export default function JobOrderForm({
           refundLc: container.refundLc || 0,
           gateOutDate: container.gateOutDate || null,
           gateInDate: container.gateInDate || null,
+
           status: container.status || null,
           noOfPackages: container.noOfPackages || 0,
           packageType: container.packageType || null,
@@ -1236,6 +1243,7 @@ export default function JobOrderForm({
         };
       });
 
+      // Map job commodities
       const jobCommoditiesPayload = jobCommodities.map((commodity) => {
         const commodityId = commodity.jobCommodityId || 0;
         const latestCommodityVersion =
@@ -1261,6 +1269,7 @@ export default function JobOrderForm({
         };
       });
 
+      // Map job charges
       const jobChargesPayload = jobCharges.map((charge) => {
         const chargeId = charge.jobChargeId || 0;
         const latestChargeVersion =
@@ -1291,22 +1300,19 @@ export default function JobOrderForm({
         };
       });
 
+      // Build JobGoodsDeclarations
       let jobGoodsDeclarations: any[] = [];
 
       if (goodsDeclarations.length > 0) {
         jobGoodsDeclarations = goodsDeclarations.map((gd: any) => {
-          const gdId = gd.JobGoodsDeclarationId || 0;
-          // ✅ Negative IDs are temporary client-side IDs for new records — send 0 to API
-          const actualGdId = gdId < 0 ? 0 : gdId;
+          const gdId = gd.id || 0;
           const latestGdVersion =
-            type === "edit" && actualGdId > 0
-              ? (latestVersions.goodsDeclarations?.get(actualGdId) ??
-                gd.version ??
-                0)
+            type === "edit" && gdId !== 0 && gdId > 0
+              ? (latestVersions.goodsDeclarations?.get(gdId) ?? gd.version ?? 0)
               : gd.version || 0;
 
           return {
-            JobGoodsDeclarationId: actualGdId, // ✅ 0 for new records, positive int for existing
+            id: gdId,
             jobId: gd.jobId || values.jobId || 0,
             unitType: gd.unitType || null,
             quantity: gd.quantity || 0,
@@ -1339,11 +1345,11 @@ export default function JobOrderForm({
           };
         });
       } else if (type === "add") {
-        const uniqueId = 0;
+        const uniqueId = -Math.floor(Date.now() / 1000);
 
         jobGoodsDeclarations = [
           {
-            JobGoodsDeclarationId: uniqueId,
+            id: uniqueId,
             jobId: 0,
             unitType: null,
             quantity: 0,
@@ -1377,6 +1383,7 @@ export default function JobOrderForm({
         ];
       }
 
+      // Build JobEquipmentHandingOvers (Dispatch Records)
       const jobEquipmentHandingOvers = dispatchRecords.map((dispatch: any) => {
         const dispatchId = dispatch.jobEquipmentHandingOverId || 0;
         const latestDispatchVersion =
@@ -1400,11 +1407,12 @@ export default function JobOrderForm({
           dispatchDate: dispatch.dispatchDate
             ? new Date(dispatch.dispatchDate).toISOString()
             : null,
-          containerReturnTerminalId: dispatch.containerReturnTerminalId || null,
+          containerReturnTerminalId: dispatch.containerReturnTerminalId || null, // ✅ NEW FIELD
           version: latestDispatchVersion,
         };
       });
 
+      // Build JobEquipmentDetentionDetails (Completion Records)
       const jobEquipmentDetentionDetails = detentionRecords.map(
         (detention: any) => {
           const detentionId = detention.jobEquipmentDetentionDetailId || 0;
@@ -1432,33 +1440,45 @@ export default function JobOrderForm({
             condition: detention.condition || null,
             rentDays: detention.rentDays || 0,
             rentAmountLc: detention.rentAmountLc || 0,
-            rentAmountFc: detention.rentAmountFc || 0,
-            exchangeRate: detention.exchangeRate || 0,
-            damage: detention.damage || null,
-            dirty: detention.dirty || null,
+            rentAmountFc: detention.rentAmountFc || 0, // ✅ ADDED - API: RentAmountFc
+            exchangeRate: detention.exchangeRate || 0, // ✅ ADDED - API: ExchangeRate
+            damage: detention.damage || null, // ✅ String
+            dirty: detention.dirty || null, // ✅ String
             version: latestDetentionVersion,
           };
         },
       );
 
+      // Build complete payload matching new schema
       const payload: any = {
         companyId: companyId,
-        jobNumber: jobNumber,
+
+        // Basic Information
+        jobNumber: jobNumber, // ✅ Use the generated/entered job number
+        //jobDate: values.jobDate ? new Date(values.jobDate).toISOString() : null,
         jobDate: values.jobDate || null,
         customerReferenceNumber: values.customerReferenceNumber || null,
         indexNo: values.indexNo || null,
-        status: values.status || "",
+        status: values.status || "", // Changed from "DRAFT" to empty string
+
+        // Scope Flags
         isFreightForwarding: values.isFreightForwarding || false,
         isClearance: values.isClearance || false,
         isTransporter: values.isTransporter || false,
         isOther: values.isOther || false,
+
+        // Operation Details
         operationType: values.operationType || null,
         operationMode: values.operationMode || null,
         jobSubType: values.jobSubType || null,
         jobLoadType: values.jobLoadType || null,
         jobDocumentType: values.jobDocumentType || null,
         freightType: values.freightType || null,
+
+        // Process Owner
         processOwnerId: values.processOwnerId || null,
+
+        // ALL 10 Party Fields - SET TO NULL INSTEAD OF 0 FOR DATABASE
         shipperPartyId: values.shipperPartyId || null,
         consigneePartyId: values.consigneePartyId || null,
         notifyParty1Id: values.notifyParty1Id || null,
@@ -1469,18 +1489,30 @@ export default function JobOrderForm({
         depositorPartyId: values.depositorPartyId || null,
         carrierPartyId: values.carrierPartyId || null,
         terminalPartyId: values.terminalPartyId || null,
+
+        // Document Numbers
         houseDocumentNumber: values.houseDocumentNumber || null,
         houseDocumentDate: values.houseDocumentDate || null,
         masterDocumentNumber: values.masterDocumentNumber || null,
         masterDocumentDate: values.masterDocumentDate || null,
+
+        // Location IDs
         originPortId: values.originPortId || null,
         destinationPortId: values.destinationPortId || null,
         placeOfDeliveryId: values.placeOfDeliveryId || null,
+
+        // Vessel
         vesselName: values.vesselName || null,
         voyageNo: values.voyageNo || null,
+
+        // Weight
         grossWeight: values.grossWeight || 0,
         netWeight: values.netWeight || 0,
         chargeableWeight: values.chargeableWeight || 0,
+
+        // Dates
+        //etdDate: values.etdDate ? new Date(values.etdDate).toISOString() : null,
+        //etaDate: values.etaDate ? new Date(values.etaDate).toISOString() : null,
         etdDate: values.etdDate || null,
         etaDate: values.etaDate || null,
         vesselArrival: values.vesselArrival || null,
@@ -1488,15 +1520,27 @@ export default function JobOrderForm({
         freeDays: values.freeDays || 0,
         lastFreeDay: values.lastFreeDay || null,
         advanceRentPaidUpto: values.advanceRentPaidUpto || null,
+
+        // Address
         dispatchAddress: values.dispatchAddress || null,
+
+        // Document Dates
         originalDocsReceivedOn: values.originalDocsReceivedOn || null,
         copyDocsReceivedOn: values.copyDocsReceivedOn || null,
+
+        // Description & IGM
         jobDescription: values.jobDescription || null,
         igmNumber: values.igmNumber || null,
         blstatus: values.blstatus || null,
+
+        // Financial
         jobInvoiceExchRate: values.jobInvoiceExchRate || 0,
         insurance: values.insurance || null,
         landing: values.landing || null,
+
+        // ✅ REMOVED: freightCharges (not in schema)
+
+        // PO Fields
         poReceivedOn: values.poReceivedOn || null,
         poCustomDuty: values.poCustomDuty || 0,
         poWharfage: values.poWharfage || 0,
@@ -1504,6 +1548,8 @@ export default function JobOrderForm({
         poDeliveryOrder: values.poDeliveryOrder || 0,
         poSecurityDeposite: values.poSecurityDeposite || 0,
         poSasadvance: values.poSasadvance || 0,
+
+        // GD Fields
         gdnumber: values.gdnumber || null,
         gdType: values.gdType || null,
         gddate: values.gddate || null,
@@ -1512,6 +1558,8 @@ export default function JobOrderForm({
         gdsecurityType: values.gdsecurityType || null,
         gdsecurityValue: values.gdsecurityValue || null,
         gdsecurityExpiryDate: values.gdsecurityExpiryDate || null,
+
+        // ✅ ADD COMPLETION FIELDS TO PAYLOAD:
         rmschannel: values.rmschannel || null,
         gdassignToGateOut: values.gdassignToGateOut || null,
         destuffingOn: values.destuffingOn || null,
@@ -1519,18 +1567,33 @@ export default function JobOrderForm({
         reasonOfDelayInClearance: values.reasonOfDelayInClearance || null,
         delayInDispatch: values.delayInDispatch || null,
         reasonOfDelayInDispatch: values.reasonOfDelayInDispatch || null,
+
+        // ✅ REMOVED: psqcaSamples (not in schema)
+        // ✅ REMOVED: dispatchNotes (not in schema)
+
+        // Case & Rent
         caseSubmittedToLineOn: values.caseSubmittedToLineOn || null,
         rentInvoiceIssuedOn: values.rentInvoiceIssuedOn || null,
         refundBalanceReceivedOn: values.refundBalanceReceivedOn || null,
+
+        // Remarks
         remarks: values.remarks || null,
+
+        // Clearance Flags
         isClearanceGrounding: values.isClearanceGrounding || false,
         isClearanceExamination: values.isClearanceExamination || false,
         isClearanceGroup: values.isClearanceGroup || false,
         isClearanceNoc: values.isClearanceNoc || false,
+
+        // Dispatch Flags
         isDispatchFi: values.isDispatchFi || false,
         isDispatchObl: values.isDispatchObl || false,
         isDispatchClearance: values.isDispatchClearance || false,
+
+        // PSQCA Samples
         psqcasamples: values.psqcasamples || null,
+
+        // Child Records
         jobEquipments: jobEquipments,
         jobInvoices: jobInvoices,
         jobCommodities: jobCommoditiesPayload,
@@ -1540,6 +1603,8 @@ export default function JobOrderForm({
         ...(type === "add" || jobGoodsDeclarations.length > 0
           ? { jobGoodsDeclarations: jobGoodsDeclarations }
           : {}),
+
+        // Version
         version:
           type === "edit"
             ? (latestVersions.jobVersion ?? values.version ?? 0)
@@ -1566,11 +1631,7 @@ export default function JobOrderForm({
 
       if (!response.ok) {
         const errorData = await response.text();
-
-        console.error("=== DETAILED API ERROR ===");
-        console.error("Status:", response.status);
-        console.error("Status Text:", response.statusText);
-        console.error("Full Response:", errorData);
+        console.error("API Error Response:", errorData);
 
         try {
           const errorJson = JSON.parse(errorData);
@@ -1630,7 +1691,9 @@ export default function JobOrderForm({
     }
   };
 
+  // ✅ NEW: Wrapper function for setFclContainers to match ShippingTabProps interface
   const handleSetFclContainers = (containers: any[]) => {
+    // Ensure eirDocumentId is always a number (default to 0 if undefined)
     const normalizedContainers = containers.map((container: any) => ({
       ...container,
       eirDocumentId: container.eirDocumentId ?? 0,
@@ -1638,6 +1701,7 @@ export default function JobOrderForm({
     setFclContainers(normalizedContainers);
   };
 
+  // Shared props for all tabs
   const sharedProps = {
     form,
     parties,
@@ -1704,6 +1768,7 @@ export default function JobOrderForm({
     setEditingInvoice,
     editingInvoiceItem,
     setEditingInvoiceItem,
+    // ✅ ADD NEW FORM STATES FOR JOB COMMODITIES AND CHARGES
     jobCommodities,
     setJobCommodities,
     jobCommodityForm,
@@ -1732,6 +1797,7 @@ export default function JobOrderForm({
   return (
     <div className='min-h-screen bg-gray-50'>
       <div className='container mx-auto px-3 py-3 max-w-[1600px]'>
+        {/* Header with Job Number Display for Edit Mode */}
         {type === "edit" && form.watch("jobNumber") && (
           <div className='mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-center'>
             <div className='flex flex-col items-center justify-center'>
@@ -1748,6 +1814,7 @@ export default function JobOrderForm({
           </div>
         )}
 
+        {/* Header */}
         <div className='flex items-center justify-between mb-3'>
           <h1 className='text-xl font-bold text-gray-900'>
             {type === "edit" ? "Edit Job Order" : "New Job Order"}
@@ -1765,7 +1832,9 @@ export default function JobOrderForm({
         </div>
 
         <Form {...form}>
+          {/* ✅ Changed from onSubmit to handleFormSubmit to show confirmation */}
           <form onSubmit={form.handleSubmit(handleFormSubmit)}>
+            {/* Loading Indicator */}
             {isLoadingJobData && (
               <div className='flex justify-center items-center p-8 bg-white rounded-lg border'>
                 <Loader2 className='h-8 w-8 animate-spin text-blue-600' />
@@ -1775,6 +1844,7 @@ export default function JobOrderForm({
               </div>
             )}
 
+            {/* Only show tabs when not loading */}
             {!isLoadingJobData && (
               <Tabs
                 value={activeTab}
@@ -1787,12 +1857,13 @@ export default function JobOrderForm({
                   <TabsTrigger value='invoice'>Invoice</TabsTrigger>
                   <TabsTrigger value='gd'>GD Info</TabsTrigger>
                   <TabsTrigger value='dispatch'>Dispatch</TabsTrigger>
-                  {showDetentionTab && (
+                  {showDetentionTab && ( // ✅ CONDITIONAL RENDERING
                     <TabsTrigger value='detention'>Detention</TabsTrigger>
                   )}
                   <TabsTrigger value='completion'>Completion</TabsTrigger>
                 </TabsList>
 
+                {/* All tabs as separate components */}
                 <JobMainTab {...sharedProps} />
                 <ShippingTab {...sharedProps} />
                 <InvoiceTab {...sharedProps} />
@@ -1803,6 +1874,7 @@ export default function JobOrderForm({
               </Tabs>
             )}
 
+            {/* Submit Button */}
             {!isLoadingJobData && (
               <div className='flex justify-end gap-3 mt-4'>
                 <Button

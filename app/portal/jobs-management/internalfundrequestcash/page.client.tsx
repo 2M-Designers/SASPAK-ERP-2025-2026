@@ -139,7 +139,7 @@ export default function InternalFundRequestPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           select:
-            "cashFundRequestId,jobId,job.jobNumber,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version",
+            "cashFundRequestId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version",
           where: "",
           sortOn: "cashFundRequestId DESC",
           page: "1",
@@ -452,7 +452,7 @@ export default function InternalFundRequestPage({
 
       const headers = [
         "Request ID",
-        "Job Number",
+        //"Job Number",
         "Line Items",
         "Total Requested",
         "Total Approved",
@@ -690,7 +690,7 @@ export default function InternalFundRequestPage({
         </div>
       ),
     },
-    {
+    /*{
       accessorKey: "jobNumber",
       header: "Job Number",
       cell: ({ row }) => (
@@ -703,7 +703,7 @@ export default function InternalFundRequestPage({
           </div>
         </div>
       ),
-    },
+    },*/
     {
       accessorKey: "lineItems",
       header: "Line Items",
@@ -801,12 +801,12 @@ export default function InternalFundRequestPage({
                         #{selectedRequestDetails.cashFundRequestId}
                       </span>
                     </div>
-                    <div className='flex justify-between'>
+                    {/* <div className='flex justify-between'>
                       <span className='text-gray-600'>Job Number:</span>
                       <span className='font-medium'>
                         {selectedRequestDetails.jobNumber || "-"}
                       </span>
-                    </div>
+                    </div> */}
                     <div className='flex justify-between'>
                       <span className='text-gray-600'>Total Requested:</span>
                       <span className='font-medium text-blue-700'>

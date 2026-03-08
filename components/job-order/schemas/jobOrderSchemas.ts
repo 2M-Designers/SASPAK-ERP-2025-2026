@@ -302,7 +302,7 @@ export const jobEquipmentHandingOverSchema = z.object({
 // JOB GOODS DECLARATION SCHEMA
 // ============================================
 export const jobGoodsDeclarationSchema = z.object({
-  id: z.number().optional(),
+  JobGoodsDeclarationId: z.number().optional(),
   jobId: z.number().optional(),
   unitType: z.string().optional(),
   quantity: z.number().min(0).default(0),

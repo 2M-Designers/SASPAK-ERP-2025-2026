@@ -147,7 +147,7 @@ export default function GDInfoTab({
   }, []); // Run only on mount to extract from existing GD Number
 
   const [currentGD, setCurrentGD] = useState<any>({
-    id: 0,
+    JobGoodsDeclarationId: 0,
     unitType: "",
     quantity: 0,
     cocode: "",
@@ -457,7 +457,7 @@ export default function GDInfoTab({
       });
 
       const mappedData = jsonData.map((row: any, index: number) => ({
-        id: -(Math.floor(Date.now() / 1000) + index),
+        JobGoodsDeclarationId: -(Math.floor(Date.now() / 1000) + index),
         jobId: 0,
         unitType: row["Unit Type"] || "",
         quantity: parseFloat(row["Quantity"]) || 0,
@@ -519,7 +519,7 @@ export default function GDInfoTab({
       const gdItems = await parseGDOfficialFormat(file);
 
       const mappedData = gdItems.map((item: GDItem, index: number) => ({
-        id: -(Math.floor(Date.now() / 1000) + index),
+        JobGoodsDeclarationId: -(Math.floor(Date.now() / 1000) + index),
         jobId: 0,
         unitType: item.unitType,
         quantity: item.quantity,
@@ -572,7 +572,7 @@ export default function GDInfoTab({
 
   const handleAddGD = () => {
     setCurrentGD({
-      id: 0,
+      JobGoodsDeclarationId: 0,
       unitType: "",
       quantity: 0,
       cocode: "",
