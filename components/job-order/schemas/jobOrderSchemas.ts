@@ -45,6 +45,12 @@ export const jobMasterSchema = z.object({
   carrierPartyId: z.number().default(0),
   terminalPartyId: z.number().default(0),
 
+  // Detention Missing Fields
+  detentionDepositAmount: z.number().min(0).default(0),
+  detentionTotalPayable: z.number().min(0).default(0),
+  detentionAdvanceRentPaid: z.number().min(0).default(0),
+  detentionBalanceReceivable: z.number().min(0).default(0),
+
   // Document Numbers
   houseDocumentNumber: z.string().optional(),
   houseDocumentDate: z.string().optional(),

@@ -259,6 +259,12 @@ export default function JobOrderForm({
       carrierPartyId: 0,
       terminalPartyId: 0,
 
+      // Detention Fields
+      detentionDepositAmount: 0,
+      detentionTotalPayable: 0,
+      detentionAdvanceRentPaid: 0,
+      detentionBalanceReceivable: 0,
+
       // Document Numbers
       houseDocumentNumber: "",
       houseDocumentDate: "",
@@ -496,6 +502,12 @@ export default function JobOrderForm({
       depositorPartyId: jobData.depositorPartyId || 0,
       carrierPartyId: jobData.carrierPartyId || 0,
       terminalPartyId: jobData.terminalPartyId || 0,
+
+      // Detention Fields
+      detentionDepositAmount: jobData.detentionDepositAmount || 0,
+      detentionTotalPayable: jobData.detentionTotalPayable || 0,
+      detentionAdvanceRentPaid: jobData.detentionAdvanceRentPaid || 0,
+      detentionBalanceReceivable: jobData.detentionBalanceReceivable || 0,
 
       // Document Numbers
       houseDocumentNumber: jobData.houseDocumentNumber || "",
@@ -1467,6 +1479,11 @@ export default function JobOrderForm({
         overseasAgentId: values.overseasAgentId || null,
         transporterPartyId: values.transporterPartyId || null,
         depositorPartyId: values.depositorPartyId || null,
+        detentionDepositAmount: values.detentionDepositAmount || 0,
+        detentionTotalPayable: values.detentionTotalPayable || 0,
+        detentionAdvanceRentPaid: values.detentionAdvanceRentPaid || 0,
+        detentionBalanceReceivable: values.detentionBalanceReceivable || 0,
+
         carrierPartyId: values.carrierPartyId || null,
         terminalPartyId: values.terminalPartyId || null,
         houseDocumentNumber: values.houseDocumentNumber || null,

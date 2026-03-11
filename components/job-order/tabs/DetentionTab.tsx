@@ -21,7 +21,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Info, DollarSign } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-// ✅ CORRECTED INTERFACE - MATCHES SCHEMA
 interface DetentionRecord {
   jobEquipmentDetentionDetailId?: number;
   jobId?: number;
@@ -29,16 +28,16 @@ interface DetentionRecord {
   containerTypeId?: number;
   containerSizeId?: number;
   netWeight: number;
-  transporterPartyId?: number; // ✅ Schema field (ID, not name)
+  transporterPartyId?: number;
   emptyDate?: string;
-  eirReceivedOn?: string; // ✅ Schema field name
+  eirReceivedOn?: string;
   condition?: string;
   rentDays: number;
-  rentAmountFc: number; // ✅ Foreign Currency (USD)
+  rentAmountFc: number;
   exchangeRate: number;
-  rentAmountLc: number; // ✅ Local Currency (PKR) - Auto-calculated
-  damage: string; // ✅ STRING field for description
-  dirty: string; // ✅ STRING field for description
+  rentAmountLc: number;
+  damage: string;
+  dirty: string;
   version?: number;
 }
 
@@ -56,8 +55,6 @@ interface DispatchRecord {
   topayAmountLc: number;
   dispatchDate: string;
   version?: number;
-  packageType?: string;
-  quantity?: number;
 }
 
 interface PartyOption {
@@ -70,6 +67,41 @@ interface ContainerOption {
   label: string;
 }
 
+// ─── Condition options (single source of truth) ───────────────────────────────
+const CONDITION_OPTIONS = ["Good", "Fair", "Poor", "Damaged", "Dirty"];
+
+/**
+ * Normalize a condition string from the API to exactly match one of
+ * CONDITION_OPTIONS, regardless of casing / extra whitespace.
+ * Returns "" if no match found (shows placeholder instead of broken value).
+ */
+const normalizeCondition = (raw: string | null | undefined): string => {
+  if (!raw || typeof raw !== "string") return "";
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+
+  // 1. Exact match — fastest path
+  if (CONDITION_OPTIONS.includes(trimmed)) return trimmed;
+
+  // 2. Case-insensitive exact match
+  const lower = trimmed.toLowerCase();
+  const exact = CONDITION_OPTIONS.find((o) => o.toLowerCase() === lower);
+  if (exact) return exact;
+
+  // 3. Starts-with match (handles truncation e.g. "Goo" → "Good")
+  const partial = CONDITION_OPTIONS.find(
+    (o) =>
+      o.toLowerCase().startsWith(lower) || lower.startsWith(o.toLowerCase()),
+  );
+  if (partial) return partial;
+
+  // Nothing matched — log for debugging, return "" to show placeholder
+  console.warn(
+    `[DetentionTab] Unrecognized condition value from API: "${trimmed}"`,
+  );
+  return "";
+};
+
 export default function DetentionTab({
   form,
   fclContainers = [],
@@ -81,228 +113,168 @@ export default function DetentionTab({
   dispatchRecords = [],
   parties = [],
 }: any) {
-  // Master fields state
-  const [depositor, setDepositor] = useState<string>("");
-  const [depositAmount, setDepositAmount] = useState<number>(0);
-  const [advanceRent, setAdvanceRent] = useState<number>(0);
-  const [uptoDate, setUptoDate] = useState<string>("");
+  // ─── advanceRentPaidUpto: fully controlled via form (no separate local state)
+  // form.watch keeps the input populated correctly in edit mode.
+  const uptoDateValue: string = form.watch("advanceRentPaidUpto") || "";
 
-  // ✅ REMOVED: Local state for additional dates - now using form fields
-
-  // ✅ Get transporter NAME from dispatch records (for display)
+  // ─── Transporter helpers ─────────────────────────────────────────────────────
   const getTransporterNameForContainer = (containerNumber: string): string => {
-    if (!dispatchRecords || !parties || dispatchRecords.length === 0) {
-      return "";
-    }
-
-    const dispatchRecord = dispatchRecords.find(
-      (record: DispatchRecord) => record.containerNumber === containerNumber,
+    if (!dispatchRecords?.length || !parties?.length) return "";
+    const rec = dispatchRecords.find(
+      (r: DispatchRecord) => r.containerNumber === containerNumber,
     );
-
-    if (!dispatchRecord || !dispatchRecord.transporterPartyId) {
-      return "";
-    }
-
-    const transporterParty = parties.find(
-      (party: PartyOption) => party.value === dispatchRecord.transporterPartyId,
+    if (!rec?.transporterPartyId) return "";
+    return (
+      parties.find((p: PartyOption) => p.value === rec.transporterPartyId)
+        ?.label || ""
     );
-
-    return transporterParty?.label || "";
   };
 
-  // ✅ Get transporter ID from dispatch records (for storage)
   const getTransporterIdForContainer = (containerNumber: string): number => {
-    if (!dispatchRecords || dispatchRecords.length === 0) {
-      return 0;
-    }
-
-    const dispatchRecord = dispatchRecords.find(
-      (record: DispatchRecord) => record.containerNumber === containerNumber,
+    if (!dispatchRecords?.length) return 0;
+    const rec = dispatchRecords.find(
+      (r: DispatchRecord) => r.containerNumber === containerNumber,
     );
-
-    return dispatchRecord?.transporterPartyId || 0;
+    return rec?.transporterPartyId || 0;
   };
 
-  // ✅ Initialize detention records from containers
+  // ─── Auto-add new containers from Shipping tab ───────────────────────────────
   useEffect(() => {
-    if (fclContainers.length > 0) {
-      const existingIds = new Set(
-        detentionRecords.map((r: DetentionRecord) => r.containerNumber),
-      );
+    if (!fclContainers.length) return;
+    const existingNos = new Set(
+      detentionRecords.map((r: DetentionRecord) => r.containerNumber),
+    );
+    const newRecords = fclContainers
+      .filter((c: any) => !existingNos.has(c.containerNo))
+      .map((c: any) => ({
+        containerNumber: c.containerNo,
+        containerTypeId: c.containerTypeId,
+        containerSizeId: c.containerSizeId,
+        netWeight: c.tareWeight || 0,
+        transporterPartyId: getTransporterIdForContainer(c.containerNo),
+        emptyDate: "",
+        eirReceivedOn: "",
+        condition: "",
+        rentDays: 0,
+        rentAmountFc: 0,
+        exchangeRate: 0,
+        rentAmountLc: 0,
+        damage: "",
+        dirty: "",
+      }));
 
-      const newRecords = fclContainers
-        .filter((container: any) => !existingIds.has(container.containerNo))
-        .map((container: any) => {
-          const transporterId = getTransporterIdForContainer(
-            container.containerNo,
-          );
-
-          return {
-            containerNumber: container.containerNo,
-            containerTypeId: container.containerTypeId,
-            containerSizeId: container.containerSizeId,
-            netWeight: container.tareWeight || 0,
-            transporterPartyId: transporterId, // ✅ Store ID
-            emptyDate: "",
-            eirReceivedOn: "", // ✅ Correct field name
-            condition: "",
-            rentDays: 0,
-            rentAmountFc: 0, // ✅ USD
-            exchangeRate: 0,
-            rentAmountLc: 0, // ✅ PKR (auto-calculated)
-            damage: "", // ✅ Empty string
-            dirty: "", // ✅ Empty string
-          };
-        });
-
-      if (newRecords.length > 0) {
-        setDetentionRecords([...detentionRecords, ...newRecords]);
-      }
+    if (newRecords.length > 0) {
+      setDetentionRecords([...detentionRecords, ...newRecords]);
     }
   }, [fclContainers]);
 
-  // ✅ Sync transporter ID when dispatch records change
+  // ─── Sync transporter IDs when dispatch records arrive ───────────────────────
   useEffect(() => {
-    if (detentionRecords.length > 0 && dispatchRecords.length > 0) {
-      const updatedRecords = detentionRecords.map((record: DetentionRecord) => {
-        const transporterId = getTransporterIdForContainer(
-          record.containerNumber,
-        );
-        if (transporterId && !record.transporterPartyId) {
-          return {
-            ...record,
-            transporterPartyId: transporterId,
-          };
-        }
-        return record;
-      });
-      setDetentionRecords(updatedRecords);
-    }
+    if (!detentionRecords.length || !dispatchRecords.length) return;
+    const updated = detentionRecords.map((r: DetentionRecord) => {
+      const id = getTransporterIdForContainer(r.containerNumber);
+      return id && !r.transporterPartyId ? { ...r, transporterPartyId: id } : r;
+    });
+    setDetentionRecords(updated);
   }, [dispatchRecords]);
 
-  // ✅ Update a specific field in a detention record
+  // ─── Recalculate balance from form values ────────────────────────────────────
+  const recalculateBalance = () => {
+    const total = form.getValues("detentionTotalPayable") || 0;
+    const deposit = form.getValues("detentionDepositAmount") || 0;
+    const advance = form.getValues("detentionAdvanceRentPaid") || 0;
+    form.setValue(
+      "detentionBalanceReceivable",
+      parseFloat((total - deposit - advance).toFixed(2)),
+      { shouldDirty: true },
+    );
+  };
+
+  // Auto-sync total payable whenever detention rows change
+  useEffect(() => {
+    const total = detentionRecords.reduce(
+      (s: number, r: DetentionRecord) => s + (r.rentAmountLc || 0),
+      0,
+    );
+    form.setValue("detentionTotalPayable", parseFloat(total.toFixed(2)), {
+      shouldDirty: true,
+    });
+    recalculateBalance();
+  }, [detentionRecords]);
+
+  // ─── Update a single detention row field ─────────────────────────────────────
   const updateDetentionRecord = (
     index: number,
     field: keyof DetentionRecord,
     value: any,
   ) => {
-    const updatedRecords = [...detentionRecords];
-    updatedRecords[index] = {
-      ...updatedRecords[index],
-      [field]: value,
-    };
+    const updated = [...detentionRecords];
+    updated[index] = { ...updated[index], [field]: value };
 
-    // Auto-calculate rent days if empty date changes
-    if (field === "emptyDate" && uptoDate) {
-      const rentDays = calculateRentDays(value, uptoDate);
-      updatedRecords[index].rentDays = rentDays;
+    if (field === "emptyDate" && uptoDateValue) {
+      updated[index].rentDays = calculateRentDays(value, uptoDateValue);
     }
 
-    // ✅ Auto-calculate PKR rent when USD rent or exchange rate changes
     if (field === "rentAmountFc" || field === "exchangeRate") {
-      const usdRent =
-        field === "rentAmountFc"
-          ? value
-          : updatedRecords[index].rentAmountFc || 0;
+      const usd =
+        field === "rentAmountFc" ? value : updated[index].rentAmountFc || 0;
       const rate =
-        field === "exchangeRate"
-          ? value
-          : updatedRecords[index].exchangeRate || 0;
-      updatedRecords[index].rentAmountLc = usdRent * rate;
-
-      console.log("Auto-calculation:", {
-        usdRent,
-        rate,
-        pkrResult: usdRent * rate,
-      });
+        field === "exchangeRate" ? value : updated[index].exchangeRate || 0;
+      updated[index].rentAmountLc = parseFloat((usd * rate).toFixed(2));
     }
 
-    setDetentionRecords(updatedRecords);
+    setDetentionRecords(updated);
   };
 
-  // Calculate rent days between two dates
-  const calculateRentDays = (emptyDate: string, uptoDate: string): number => {
-    if (!emptyDate || !uptoDate) return 0;
-
+  const calculateRentDays = (emptyDate: string, upto: string): number => {
+    if (!emptyDate || !upto) return 0;
     try {
-      const empty = new Date(emptyDate);
-      const upto = new Date(uptoDate);
-      const diffTime = upto.getTime() - empty.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      return diffDays > 0 ? diffDays : 0;
-    } catch (error) {
-      console.error("Error calculating rent days:", error);
+      const diff = new Date(upto).getTime() - new Date(emptyDate).getTime();
+      const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+      return days > 0 ? days : 0;
+    } catch {
       return 0;
     }
   };
 
-  // Recalculate all rent days when upto date changes
-  const handleUptoDateChange = (newUptoDate: string) => {
-    setUptoDate(newUptoDate);
+  // ─── Upto Date handler — persists to form AND recalculates rent days ─────────
+  const handleUptoDateChange = (newDate: string) => {
+    // ✅ Write directly into form field so it saves to DB
+    form.setValue("advanceRentPaidUpto", newDate, { shouldDirty: true });
 
-    if (newUptoDate) {
-      const updatedRecords = detentionRecords.map((record: DetentionRecord) => {
-        if (record.emptyDate) {
-          return {
-            ...record,
-            rentDays: calculateRentDays(record.emptyDate, newUptoDate),
-          };
-        }
-        return record;
-      });
-      setDetentionRecords(updatedRecords);
+    if (newDate) {
+      const updated = detentionRecords.map((r: DetentionRecord) =>
+        r.emptyDate
+          ? { ...r, rentDays: calculateRentDays(r.emptyDate, newDate) }
+          : r,
+      );
+      setDetentionRecords(updated);
     }
   };
 
-  // Get container type label
-  const getContainerTypeLabel = (typeId: number | undefined): string => {
-    if (!typeId) return "";
-    const type = containerTypes.find(
-      (t: ContainerOption) => t.value === typeId,
-    );
-    return type?.label || "";
-  };
+  // ─── Label helpers ────────────────────────────────────────────────────────────
+  const getContainerTypeLabel = (id?: number) =>
+    containerTypes.find((t: ContainerOption) => t.value === id)?.label || "";
 
-  // Get container size label
-  const getContainerSizeLabel = (sizeId: number | undefined): string => {
-    if (!sizeId) return "";
-    const size = containerSizes.find(
-      (s: ContainerOption) => s.value === sizeId,
-    );
-    return size?.label || "";
-  };
+  const getContainerSizeLabel = (id?: number) =>
+    containerSizes.find((s: ContainerOption) => s.value === id)?.label || "";
 
-  // ✅ Calculate totals (with correct field names)
-  const totals = {
-    containers: detentionRecords.length,
-    totalRentUsd: detentionRecords.reduce(
-      (sum: number, r: DetentionRecord) => sum + (r.rentAmountFc || 0),
-      0,
-    ),
-    totalRentPkr: detentionRecords.reduce(
-      (sum: number, r: DetentionRecord) => sum + (r.rentAmountLc || 0),
-      0,
-    ),
-  };
+  // ─── Aggregates ───────────────────────────────────────────────────────────────
+  const totalRentUsd = detentionRecords.reduce(
+    (s: number, r: DetentionRecord) => s + (r.rentAmountFc || 0),
+    0,
+  );
+  const totalRentPkr = detentionRecords.reduce(
+    (s: number, r: DetentionRecord) => s + (r.rentAmountLc || 0),
+    0,
+  );
 
-  // Calculate financial summary
-  const totalPayable = totals.totalRentPkr;
-  const securityDeposit = depositAmount;
-  const balanceReceivable = totalPayable - securityDeposit - advanceRent;
+  const depositAmount = form.watch("detentionDepositAmount") || 0;
+  const advanceRent = form.watch("detentionAdvanceRentPaid") || 0;
+  const totalPayable = form.watch("detentionTotalPayable") || 0;
+  const balanceReceivable = form.watch("detentionBalanceReceivable") || 0;
 
-  // Depositor options
-  const depositorOptions = [
-    "Billing Parties",
-    "Transporter",
-    "SASPAK",
-    "Forwarder",
-    "Depositor",
-    "Free Deposit",
-  ];
-
-  // Condition options
-  const conditionOptions = ["Good", "Fair", "Poor", "Damaged", "Dirty"];
+  // ─────────────────────────────────────────────────────────────────────────────
 
   return (
     <TabsContent value='detention' className='space-y-4'>
@@ -314,10 +286,9 @@ export default function DetentionTab({
           </CardTitle>
         </CardHeader>
         <CardContent className='p-4'>
-          {/* Info Banner */}
           <div className='bg-blue-50 p-4 rounded-lg border border-blue-200 mb-4'>
             <div className='flex items-start gap-2'>
-              <Info className='h-5 w-5 text-blue-600 mt-0.5' />
+              <Info className='h-5 w-5 text-blue-600 mt-0.5 shrink-0' />
               <div>
                 <h3 className='font-semibold text-blue-900 mb-1'>
                   Container Detention Management (FCL Only)
@@ -339,68 +310,122 @@ export default function DetentionTab({
             </div>
           </div>
 
-          {/* Master Fields */}
-          <div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-4'>
-            {/* ✅ FIXED: Depositor Dropdown - Removed key prop */}
+          {/* Master fields — all wired to form */}
+          <div className='grid grid-cols-1 md:grid-cols-5 gap-4 mb-4'>
+            {/* Depositor — native select so value always displays after async load */}
             <div className='space-y-2'>
-              <Label>Depositor</Label>
-              <Select value={depositor || ""} onValueChange={setDepositor}>
-                <SelectTrigger>
-                  <SelectValue placeholder='Select Depositor' />
-                </SelectTrigger>
-                <SelectContent position='popper' sideOffset={5}>
-                  {depositorOptions.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
+              <Label htmlFor='depositorPartyId'>Depositor</Label>
+              <select
+                id='depositorPartyId'
+                value={form.watch("depositorPartyId") || ""}
+                onChange={(e) =>
+                  form.setValue(
+                    "depositorPartyId",
+                    e.target.value ? parseInt(e.target.value, 10) : 0,
+                    { shouldDirty: true, shouldValidate: true },
+                  )
+                }
+                className='h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
+              >
+                <option value=''>Select Depositor</option>
+                {parties
+                  .filter((p: PartyOption) => p.value && p.label)
+                  .map((p: PartyOption) => (
+                    <option key={p.value} value={String(p.value)}>
+                      {p.label}
+                    </option>
                   ))}
-                </SelectContent>
-              </Select>
-              {depositor && (
+              </select>
+              {form.watch("depositorPartyId") > 0 && (
                 <p className='text-xs text-green-600'>
-                  ✅ Selected: {depositor}
+                  ✅{" "}
+                  {parties.find(
+                    (p: PartyOption) =>
+                      p.value === form.watch("depositorPartyId"),
+                  )?.label || "Selected"}
                 </p>
               )}
-              <p className='text-xs text-gray-500'>
-                Billing Parties/Transporter/SASPAK/Forwarder/Depositor/Free
-                Deposit
-              </p>
             </div>
 
+            {/* Deposit Amount */}
             <div className='space-y-2'>
               <Label>Deposit Amount (PKR)</Label>
               <Input
                 type='number'
                 step='0.01'
                 placeholder='0.00'
-                value={depositAmount || ""}
-                onChange={(e) =>
-                  setDepositAmount(parseFloat(e.target.value) || 0)
-                }
+                {...form.register("detentionDepositAmount", {
+                  valueAsNumber: true,
+                  onChange: () => recalculateBalance(),
+                })}
               />
             </div>
 
+            {/* Advance Rent */}
             <div className='space-y-2'>
               <Label>Advance Rent (PKR)</Label>
               <Input
                 type='number'
                 step='0.01'
                 placeholder='0.00'
-                value={advanceRent || ""}
-                onChange={(e) =>
-                  setAdvanceRent(parseFloat(e.target.value) || 0)
-                }
+                {...form.register("detentionAdvanceRentPaid", {
+                  valueAsNumber: true,
+                  onChange: () => recalculateBalance(),
+                })}
               />
             </div>
 
+            {/* Total Payable — read-only, auto-calculated */}
             <div className='space-y-2'>
-              <Label>Upto Date</Label>
+              <Label>Total Payable (PKR)</Label>
               <Input
+                type='number'
+                step='0.01'
+                placeholder='0.00'
+                className='bg-green-50 font-semibold'
+                readOnly
+                {...form.register("detentionTotalPayable", {
+                  valueAsNumber: true,
+                })}
+              />
+              <p className='text-xs text-green-600'>Auto-calculated</p>
+            </div>
+
+            {/* Balance Receivable — read-only, auto-calculated */}
+            <div className='space-y-2'>
+              <Label>Balance Receivable (PKR)</Label>
+              <Input
+                type='number'
+                step='0.01'
+                placeholder='0.00'
+                className='bg-blue-50 font-bold'
+                readOnly
+                {...form.register("detentionBalanceReceivable", {
+                  valueAsNumber: true,
+                })}
+              />
+              <p className='text-xs text-blue-600'>Auto-calculated</p>
+            </div>
+          </div>
+
+          {/*
+            ✅ Upto Date — fully controlled via form.watch / form.setValue.
+            NO separate local state. This ensures:
+            - Edit mode populates correctly when form.reset() fires
+            - The value is persisted to DB via advanceRentPaidUpto
+          */}
+          <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
+            <div className='space-y-2'>
+              <Label htmlFor='advanceRentPaidUpto'>Upto Date</Label>
+              <Input
+                id='advanceRentPaidUpto'
                 type='date'
-                value={uptoDate || ""}
+                value={uptoDateValue}
                 onChange={(e) => handleUptoDateChange(e.target.value)}
               />
-              <p className='text-xs text-gray-500'>Auto-calculates rent days</p>
+              <p className='text-xs text-gray-500'>
+                Auto-calculates rent days for all containers
+              </p>
             </div>
           </div>
         </CardContent>
@@ -437,7 +462,6 @@ export default function DetentionTab({
             </div>
           ) : (
             <>
-              {/* Scrollbar Styling */}
               <style jsx>{`
                 .detention-table-wrapper::-webkit-scrollbar {
                   width: 14px;
@@ -486,7 +510,7 @@ export default function DetentionTab({
                       <TableHead className='min-w-[150px]'>
                         EIR Received
                       </TableHead>
-                      <TableHead className='min-w-[130px]'>Condition</TableHead>
+                      <TableHead className='min-w-[160px]'>Condition</TableHead>
                       <TableHead className='min-w-[100px] text-right'>
                         Rent Days
                       </TableHead>
@@ -506,8 +530,16 @@ export default function DetentionTab({
                   <TableBody>
                     {detentionRecords.map(
                       (record: DetentionRecord, index: number) => {
-                        const transporterName = getTransporterNameForContainer(
-                          record.containerNumber,
+                        /*
+                          ✅ CONDITION FIX — two-part approach:
+                          1. normalizeCondition() maps any casing the API sends
+                             ("good", "GOOD", "Good") to the exact SelectItem value.
+                          2. key prop includes the raw condition value so Radix UI
+                             Select fully remounts when async data arrives, preventing
+                             the "Select condition" placeholder staying stuck.
+                        */
+                        const normalizedCondition = normalizeCondition(
+                          record.condition,
                         );
 
                         return (
@@ -516,41 +548,35 @@ export default function DetentionTab({
                               {index + 1}
                             </TableCell>
 
-                            {/* Container Number */}
                             <TableCell className='font-mono text-sm'>
                               {record.containerNumber}
                             </TableCell>
 
-                            {/* Type */}
                             <TableCell>
                               {getContainerTypeLabel(record.containerTypeId)}
                             </TableCell>
 
-                            {/* Size */}
                             <TableCell>
                               {getContainerSizeLabel(record.containerSizeId)}
                             </TableCell>
 
-                            {/* Weight */}
                             <TableCell className='text-right'>
                               {record.netWeight?.toFixed(2) || "0.00"}
                             </TableCell>
 
-                            {/* ✅ Transport - Display only (read-only) */}
                             <TableCell>
                               <Input
                                 className='h-9 bg-gray-50'
-                                value={transporterName || "Not assigned"}
-                                readOnly
-                                title={
-                                  transporterName
-                                    ? `From Dispatch: ${transporterName}`
-                                    : "Assign transporter in Dispatch Tab"
+                                value={
+                                  getTransporterNameForContainer(
+                                    record.containerNumber,
+                                  ) || "Not assigned"
                                 }
+                                readOnly
+                                title='Assign transporter in Dispatch Tab'
                               />
                             </TableCell>
 
-                            {/* Empty Date */}
                             <TableCell>
                               <Input
                                 type='date'
@@ -566,7 +592,6 @@ export default function DetentionTab({
                               />
                             </TableCell>
 
-                            {/* ✅ EIR Received - Correct field name */}
                             <TableCell>
                               <Input
                                 type='date'
@@ -582,32 +607,36 @@ export default function DetentionTab({
                               />
                             </TableCell>
 
-                            {/* ✅ FIXED: Condition - Removed key prop */}
+                            {/*
+                              ✅ CONDITION — native <select> instead of Radix UI.
+                              Radix UI Select silently ignores value changes that
+                              happen after the initial mount in table rows, so the
+                              trigger label stays stuck on the placeholder even when
+                              `value` is correct. A native select is always a
+                              controlled component: whatever `value` is, that's
+                              exactly what the user sees — no remount tricks needed.
+                            */}
                             <TableCell>
-                              <Select
-                                value={record.condition || ""}
-                                onValueChange={(value) =>
+                              <select
+                                value={normalizedCondition}
+                                onChange={(e) =>
                                   updateDetentionRecord(
                                     index,
                                     "condition",
-                                    value,
+                                    e.target.value,
                                   )
                                 }
+                                className='h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
                               >
-                                <SelectTrigger className='h-9'>
-                                  <SelectValue placeholder='Select' />
-                                </SelectTrigger>
-                                <SelectContent position='popper' sideOffset={5}>
-                                  {conditionOptions.map((option) => (
-                                    <SelectItem key={option} value={option}>
-                                      {option}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                <option value=''>Select condition</option>
+                                {CONDITION_OPTIONS.map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {opt}
+                                  </option>
+                                ))}
+                              </select>
                             </TableCell>
 
-                            {/* Rent Days */}
                             <TableCell className='text-right'>
                               <Input
                                 type='number'
@@ -623,7 +652,6 @@ export default function DetentionTab({
                               />
                             </TableCell>
 
-                            {/* ✅ Rent Amount (USD) - rentAmountFc */}
                             <TableCell className='bg-blue-50'>
                               <Input
                                 type='number'
@@ -641,7 +669,6 @@ export default function DetentionTab({
                               />
                             </TableCell>
 
-                            {/* ✅ Exchange Rate */}
                             <TableCell className='bg-blue-50'>
                               <Input
                                 type='number'
@@ -659,7 +686,6 @@ export default function DetentionTab({
                               />
                             </TableCell>
 
-                            {/* ✅ Rent Amount (PKR) - rentAmountLc - Auto-calculated */}
                             <TableCell className='bg-green-50'>
                               <Input
                                 type='number'
@@ -673,7 +699,6 @@ export default function DetentionTab({
                               />
                             </TableCell>
 
-                            {/* ✅ Damage - TEXT field */}
                             <TableCell>
                               <Input
                                 type='text'
@@ -687,11 +712,9 @@ export default function DetentionTab({
                                     e.target.value,
                                   )
                                 }
-                                title='Enter damage description'
                               />
                             </TableCell>
 
-                            {/* ✅ Dirty - TEXT field */}
                             <TableCell>
                               <Input
                                 type='text'
@@ -705,7 +728,6 @@ export default function DetentionTab({
                                     e.target.value,
                                   )
                                 }
-                                title='Enter dirty description'
                               />
                             </TableCell>
                           </TableRow>
@@ -724,26 +746,27 @@ export default function DetentionTab({
               <div className='grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4'>
                 <div>
                   <span className='text-gray-600'>Total Containers:</span>{" "}
-                  <span className='font-semibold'>{totals.containers}</span>
+                  <span className='font-semibold'>
+                    {detentionRecords.length}
+                  </span>
                 </div>
                 <div className='bg-blue-50 p-2 rounded'>
                   <span className='text-blue-900'>Total Rent (USD):</span>{" "}
                   <span className='font-bold text-blue-900'>
-                    ${totals.totalRentUsd.toFixed(2)}
+                    ${totalRentUsd.toFixed(2)}
                   </span>
                 </div>
                 <div className='bg-green-50 p-2 rounded'>
                   <span className='text-green-900'>Total Rent (PKR):</span>{" "}
                   <span className='font-bold text-green-900'>
                     PKR{" "}
-                    {totals.totalRentPkr.toLocaleString("en-PK", {
+                    {totalRentPkr.toLocaleString("en-PK", {
                       minimumFractionDigits: 2,
                     })}
                   </span>
                 </div>
               </div>
 
-              {/* Financial Summary */}
               <div className='bg-white p-4 rounded border'>
                 <h4 className='font-semibold mb-3'>Financial Summary (PKR)</h4>
                 <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm'>
@@ -751,7 +774,7 @@ export default function DetentionTab({
                     <div className='text-gray-600'>Total Rent Payable:</div>
                     <div className='font-semibold'>
                       PKR{" "}
-                      {totalPayable.toLocaleString("en-PK", {
+                      {Number(totalPayable).toLocaleString("en-PK", {
                         minimumFractionDigits: 2,
                       })}
                     </div>
@@ -760,7 +783,7 @@ export default function DetentionTab({
                     <div className='text-gray-600'>Security Deposit:</div>
                     <div className='font-semibold'>
                       PKR{" "}
-                      {securityDeposit.toLocaleString("en-PK", {
+                      {Number(depositAmount).toLocaleString("en-PK", {
                         minimumFractionDigits: 2,
                       })}
                     </div>
@@ -769,7 +792,7 @@ export default function DetentionTab({
                     <div className='text-gray-600'>Advance Rent:</div>
                     <div className='font-semibold'>
                       PKR{" "}
-                      {advanceRent.toLocaleString("en-PK", {
+                      {Number(advanceRent).toLocaleString("en-PK", {
                         minimumFractionDigits: 2,
                       })}
                     </div>
@@ -780,7 +803,7 @@ export default function DetentionTab({
                     </div>
                     <div className='font-bold text-blue-900 text-lg'>
                       PKR{" "}
-                      {balanceReceivable.toLocaleString("en-PK", {
+                      {Number(balanceReceivable).toLocaleString("en-PK", {
                         minimumFractionDigits: 2,
                       })}
                     </div>
@@ -790,7 +813,7 @@ export default function DetentionTab({
                   <p>
                     ℹ️ <strong>Note:</strong> Damage and Dirty are text fields
                     for descriptions (e.g., &quot;Scratched on side&quot;,
-                    &quot;Oil stains&quot;). Financial calculations based on
+                    &quot;Oil stains&quot;). Financial calculations are based on
                     rent only.
                   </p>
                 </div>
@@ -800,7 +823,7 @@ export default function DetentionTab({
         </CardContent>
       </Card>
 
-      {/* ✅ FIXED: Additional Fields - Now connected to form */}
+      {/* Additional Information */}
       <Card>
         <CardHeader className='py-3 px-4 border-b'>
           <h3 className='text-lg font-semibold'>Additional Information</h3>
