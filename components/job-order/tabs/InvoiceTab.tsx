@@ -315,7 +315,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
     }
 
     // ✅ Validate LC Value matches Total DV
-    const totalDv = calculateTotalDvValue();
+    /*const totalDv = calculateTotalDvValue();
     if (data.lcValue > 0 && Math.abs(data.lcValue - totalDv) > 0.01) {
       toast({
         variant: "destructive",
@@ -323,7 +323,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
         description: `LC Value (${data.lcValue.toFixed(2)}) does not match Invoice Total DV (${totalDv.toFixed(2)}). Please correct before saving.`,
       });
       return;
-    }
+    }*/
 
     const invoiceWithItems: Invoice = { ...data, items: currentInvoiceItems };
 

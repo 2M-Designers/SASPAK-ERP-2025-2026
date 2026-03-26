@@ -16,6 +16,12 @@ export const jobMasterSchema = z.object({
   indexNo: z.string().optional(),
   status: z.string().default(""),
 
+  //Package Information
+  qtyOfPackages: z.number().min(0).default(0),
+  packagesType: z.string().optional(),
+  packageWeight: z.number().min(0).default(0),
+  packageVolume: z.number().min(0).default(0),
+
   // Scope Flags
   isFreightForwarding: z.boolean().default(false),
   isClearance: z.boolean().default(false),
@@ -49,7 +55,7 @@ export const jobMasterSchema = z.object({
   detentionDepositAmount: z.number().min(0).default(0),
   detentionTotalPayable: z.number().min(0).default(0),
   detentionAdvanceRentPaid: z.number().min(0).default(0),
-  detentionBalanceReceivable: z.number().min(0).default(0),
+  detentionBalanceReceivable: z.number().default(0),
 
   // Document Numbers
   houseDocumentNumber: z.string().optional(),

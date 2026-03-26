@@ -1195,7 +1195,7 @@ export default function ShippingTab(props: ShippingTabProps) {
             <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
               <FormField
                 control={form.control}
-                name='lclPackageQty'
+                name='qtyOfPackages'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className='text-sm font-medium'>
@@ -1217,7 +1217,7 @@ export default function ShippingTab(props: ShippingTabProps) {
 
               <FormField
                 control={form.control}
-                name='lclPackageType'
+                name='packagesType'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className='text-sm font-medium'>
@@ -1243,7 +1243,7 @@ export default function ShippingTab(props: ShippingTabProps) {
 
               <FormField
                 control={form.control}
-                name='lclPackageWeight'
+                name='packageWeight'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className='text-sm font-medium'>
@@ -1269,7 +1269,7 @@ export default function ShippingTab(props: ShippingTabProps) {
 
               <FormField
                 control={form.control}
-                name='lclPackageVolume'
+                name='packageVolume'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className='text-sm font-medium'>

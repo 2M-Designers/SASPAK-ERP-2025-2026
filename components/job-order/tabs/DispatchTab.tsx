@@ -339,53 +339,55 @@ export default function DispatchTab({
           </div>
 
           {/* Empty Return */}
-          <div className='space-y-2'>
-            <Label>Empty Return (Terminal)</Label>
-            <Select
-              key={`return-${applyToAllValues.containerReturnTerminalId || "none"}`}
-              defaultValue={applyToAllValues.containerReturnTerminalId?.toString()}
-              onValueChange={(value) => {
-                console.log("Return terminal selected:", value);
-                setApplyToAllValues({
-                  ...applyToAllValues,
-                  containerReturnTerminalId: parseInt(value),
-                });
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select Return Terminal'>
-                  {applyToAllValues.containerReturnTerminalId
-                    ? getLocationLabel(
-                        applyToAllValues.containerReturnTerminalId,
-                      )
-                    : "Select Return Terminal"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent
-                position='popper'
-                sideOffset={5}
-                className='max-h-[300px] overflow-y-auto'
+          {shippingType === "FCL" && (
+            <div className='space-y-2'>
+              <Label>Empty Return (Terminal)</Label>
+              <Select
+                key={`return-${applyToAllValues.containerReturnTerminalId || "none"}`}
+                defaultValue={applyToAllValues.containerReturnTerminalId?.toString()}
+                onValueChange={(value) => {
+                  console.log("Return terminal selected:", value);
+                  setApplyToAllValues({
+                    ...applyToAllValues,
+                    containerReturnTerminalId: parseInt(value),
+                  });
+                }}
               >
-                {locations
-                  .filter((location: any) => location?.value)
-                  .map((location: any) => (
-                    <SelectItem
-                      key={location.value}
-                      value={location.value.toString()}
-                    >
-                      {location.label || "Unknown"}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            {applyToAllValues.containerReturnTerminalId && (
-              <p className='text-xs text-green-600'>
-                ✅ Selected:{" "}
-                {getLocationLabel(applyToAllValues.containerReturnTerminalId)}
-              </p>
-            )}
-            <p className='text-xs text-gray-500'>Container return location</p>
-          </div>
+                <SelectTrigger>
+                  <SelectValue placeholder='Select Return Terminal'>
+                    {applyToAllValues.containerReturnTerminalId
+                      ? getLocationLabel(
+                          applyToAllValues.containerReturnTerminalId,
+                        )
+                      : "Select Return Terminal"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent
+                  position='popper'
+                  sideOffset={5}
+                  className='max-h-[300px] overflow-y-auto'
+                >
+                  {locations
+                    .filter((location: any) => location?.value)
+                    .map((location: any) => (
+                      <SelectItem
+                        key={location.value}
+                        value={location.value.toString()}
+                      >
+                        {location.label || "Unknown"}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {applyToAllValues.containerReturnTerminalId && (
+                <p className='text-xs text-green-600'>
+                  ✅ Selected:{" "}
+                  {getLocationLabel(applyToAllValues.containerReturnTerminalId)}
+                </p>
+              )}
+              <p className='text-xs text-gray-500'>Container return location</p>
+            </div>
+          )}
 
           <div className='space-y-2'>
             <Label>Buying (PKR)</Label>

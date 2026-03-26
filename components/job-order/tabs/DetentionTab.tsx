@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import ReactSelect from "react-select";
 import { TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -112,10 +113,48 @@ export default function DetentionTab({
   toast,
   dispatchRecords = [],
   parties = [],
+  loadingParties = false,
 }: any) {
   // ─── advanceRentPaidUpto: fully controlled via form (no separate local state)
   // form.watch keeps the input populated correctly in edit mode.
   const uptoDateValue: string = form.watch("advanceRentPaidUpto") || "";
+
+  // ─── react-select compact styles (matches other selects in the app) ──────────
+  const compactSelectStyles = {
+    control: (base: any) => ({
+      ...base,
+      minHeight: "36px",
+      height: "36px",
+      fontSize: "0.875rem",
+      borderColor: "hsl(var(--input))",
+      borderRadius: "6px",
+      boxShadow: "none",
+      "&:hover": { borderColor: "hsl(var(--input))" },
+    }),
+    valueContainer: (base: any) => ({
+      ...base,
+      padding: "0 10px",
+    }),
+    indicatorsContainer: (base: any) => ({
+      ...base,
+      height: "36px",
+    }),
+    menu: (base: any) => ({
+      ...base,
+      zIndex: 9999,
+      fontSize: "0.875rem",
+    }),
+    option: (base: any, state: any) => ({
+      ...base,
+      backgroundColor: state.isSelected
+        ? "hsl(var(--primary))"
+        : state.isFocused
+          ? "hsl(var(--accent))"
+          : "transparent",
+      color: state.isSelected ? "hsl(var(--primary-foreground))" : "inherit",
+      padding: "6px 12px",
+    }),
+  };
 
   // ─── Transporter helpers ─────────────────────────────────────────────────────
   const getTransporterNameForContainer = (containerNumber: string): string => {
@@ -312,39 +351,28 @@ export default function DetentionTab({
 
           {/* Master fields — all wired to form */}
           <div className='grid grid-cols-1 md:grid-cols-5 gap-4 mb-4'>
-            {/* Depositor — native select so value always displays after async load */}
+            {/* Depositor — react-select with search */}
             <div className='space-y-2'>
-              <Label htmlFor='depositorPartyId'>Depositor</Label>
-              <select
-                id='depositorPartyId'
-                value={form.watch("depositorPartyId") || ""}
-                onChange={(e) =>
-                  form.setValue(
-                    "depositorPartyId",
-                    e.target.value ? parseInt(e.target.value, 10) : 0,
-                    { shouldDirty: true, shouldValidate: true },
-                  )
-                }
-                className='h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
-              >
-                <option value=''>Select Depositor</option>
-                {parties
-                  .filter((p: PartyOption) => p.value && p.label)
-                  .map((p: PartyOption) => (
-                    <option key={p.value} value={String(p.value)}>
-                      {p.label}
-                    </option>
-                  ))}
-              </select>
-              {form.watch("depositorPartyId") > 0 && (
-                <p className='text-xs text-green-600'>
-                  ✅{" "}
-                  {parties.find(
+              <Label>Depositor</Label>
+              <ReactSelect
+                options={parties.filter((p: PartyOption) => p.value && p.label)}
+                value={
+                  parties.find(
                     (p: PartyOption) =>
                       p.value === form.watch("depositorPartyId"),
-                  )?.label || "Selected"}
-                </p>
-              )}
+                  ) || null
+                }
+                onChange={(val: any) =>
+                  form.setValue("depositorPartyId", val?.value ?? 0, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+                isLoading={loadingParties}
+                isClearable
+                placeholder='Select Depositor'
+                styles={compactSelectStyles}
+              />
             </div>
 
             {/* Deposit Amount */}

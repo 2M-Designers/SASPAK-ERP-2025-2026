@@ -230,6 +230,12 @@ export default function JobOrderForm({
       indexNo: "",
       status: "", // Changed from "DRAFT" to empty string
 
+      //Packages Information
+      qtyOfPackages: 0,
+      packagesType: "",
+      packageWeight: 0,
+      packageVolume: 0,
+
       // Scope Flags
       isFreightForwarding: false,
       isClearance: false,
@@ -473,6 +479,12 @@ export default function JobOrderForm({
       customerReferenceNumber: jobData.customerReferenceNumber || "",
       indexNo: jobData.indexNo || "",
       status: jobData.status || "", // Changed from "DRAFT" to empty string
+
+      //Packages Information
+      qtyOfPackages: jobData.qtyOfPackages || 0,
+      packagesType: jobData.packagesType || "",
+      packageWeight: jobData.packageWeight || 0,
+      packageVolume: jobData.packageVolume || 0,
 
       // Scope Flags
       isFreightForwarding: jobData.isFreightForwarding || false,
@@ -1460,6 +1472,11 @@ export default function JobOrderForm({
         customerReferenceNumber: values.customerReferenceNumber || null,
         indexNo: values.indexNo || null,
         status: values.status || "",
+        qtyOfPackages: values.qtyOfPackages || 0,
+        packagesType: values.packagesType || "",
+        packageWeight: values.packageWeight || 0,
+        packageVolume: values.packageVolume || 0,
+
         isFreightForwarding: values.isFreightForwarding || false,
         isClearance: values.isClearance || false,
         isTransporter: values.isTransporter || false,

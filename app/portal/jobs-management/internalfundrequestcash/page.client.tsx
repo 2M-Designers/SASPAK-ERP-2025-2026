@@ -67,15 +67,17 @@ type InternalFundRequestPageProps = {
   initialData?: any[];
 };
 
-// MASTER-DETAIL TYPES
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 type CashFundRequest = {
   cashFundRequestId: number;
-  jobId: number;
-  jobNumber?: string;
+  cashHeadId?: number;
+  cashHeadName?: string;
+  requestorUserId?: number;
   totalRequestedAmount: number;
   totalApprovedAmount: number;
-  approvalStatus: string;
-  approvedBy?: number;
+  approvalStatus: string; // "Approved" | "Rejected" | "Pending" (from API)
+  approvedBy?: string;
   approvedOn?: string;
   requestedTo?: number;
   createdOn: string;
@@ -86,7 +88,9 @@ type CashFundRequest = {
 
 type DetailLineItem = {
   internalFundsRequestCashId: number;
-  jobId: number;
+  jobId: number | null;
+  jobNumber?: string;
+  customerName?: string;
   headCoaId: number;
   beneficiaryCoaId: number;
   headOfAccount: string;
@@ -95,8 +99,16 @@ type DetailLineItem = {
   approvedAmount: number;
   cashFundRequestMasterId: number;
   chargesId: number;
+  onAccountOfId?: number | null;
+  subRequestStatus?: string;
+  remarks?: string;
   version: number;
 };
+
+// Status option from General/GetTypeValues
+type StatusOption = { key: string; label: string };
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function InternalFundRequestPage({
   initialData,
@@ -115,115 +127,124 @@ export default function InternalFundRequestPage({
   const [selectedRequestDetails, setSelectedRequestDetails] =
     useState<CashFundRequest | null>(null);
   const [statusFilter, setStatusFilter] = useState("ALL");
+
+  // Status values fetched from API
+  const [statusOptions, setStatusOptions] = useState<StatusOption[]>([]);
+  const [pendingStatus, setPendingStatus] = useState("Pending");
+  const [approvedStatus, setApprovedStatus] = useState("Approved");
+  const [rejectedStatus, setRejectedStatus] = useState("Rejected");
+
   const { toast } = useToast();
 
-  const statusOptions = [
-    { value: "ALL", label: "All Status" },
-    { value: "PENDING", label: "Pending" },
-    { value: "APPROVED", label: "Approved" },
-    { value: "REJECTED", label: "Rejected" },
-    { value: "PAID", label: "Paid" },
-  ];
+  // ── Fetch status options ────────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchStatuses = async () => {
+      try {
+        const base = process.env.NEXT_PUBLIC_BASE_URL;
+        const res = await fetch(
+          `${base}General/GetTypeValues?typeName=FundRequest_Detail_Status`,
+          { method: "GET", headers: { "Content-Type": "application/json" } },
+        );
+        if (res.ok) {
+          const raw: Record<string, string> = await res.json();
+          const opts: StatusOption[] = Object.entries(raw).map(
+            ([key, label]) => ({ key, label }),
+          );
+          setStatusOptions(opts);
+          const p = opts.find((o) => o.key.toLowerCase() === "pending");
+          const a = opts.find((o) => o.key.toLowerCase() === "approved");
+          const r = opts.find((o) => o.key.toLowerCase() === "rejected");
+          if (p) setPendingStatus(p.key);
+          if (a) setApprovedStatus(a.key);
+          if (r) setRejectedStatus(r.key);
+        }
+      } catch (e) {
+        console.error("Status fetch:", e);
+      }
+    };
+    fetchStatuses();
+  }, []);
 
+  // Status filter options — built after API values are loaded
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: "ALL", label: "All Status" },
+      { value: pendingStatus, label: pendingStatus },
+      { value: approvedStatus, label: approvedStatus },
+      { value: rejectedStatus, label: rejectedStatus },
+      { value: "Paid", label: "Paid" },
+    ],
+    [pendingStatus, approvedStatus, rejectedStatus],
+  );
+
+  // ── Fetch list ──────────────────────────────────────────────────────────────
   const fetchFundRequests = useCallback(async () => {
-    console.log("🔄 Fetching master fund requests...");
     setIsLoading(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
-      const url = `${baseUrl}InternalCashFundsRequest/GetList`;
-      console.log(`📡 Calling master endpoint: ${url}`);
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          select:
-            "cashFundRequestId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version",
-          where: "",
-          sortOn: "cashFundRequestId DESC",
-          page: "1",
-          pageSize: "100",
-        }),
-      });
+      const response = await fetch(
+        `${baseUrl}InternalCashFundsRequest/GetList`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            select:
+              "cashFundRequestId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version,CashHeadId,RequestorUserId",
+            where: "",
+            sortOn: "cashFundRequestId DESC",
+            page: "1",
+            pageSize: "100",
+          }),
+        },
+      );
 
       if (response.ok) {
         const requestData = await response.json();
-        console.log(`✅ Loaded ${requestData.length} master fund requests`);
-
-        const processedData = requestData.map((item: any) => ({
-          ...item,
-          jobNumber: item.job?.jobNumber || item.jobNumber || "-",
-          internalCashFundsRequests: item.internalCashFundsRequests || [],
-          totalRequestedAmount: Number(item.totalRequestedAmount) || 0,
-          totalApprovedAmount: Number(item.totalApprovedAmount) || 0,
-        }));
-
-        console.log("Sample processed data:", processedData.slice(0, 2));
+        const processedData: CashFundRequest[] = requestData.map(
+          (item: any) => ({
+            ...item,
+            internalCashFundsRequests: item.internalCashFundsRequests || [],
+            totalRequestedAmount: Number(item.totalRequestedAmount) || 0,
+            totalApprovedAmount: Number(item.totalApprovedAmount) || 0,
+          }),
+        );
         setData(processedData);
-
         toast({
           title: "Success",
           description: `Loaded ${processedData.length} fund request(s)`,
         });
       } else {
-        const errorText = await response.text();
-        throw new Error(
-          `Failed to fetch: ${response.status} ${response.statusText} - ${errorText}`,
-        );
+        throw new Error(`${response.status} ${response.statusText}`);
       }
     } catch (error) {
-      console.error("❌ Error fetching master fund requests:", error);
+      console.error("Fetch error:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to load fund requests list",
+        description: "Failed to load fund requests",
       });
     } finally {
       setIsLoading(false);
     }
   }, [toast]);
 
-  // Fetch complete request details by ID
+  // ── Fetch single record ─────────────────────────────────────────────────────
   const fetchRequestDetails = async (
     id: number,
   ): Promise<CashFundRequest | null> => {
-    console.log(`🔍 Fetching full details for request ID: ${id}`);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const url = `${baseUrl}InternalCashFundsRequest/${id}`;
-      console.log(`📡 GET ${url}`);
-
-      const response = await fetch(url, {
+      const response = await fetch(`${baseUrl}InternalCashFundsRequest/${id}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });
-
       if (response.ok) {
         const fullData = await response.json();
-        console.log("✅ Full request data loaded:");
-        console.log("Master:", {
-          id: fullData.cashFundRequestId,
-          jobId: fullData.jobId,
-          jobNumber: fullData.job?.jobNumber,
-        });
-        console.log(
-          "Details count:",
-          fullData.internalCashFundsRequests?.length || 0,
-        );
-        console.log("Details:", fullData.internalCashFundsRequests);
-
-        // Add jobNumber from nested job object if not present
-        if (fullData.job?.jobNumber && !fullData.jobNumber) {
-          fullData.jobNumber = fullData.job.jobNumber;
-        }
-
         return fullData;
-      } else {
-        throw new Error(`Failed to fetch: ${response.status}`);
       }
+      throw new Error(`${response.status}`);
     } catch (error) {
-      console.error("❌ Error:", error);
+      console.error("Detail fetch error:", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -233,179 +254,155 @@ export default function InternalFundRequestPage({
     }
   };
 
+  // ── Bootstrap ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!initialData) {
       fetchFundRequests();
     } else {
-      const processedInitialData = initialData.map((item: any) => ({
-        ...item,
-        jobNumber: item.job?.jobNumber || item.jobNumber || "-",
-        internalCashFundsRequests: item.internalCashFundsRequests || [],
-        totalRequestedAmount: Number(item.totalRequestedAmount) || 0,
-        totalApprovedAmount: Number(item.totalApprovedAmount) || 0,
-      }));
-      setData(processedInitialData);
+      setData(
+        initialData.map((item: any) => ({
+          ...item,
+          internalCashFundsRequests: item.internalCashFundsRequests || [],
+          totalRequestedAmount: Number(item.totalRequestedAmount) || 0,
+          totalApprovedAmount: Number(item.totalApprovedAmount) || 0,
+        })),
+      );
     }
   }, [initialData, fetchFundRequests]);
 
-  const searchInItem = (item: CashFundRequest, searchTerm: string) => {
-    if (!searchTerm) return true;
-    const searchLower = searchTerm.toLowerCase();
-
-    const searchableFields = [
-      item.jobNumber,
+  // ── Filtering ───────────────────────────────────────────────────────────────
+  const searchInItem = (item: CashFundRequest, term: string) => {
+    if (!term) return true;
+    const q = term.toLowerCase();
+    const fields = [
       item.approvalStatus,
       item.totalRequestedAmount?.toString(),
       item.cashFundRequestId?.toString(),
-      ...(item.internalCashFundsRequests || []).flatMap((detail) => [
-        detail.headOfAccount,
-        detail.beneficiary,
+      item.cashHeadName,
+      ...(item.internalCashFundsRequests || []).flatMap((d) => [
+        d.headOfAccount,
+        d.beneficiary,
+        d.customerName,
+        d.jobNumber,
+        d.subRequestStatus,
+        d.remarks,
       ]),
     ].filter(Boolean) as string[];
-
-    return searchableFields.some((field) =>
-      field.toLowerCase().includes(searchLower),
-    );
-  };
-
-  const filterByStatus = (request: CashFundRequest) => {
-    if (statusFilter === "ALL") return true;
-    return request.approvalStatus === statusFilter;
+    return fields.some((f) => f.toLowerCase().includes(q));
   };
 
   const getCurrentTabData = () => {
     let tabData = data;
-
     switch (activeTab) {
       case "PENDING":
-        tabData = data.filter((item) => item.approvalStatus === "PENDING");
+        tabData = data.filter((i) => i.approvalStatus === pendingStatus);
         break;
       case "APPROVED":
-        tabData = data.filter((item) => item.approvalStatus === "APPROVED");
+        tabData = data.filter((i) => i.approvalStatus === approvedStatus);
         break;
       case "REJECTED":
-        tabData = data.filter((item) => item.approvalStatus === "REJECTED");
+        tabData = data.filter((i) => i.approvalStatus === rejectedStatus);
         break;
       case "PAID":
-        tabData = data.filter((item) => item.approvalStatus === "PAID");
+        tabData = data.filter((i) => i.approvalStatus === "Paid");
         break;
     }
-
-    tabData = tabData.filter((item) => searchInItem(item, searchText));
-
-    if (activeTab === "ALL_REQUESTS") {
-      tabData = tabData.filter(filterByStatus);
-    }
-
+    tabData = tabData.filter((i) => searchInItem(i, searchText));
+    if (activeTab === "ALL_REQUESTS" && statusFilter !== "ALL")
+      tabData = tabData.filter((i) => i.approvalStatus === statusFilter);
     return tabData;
   };
 
-  const getRequestStats = useMemo(() => {
-    const allRequests = data;
-    return {
-      totalRequests: allRequests.length,
-      pendingRequests: allRequests.filter(
-        (item) => item.approvalStatus === "PENDING",
-      ).length,
-      approvedRequests: allRequests.filter(
-        (item) => item.approvalStatus === "APPROVED",
-      ).length,
-      rejectedRequests: allRequests.filter(
-        (item) => item.approvalStatus === "REJECTED",
-      ).length,
-      paidRequests: allRequests.filter((item) => item.approvalStatus === "PAID")
+  // ── Stats ───────────────────────────────────────────────────────────────────
+  const getRequestStats = useMemo(
+    () => ({
+      totalRequests: data.length,
+      pendingRequests: data.filter((i) => i.approvalStatus === pendingStatus)
         .length,
-      totalRequestedAmount: allRequests.reduce(
-        (sum, item) => sum + (item.totalRequestedAmount || 0),
+      approvedRequests: data.filter((i) => i.approvalStatus === approvedStatus)
+        .length,
+      rejectedRequests: data.filter((i) => i.approvalStatus === rejectedStatus)
+        .length,
+      paidRequests: data.filter((i) => i.approvalStatus === "Paid").length,
+      totalRequestedAmount: data.reduce(
+        (s, i) => s + (i.totalRequestedAmount || 0),
         0,
       ),
-      totalApprovedAmount: allRequests.reduce(
-        (sum, item) => sum + (item.totalApprovedAmount || 0),
+      totalApprovedAmount: data.reduce(
+        (s, i) => s + (i.totalApprovedAmount || 0),
         0,
       ),
-      totalLineItems: allRequests.reduce(
-        (sum, item) => sum + (item.internalCashFundsRequests?.length || 0),
+      totalLineItems: data.reduce(
+        (s, i) => s + (i.internalCashFundsRequests?.length || 0),
         0,
       ),
-    };
-  }, [data]);
+    }),
+    [data, pendingStatus, approvedStatus, rejectedStatus],
+  );
 
-  const handleAddEditComplete = (updatedItem: any) => {
+  // ── Action handlers ─────────────────────────────────────────────────────────
+  const handleAddEditComplete = () => {
     setShowForm(false);
     setSelectedRequest(null);
     fetchFundRequests();
   };
 
-  const handleApprovalComplete = (updatedItem: any) => {
+  const handleApprovalComplete = () => {
     setShowApprovalForm(false);
     setSelectedRequestForApproval(null);
     fetchFundRequests();
   };
 
   const handleDelete = async (item: CashFundRequest) => {
-    const lineItemCount = item.internalCashFundsRequests?.length || 0;
+    const count = item.internalCashFundsRequests?.length || 0;
     if (
-      confirm(
-        `Are you sure you want to delete this fund request for Job "${item.jobNumber}"? This will delete the master record and all ${lineItemCount} line item(s).`,
+      !confirm(
+        `Delete fund request #${item.cashFundRequestId}? This will remove the master record and all ${count} line item(s).`,
       )
-    ) {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        const response = await fetch(
-          `${baseUrl}InternalCashFundsRequest/${item.cashFundRequestId}`,
-          {
-            method: "DELETE",
-          },
+    )
+      return;
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const response = await fetch(
+        `${baseUrl}InternalCashFundsRequest/${item.cashFundRequestId}`,
+        { method: "DELETE" },
+      );
+      if (response.ok) {
+        setData((prev) =>
+          prev.filter((r) => r.cashFundRequestId !== item.cashFundRequestId),
         );
-
-        if (response.ok) {
-          setData((prev) =>
-            prev.filter(
-              (record) => record.cashFundRequestId !== item.cashFundRequestId,
-            ),
-          );
-          toast({
-            title: "Success",
-            description: `Fund request deleted successfully (${lineItemCount} line items removed)`,
-          });
-        } else {
-          throw new Error("Failed to delete fund request");
-        }
-      } catch (error) {
         toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to delete fund request",
+          title: "Success",
+          description: `Fund request deleted (${count} line items removed)`,
         });
-        console.error("Error deleting fund request:", error);
-      }
+      } else throw new Error("Delete failed");
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete fund request",
+      });
     }
   };
 
   const handleViewDetails = async (request: CashFundRequest) => {
-    if (
-      !request.internalCashFundsRequests ||
-      request.internalCashFundsRequests.length === 0
-    ) {
+    if (!request.internalCashFundsRequests?.length) {
       setIsLoading(true);
-      const fullDetails = await fetchRequestDetails(request.cashFundRequestId);
+      const full = await fetchRequestDetails(request.cashFundRequestId);
       setIsLoading(false);
-
-      if (fullDetails) {
-        setSelectedRequestDetails(fullDetails);
+      setSelectedRequestDetails(full || request);
+      if (full) {
         setData((prev) =>
-          prev.map((item) =>
-            item.cashFundRequestId === fullDetails.cashFundRequestId
+          prev.map((i) =>
+            i.cashFundRequestId === full.cashFundRequestId
               ? {
-                  ...item,
+                  ...i,
                   internalCashFundsRequests:
-                    fullDetails.internalCashFundsRequests || [],
+                    full.internalCashFundsRequests || [],
                 }
-              : item,
+              : i,
           ),
         );
-      } else {
-        setSelectedRequestDetails(request);
       }
     } else {
       setSelectedRequestDetails(request);
@@ -414,132 +411,107 @@ export default function InternalFundRequestPage({
   };
 
   const handleApproveClick = async (request: CashFundRequest) => {
-    console.log("=== APPROVE BUTTON CLICKED ===");
-    console.log("Request ID:", request.cashFundRequestId);
-
-    const fullDetails = await fetchRequestDetails(request.cashFundRequestId);
-
-    if (fullDetails) {
-      console.log("✅ Full details loaded for approval");
-      setSelectedRequestForApproval(fullDetails);
+    const full = await fetchRequestDetails(request.cashFundRequestId);
+    if (full) {
+      setSelectedRequestForApproval(full);
       setShowApprovalForm(true);
-    } else {
-      console.error("❌ Failed to load full details");
+    } else
       toast({
         variant: "destructive",
         title: "Error",
         description: "Failed to load request details for approval",
       });
-    }
   };
 
-  const downloadExcelWithData = (
-    dataToExport: CashFundRequest[],
-    tabName: string,
-  ) => {
-    if (!dataToExport || dataToExport.length === 0) {
+  // ── Exports ─────────────────────────────────────────────────────────────────
+  const downloadExcelWithData = (rows: CashFundRequest[], tabName: string) => {
+    if (!rows?.length) {
       toast({
         variant: "destructive",
         title: "No Data",
-        description: "No data available to export",
+        description: "No data to export",
       });
       return;
     }
-
     try {
-      const workbook = new ExcelJS.Workbook();
-      const worksheet = workbook.addWorksheet(tabName);
-
-      const headers = [
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet(tabName);
+      ws.addRow([
         "Request ID",
-        //"Job Number",
+        "Cash Head",
         "Line Items",
         "Total Requested",
         "Total Approved",
         "Status",
         "Created On",
-      ];
-      worksheet.addRow(headers);
-
-      dataToExport.forEach((request) => {
-        const row = [
-          request.cashFundRequestId || "",
-          request.jobNumber || "-",
-          request.internalCashFundsRequests?.length || 0,
-          request.totalRequestedAmount || 0,
-          request.totalApprovedAmount || 0,
-          request.approvalStatus || "",
-          request.createdOn
-            ? new Date(request.createdOn).toLocaleDateString()
-            : "",
-        ];
-        worksheet.addRow(row);
+      ]);
+      rows.forEach((r) =>
+        ws.addRow([
+          r.cashFundRequestId || "",
+          r.cashHeadName || "-",
+          r.internalCashFundsRequests?.length || 0,
+          r.totalRequestedAmount || 0,
+          r.totalApprovedAmount || 0,
+          r.approvalStatus || "",
+          r.createdOn ? new Date(r.createdOn).toLocaleDateString() : "",
+        ]),
+      );
+      ws.columns.forEach((c) => {
+        c.width = 18;
       });
-
-      worksheet.columns.forEach((column) => {
-        column.width = 15;
-      });
-
-      workbook.xlsx.writeBuffer().then((buffer) => {
-        saveAs(
-          new Blob([buffer]),
-          `${tabName}_FundRequests_${moment().format("YYYY-MM-DD")}.xlsx`,
+      wb.xlsx
+        .writeBuffer()
+        .then((buf) =>
+          saveAs(
+            new Blob([buf]),
+            `${tabName}_FundRequests_${moment().format("YYYY-MM-DD")}.xlsx`,
+          ),
         );
-      });
-
-      toast({
-        title: "Success",
-        description: "Excel file downloaded successfully",
-      });
-    } catch (error) {
+      toast({ title: "Success", description: "Excel downloaded" });
+    } catch (e) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to generate Excel file",
+        description: "Failed to generate Excel",
       });
-      console.error("Error generating Excel:", error);
     }
   };
 
-  const downloadPDFWithData = (
-    dataToExport: CashFundRequest[],
-    tabName: string,
-  ) => {
-    if (!dataToExport || dataToExport.length === 0) {
+  const downloadPDFWithData = (rows: CashFundRequest[], tabName: string) => {
+    if (!rows?.length) {
       toast({
         variant: "destructive",
         title: "No Data",
-        description: "No data available to export",
+        description: "No data to export",
       });
       return;
     }
-
     try {
       const doc = new jsPDF("landscape");
       doc.setFontSize(16);
       doc.setTextColor(40, 116, 166);
-      doc.text(`${tabName} - Internal Fund Requests Report`, 20, 20);
-
-      const tableHeaders = [
-        "Request ID",
-        "Job No",
-        "Items",
-        "Requested",
-        "Approved",
-        "Status",
-      ];
-      const tableData = dataToExport.map((item) => [
-        item.cashFundRequestId?.toString() || "N/A",
-        item.jobNumber?.toString() || "-",
-        item.internalCashFundsRequests?.length.toString() || "0",
-        item.totalRequestedAmount?.toString() || "0",
-        item.totalApprovedAmount?.toString() || "0",
-        item.approvalStatus || "N/A",
-      ]);
-
+      doc.text(`${tabName} - Internal Cash Fund Requests`, 20, 20);
       autoTable(doc, {
-        head: [tableHeaders],
-        body: tableData,
+        head: [
+          [
+            "Request ID",
+            "Cash Head",
+            "Items",
+            "Requested (PKR)",
+            "Approved (PKR)",
+            "Status",
+            "Created On",
+          ],
+        ],
+        body: rows.map((i) => [
+          i.cashFundRequestId?.toString() || "N/A",
+          i.cashHeadName || "-",
+          i.internalCashFundsRequests?.length?.toString() || "0",
+          new Intl.NumberFormat("en-US").format(i.totalRequestedAmount || 0),
+          new Intl.NumberFormat("en-US").format(i.totalApprovedAmount || 0),
+          i.approvalStatus || "N/A",
+          i.createdOn ? new Date(i.createdOn).toLocaleDateString() : "-",
+        ]),
         startY: 30,
         theme: "striped",
         headStyles: {
@@ -549,43 +521,44 @@ export default function InternalFundRequestPage({
         },
         styles: { fontSize: 8, cellPadding: 3 },
       });
-
       doc.save(`${tabName}_FundRequests_${moment().format("YYYY-MM-DD")}.pdf`);
-      toast({
-        title: "Success",
-        description: "PDF file downloaded successfully",
-      });
-    } catch (error) {
+      toast({ title: "Success", description: "PDF downloaded" });
+    } catch (e) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to generate PDF file",
+        description: "Failed to generate PDF",
       });
-      console.error("Error generating PDF:", error);
     }
   };
 
+  // ── Status badge styling (matches API values "Approved" / "Rejected" / "Pending") ──
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "PENDING":
-        return "bg-yellow-50 text-yellow-700 border-yellow-200";
-      case "APPROVED":
-        return "bg-green-50 text-green-700 border-green-200";
-      case "REJECTED":
-        return "bg-red-50 text-red-700 border-red-200";
-      case "PAID":
-        return "bg-blue-50 text-blue-700 border-blue-200";
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200";
-    }
+    const s = status?.toLowerCase();
+    if (s === "approved") return "bg-green-50 text-green-700 border-green-200";
+    if (s === "rejected") return "bg-red-50 text-red-700 border-red-200";
+    if (s === "pending")
+      return "bg-yellow-50 text-yellow-700 border-yellow-200";
+    if (s === "paid") return "bg-blue-50 text-blue-700 border-blue-200";
+    return "bg-gray-100 text-gray-800 border-gray-200";
   };
 
+  const getStatusIcon = (status: string) => {
+    const s = status?.toLowerCase();
+    if (s === "approved" || s === "paid")
+      return <FiCheckCircle className='mr-1 h-3 w-3' />;
+    if (s === "rejected") return <FiXCircle className='mr-1 h-3 w-3' />;
+    return <FiClock className='mr-1 h-3 w-3' />;
+  };
+
+  // ── Table columns ───────────────────────────────────────────────────────────
   const columns: ColumnDef<CashFundRequest>[] = [
     {
       accessorKey: "actions",
       header: "Actions",
       cell: ({ row }) => (
         <div className='flex gap-1.5'>
+          {/* View */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -602,8 +575,8 @@ export default function InternalFundRequestPage({
             </Tooltip>
           </TooltipProvider>
 
-          {/* Show Approve button ONLY for PENDING requests */}
-          {row.original.approvalStatus === "PENDING" && (
+          {/* Approve — show for Pending requests */}
+          {row.original.approvalStatus === pendingStatus && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -615,35 +588,25 @@ export default function InternalFundRequestPage({
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className='text-xs'>Approve Request</p>
+                  <p className='text-xs'>Approve / Reject</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
 
+          {/* Edit */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   className='p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors'
                   onClick={async () => {
-                    console.log("=== EDIT BUTTON CLICKED ===");
-                    console.log("Request ID:", row.original.cashFundRequestId);
-
-                    const fullDetails = await fetchRequestDetails(
+                    const full = await fetchRequestDetails(
                       row.original.cashFundRequestId,
                     );
-
-                    if (fullDetails) {
-                      console.log(
-                        "Full details loaded with",
-                        fullDetails.internalCashFundsRequests?.length || 0,
-                        "line items",
-                      );
-                      setSelectedRequest(fullDetails);
+                    if (full) {
+                      setSelectedRequest(full);
                       setShowForm(true);
-                    } else {
-                      console.error("Failed to load full details");
                     }
                   }}
                 >
@@ -656,6 +619,7 @@ export default function InternalFundRequestPage({
             </Tooltip>
           </TooltipProvider>
 
+          {/* Delete */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -690,30 +654,43 @@ export default function InternalFundRequestPage({
         </div>
       ),
     },
-    /*{
-      accessorKey: "jobNumber",
-      header: "Job Number",
+    {
+      accessorKey: "cashHeadName",
+      header: "Cash Account",
       cell: ({ row }) => (
-        <div className='font-semibold text-sm text-gray-900'>
-          <div>{row.original.jobNumber || "-"}</div>
-          <div className='text-xs text-gray-500 mt-0.5'>
-            {row.original.createdOn
-              ? new Date(row.original.createdOn).toLocaleDateString()
-              : "-"}
-          </div>
+        <div
+          className='text-sm text-gray-700 max-w-[160px] truncate'
+          title={row.original.cashHeadName || "-"}
+        >
+          {row.original.cashHeadName || "-"}
         </div>
       ),
-    },*/
+    },
     {
       accessorKey: "lineItems",
       header: "Line Items",
       cell: ({ row }) => {
-        const count = row.original.internalCashFundsRequests?.length || 0;
+        const details = row.original.internalCashFundsRequests || [];
+        const count = details.length;
+        const approved = details.filter(
+          (d) => d.subRequestStatus === approvedStatus,
+        ).length;
+        const rejected = details.filter(
+          (d) => d.subRequestStatus === rejectedStatus,
+        ).length;
         return (
-          <Badge variant='outline' className='flex items-center gap-1 w-fit'>
-            <FiList className='h-3 w-3' />
-            {count} item{count !== 1 ? "s" : ""}
-          </Badge>
+          <div className='flex flex-col gap-0.5'>
+            <Badge variant='outline' className='flex items-center gap-1 w-fit'>
+              <FiList className='h-3 w-3' />
+              {count} item{count !== 1 ? "s" : ""}
+            </Badge>
+            {count > 0 && (
+              <span className='text-xs text-gray-500'>
+                <span className='text-green-600'>{approved}✓</span>{" "}
+                <span className='text-red-600'>{rejected}✗</span>
+              </span>
+            )}
+          </div>
         );
       },
     },
@@ -750,212 +727,251 @@ export default function InternalFundRequestPage({
         const status = row.getValue("approvalStatus") as string;
         return (
           <span
-            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getStatusBadge(
-              status,
-            )}`}
+            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getStatusBadge(status)}`}
           >
-            {status === "PENDING" && <FiClock className='mr-1 h-3 w-3' />}
-            {status === "APPROVED" && (
-              <FiCheckCircle className='mr-1 h-3 w-3' />
-            )}
-            {status === "REJECTED" && <FiXCircle className='mr-1 h-3 w-3' />}
-            {status === "PAID" && <FiCheckCircle className='mr-1 h-3 w-3' />}
+            {getStatusIcon(status)}
             {status}
           </span>
         );
       },
     },
+    {
+      accessorKey: "createdOn",
+      header: "Created On",
+      cell: ({ row }) => (
+        <div className='text-xs text-gray-600'>
+          {row.original.createdOn
+            ? new Date(row.original.createdOn).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              })
+            : "-"}
+        </div>
+      ),
+    },
   ];
 
-  const ViewRequestDialog = () => {
-    return (
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className='max-w-4xl max-h-[90vh] overflow-y-auto'>
-          <DialogHeader>
-            <DialogTitle className='flex items-center gap-2'>
-              <FiEye className='h-5 w-5' />
-              Fund Request Details
-            </DialogTitle>
-            <DialogDescription>
-              Request ID: #{selectedRequestDetails?.cashFundRequestId} | Job:{" "}
-              {selectedRequestDetails?.jobNumber || "-"}
-            </DialogDescription>
-          </DialogHeader>
+  // ── View Details Dialog ─────────────────────────────────────────────────────
+  const ViewRequestDialog = () => (
+    <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+      <DialogContent className='max-w-5xl max-h-[90vh] overflow-y-auto'>
+        <DialogHeader>
+          <DialogTitle className='flex items-center gap-2'>
+            <FiEye className='h-5 w-5' />
+            Fund Request Details
+          </DialogTitle>
+          <DialogDescription>
+            Request ID: #{selectedRequestDetails?.cashFundRequestId}
+          </DialogDescription>
+        </DialogHeader>
 
-          {selectedRequestDetails && (
-            <div className='space-y-4'>
-              <Card>
-                <CardHeader className='py-3 px-4 bg-blue-50'>
-                  <CardTitle className='text-sm font-medium flex items-center gap-2'>
-                    <Badge variant='default' className='bg-blue-600'>
-                      Master
-                    </Badge>
-                    Request Information
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className='pt-3 px-4 pb-3'>
-                  <div className='grid grid-cols-2 gap-3 text-sm'>
+        {selectedRequestDetails && (
+          <div className='space-y-4'>
+            {/* Master info */}
+            <Card>
+              <CardHeader className='py-3 px-4 bg-blue-50'>
+                <CardTitle className='text-sm font-medium flex items-center gap-2'>
+                  <Badge variant='default' className='bg-blue-600'>
+                    Master
+                  </Badge>
+                  Request Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className='pt-3 px-4 pb-3'>
+                <div className='grid grid-cols-2 gap-3 text-sm'>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-600'>Request ID:</span>
+                    <span className='font-medium'>
+                      #{selectedRequestDetails.cashFundRequestId}
+                    </span>
+                  </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-600'>Cash Account:</span>
+                    <span className='font-medium'>
+                      {selectedRequestDetails.cashHeadName || "-"}
+                    </span>
+                  </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-600'>Total Requested:</span>
+                    <span className='font-medium text-blue-700'>
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "PKR",
+                      }).format(
+                        selectedRequestDetails.totalRequestedAmount || 0,
+                      )}
+                    </span>
+                  </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-600'>Total Approved:</span>
+                    <span className='font-medium text-green-700'>
+                      {selectedRequestDetails.totalApprovedAmount
+                        ? new Intl.NumberFormat("en-US", {
+                            style: "currency",
+                            currency: "PKR",
+                          }).format(selectedRequestDetails.totalApprovedAmount)
+                        : "-"}
+                    </span>
+                  </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-600'>Status:</span>
+                    <span
+                      className={`font-medium inline-flex items-center px-2 py-0.5 rounded text-xs border ${getStatusBadge(selectedRequestDetails.approvalStatus)}`}
+                    >
+                      {getStatusIcon(selectedRequestDetails.approvalStatus)}
+                      {selectedRequestDetails.approvalStatus}
+                    </span>
+                  </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-600'>Line Items:</span>
+                    <span className='font-medium'>
+                      {selectedRequestDetails.internalCashFundsRequests
+                        ?.length || 0}{" "}
+                      items
+                    </span>
+                  </div>
+                  {selectedRequestDetails.approvedOn && (
                     <div className='flex justify-between'>
-                      <span className='text-gray-600'>Request ID:</span>
-                      <span className='font-medium'>
-                        #{selectedRequestDetails.cashFundRequestId}
-                      </span>
-                    </div>
-                    {/* <div className='flex justify-between'>
-                      <span className='text-gray-600'>Job Number:</span>
-                      <span className='font-medium'>
-                        {selectedRequestDetails.jobNumber || "-"}
-                      </span>
-                    </div> */}
-                    <div className='flex justify-between'>
-                      <span className='text-gray-600'>Total Requested:</span>
-                      <span className='font-medium text-blue-700'>
-                        {new Intl.NumberFormat("en-US", {
-                          style: "currency",
-                          currency: "PKR",
-                        }).format(
-                          selectedRequestDetails.totalRequestedAmount || 0,
-                        )}
-                      </span>
-                    </div>
-                    <div className='flex justify-between'>
-                      <span className='text-gray-600'>Total Approved:</span>
-                      <span className='font-medium text-green-700'>
-                        {selectedRequestDetails.totalApprovedAmount
-                          ? new Intl.NumberFormat("en-US", {
-                              style: "currency",
-                              currency: "PKR",
-                            }).format(
-                              selectedRequestDetails.totalApprovedAmount,
-                            )
-                          : "-"}
-                      </span>
-                    </div>
-                    <div className='flex justify-between'>
-                      <span className='text-gray-600'>Status:</span>
-                      <span
-                        className={`font-medium inline-flex items-center px-2 py-0.5 rounded text-xs border ${getStatusBadge(
-                          selectedRequestDetails.approvalStatus,
-                        )}`}
-                      >
-                        {selectedRequestDetails.approvalStatus}
-                      </span>
-                    </div>
-                    <div className='flex justify-between'>
-                      <span className='text-gray-600'>Line Items:</span>
-                      <span className='font-medium'>
-                        {selectedRequestDetails.internalCashFundsRequests
-                          ?.length || 0}{" "}
-                        items
-                      </span>
-                    </div>
-                    {selectedRequestDetails.approvedOn && (
-                      <div className='flex justify-between'>
-                        <span className='text-gray-600'>Approved On:</span>
-                        <span className='font-medium'>
-                          {new Date(
-                            selectedRequestDetails.approvedOn,
-                          ).toLocaleDateString()}
-                        </span>
-                      </div>
-                    )}
-                    <div className='flex justify-between'>
-                      <span className='text-gray-600'>Created On:</span>
+                      <span className='text-gray-600'>Approved On:</span>
                       <span className='font-medium'>
                         {new Date(
-                          selectedRequestDetails.createdOn,
+                          selectedRequestDetails.approvedOn,
                         ).toLocaleDateString()}
                       </span>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className='py-3 px-4 bg-gray-50'>
-                  <CardTitle className='text-sm font-medium flex items-center gap-2'>
-                    <Badge variant='outline' className='bg-white'>
-                      Details
-                    </Badge>
-                    Line Items (
-                    {selectedRequestDetails.internalCashFundsRequests?.length ||
-                      0}
-                    )
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className='pt-3 px-4 pb-3'>
-                  {selectedRequestDetails.internalCashFundsRequests &&
-                  selectedRequestDetails.internalCashFundsRequests.length >
-                    0 ? (
-                    <div className='border rounded-lg overflow-hidden'>
-                      <Table>
-                        <TableHeader>
-                          <TableRow className='bg-gray-50'>
-                            <TableHead className='w-[50px]'>#</TableHead>
-                            <TableHead>Head of Account</TableHead>
-                            <TableHead>Beneficiary</TableHead>
-                            <TableHead>Requested</TableHead>
-                            <TableHead>Approved</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {selectedRequestDetails.internalCashFundsRequests.map(
-                            (detail, index) => (
-                              <TableRow
-                                key={detail.internalFundsRequestCashId || index}
-                              >
-                                <TableCell className='font-medium'>
-                                  {index + 1}
-                                </TableCell>
-                                <TableCell className='text-sm'>
-                                  {detail.headOfAccount || "-"}
-                                </TableCell>
-                                <TableCell className='text-sm'>
-                                  {detail.beneficiary || "-"}
-                                </TableCell>
-                                <TableCell className='text-sm font-medium'>
-                                  {new Intl.NumberFormat("en-US", {
-                                    style: "currency",
-                                    currency: "PKR",
-                                  }).format(detail.requestedAmount || 0)}
-                                </TableCell>
-                                <TableCell className='text-sm font-medium text-green-700'>
-                                  {detail.approvedAmount
-                                    ? new Intl.NumberFormat("en-US", {
-                                        style: "currency",
-                                        currency: "PKR",
-                                      }).format(detail.approvedAmount)
-                                    : "-"}
-                                </TableCell>
-                              </TableRow>
-                            ),
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <p className='text-sm text-gray-500 text-center py-4'>
-                      No line items available
-                    </p>
                   )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
+                  <div className='flex justify-between'>
+                    <span className='text-gray-600'>Created On:</span>
+                    <span className='font-medium'>
+                      {new Date(
+                        selectedRequestDetails.createdOn,
+                      ).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-          <DialogFooter>
-            <Button variant='outline' onClick={() => setViewDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  };
+            {/* Detail lines */}
+            <Card>
+              <CardHeader className='py-3 px-4 bg-gray-50'>
+                <CardTitle className='text-sm font-medium flex items-center gap-2'>
+                  <Badge variant='outline' className='bg-white'>
+                    Details
+                  </Badge>
+                  Line Items (
+                  {selectedRequestDetails.internalCashFundsRequests?.length ||
+                    0}
+                  )
+                </CardTitle>
+              </CardHeader>
+              <CardContent className='pt-3 px-4 pb-3'>
+                {selectedRequestDetails.internalCashFundsRequests?.length ? (
+                  <div className='border rounded-lg overflow-hidden overflow-x-auto'>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className='bg-gray-50'>
+                          <TableHead className='w-[40px]'>#</TableHead>
+                          <TableHead>Job Number</TableHead>
+                          <TableHead>Customer Name</TableHead>
+                          <TableHead>Head of Account</TableHead>
+                          <TableHead>Beneficiary</TableHead>
+                          <TableHead className='text-right'>
+                            Requested
+                          </TableHead>
+                          <TableHead className='text-right'>Approved</TableHead>
+                          <TableHead>Remarks</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedRequestDetails.internalCashFundsRequests.map(
+                          (detail, index) => (
+                            <TableRow
+                              key={detail.internalFundsRequestCashId || index}
+                            >
+                              <TableCell className='font-medium text-xs'>
+                                {index + 1}
+                              </TableCell>
+                              <TableCell>
+                                {detail.jobId ? (
+                                  <Badge
+                                    variant='outline'
+                                    className='bg-blue-50 text-blue-700 border-blue-300 font-semibold text-xs'
+                                  >
+                                    {detail.jobNumber || `#${detail.jobId}`}
+                                  </Badge>
+                                ) : (
+                                  <span className='text-xs text-gray-400'>
+                                    —
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className='text-xs text-gray-700'>
+                                {detail.customerName || "—"}
+                              </TableCell>
+                              <TableCell className='text-sm'>
+                                {detail.headOfAccount || "-"}
+                              </TableCell>
+                              <TableCell className='text-sm'>
+                                {detail.beneficiary || "-"}
+                              </TableCell>
+                              <TableCell className='text-sm font-medium text-right'>
+                                {new Intl.NumberFormat("en-US", {
+                                  style: "currency",
+                                  currency: "PKR",
+                                }).format(detail.requestedAmount || 0)}
+                              </TableCell>
+                              <TableCell className='text-sm font-medium text-green-700 text-right'>
+                                {detail.approvedAmount
+                                  ? new Intl.NumberFormat("en-US", {
+                                      style: "currency",
+                                      currency: "PKR",
+                                    }).format(detail.approvedAmount)
+                                  : "-"}
+                              </TableCell>
+                              <TableCell className='text-xs text-gray-600 max-w-[120px] truncate'>
+                                {detail.remarks || "—"}
+                              </TableCell>
+                              <TableCell>
+                                {detail.subRequestStatus && (
+                                  <span
+                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border ${getStatusBadge(detail.subRequestStatus)}`}
+                                  >
+                                    {getStatusIcon(detail.subRequestStatus)}
+                                    {detail.subRequestStatus}
+                                  </span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ),
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className='text-sm text-gray-500 text-center py-4'>
+                    No line items available
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
+        <DialogFooter>
+          <Button variant='outline' onClick={() => setViewDialogOpen(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  // ── Statistics tab ──────────────────────────────────────────────────────────
   const RequestStatsPage = () => {
     const stats = getRequestStats;
-
     return (
       <div className='space-y-4'>
         <div className='flex justify-between items-center'>
@@ -967,84 +983,71 @@ export default function InternalFundRequestPage({
             size='sm'
             className='flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white'
           >
-            <FiDownload size={14} />
-            Export Report
+            <FiDownload size={14} /> Export Report
           </Button>
         </div>
-
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3'>
-          <Card className='border border-blue-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-blue-700 uppercase tracking-wide'>
-                Total Requests
-              </CardTitle>
-              <div className='text-2xl font-bold text-blue-900 mt-1'>
-                {stats.totalRequests}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>
-                {stats.totalLineItems} line items • {stats.pendingRequests}{" "}
-                pending
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className='border border-green-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-green-700 uppercase tracking-wide'>
-                Total Requested
-              </CardTitle>
-              <div className='text-2xl font-bold text-green-900 mt-1'>
-                {new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "PKR",
-                  notation: "compact",
-                }).format(stats.totalRequestedAmount)}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>Sum of all requests</div>
-            </CardContent>
-          </Card>
-
-          <Card className='border border-purple-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-purple-700 uppercase tracking-wide'>
-                Total Approved
-              </CardTitle>
-              <div className='text-2xl font-bold text-purple-900 mt-1'>
-                {new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "PKR",
-                  notation: "compact",
-                }).format(stats.totalApprovedAmount)}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>Approved amount</div>
-            </CardContent>
-          </Card>
-
-          <Card className='border border-yellow-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-yellow-700 uppercase tracking-wide'>
-                Pending
-              </CardTitle>
-              <div className='text-2xl font-bold text-yellow-900 mt-1'>
-                {stats.pendingRequests}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>Awaiting approval</div>
-            </CardContent>
-          </Card>
+          {[
+            {
+              label: "Total Requests",
+              value: stats.totalRequests,
+              sub: `${stats.totalLineItems} line items · ${stats.pendingRequests} pending`,
+              color: "blue",
+            },
+            {
+              label: "Total Requested",
+              value: new Intl.NumberFormat("en-US", {
+                style: "currency",
+                currency: "PKR",
+                notation: "compact",
+              }).format(stats.totalRequestedAmount),
+              sub: "Sum of all requests",
+              color: "green",
+            },
+            {
+              label: "Total Approved",
+              value: new Intl.NumberFormat("en-US", {
+                style: "currency",
+                currency: "PKR",
+                notation: "compact",
+              }).format(stats.totalApprovedAmount),
+              sub: "Approved amount",
+              color: "purple",
+            },
+            {
+              label: approvedStatus,
+              value: stats.approvedRequests,
+              sub: "Fully approved",
+              color: "green",
+            },
+          ].map((card) => (
+            <Card
+              key={card.label}
+              className={`border border-${card.color}-200 shadow-sm`}
+            >
+              <CardHeader className='pb-2 pt-3 px-4'>
+                <CardTitle
+                  className={`text-xs font-medium text-${card.color}-700 uppercase tracking-wide`}
+                >
+                  {card.label}
+                </CardTitle>
+                <div
+                  className={`text-2xl font-bold text-${card.color}-900 mt-1`}
+                >
+                  {card.value}
+                </div>
+              </CardHeader>
+              <CardContent className='pt-0 pb-3 px-4'>
+                <div className='text-xs text-gray-600'>{card.sub}</div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     );
   };
 
-  // Show Approval Form
+  // ── Route: Approval Form ────────────────────────────────────────────────────
   if (showApprovalForm && selectedRequestForApproval) {
     return (
       <div className='p-4 bg-gray-50 min-h-screen'>
@@ -1058,8 +1061,7 @@ export default function InternalFundRequestPage({
             }}
             className='mb-3 gap-1.5'
           >
-            <FiArrowLeft className='h-3.5 w-3.5' />
-            Back to Request List
+            <FiArrowLeft className='h-3.5 w-3.5' /> Back to Request List
           </Button>
           <div className='bg-white rounded-lg shadow-sm border p-4'>
             <InternalFundRequestApprovalForm
@@ -1076,7 +1078,7 @@ export default function InternalFundRequestPage({
     );
   }
 
-  // Show Edit Form
+  // ── Route: Add/Edit Form ────────────────────────────────────────────────────
   if (showForm) {
     return (
       <div className='p-4 bg-gray-50 min-h-screen'>
@@ -1090,8 +1092,7 @@ export default function InternalFundRequestPage({
             }}
             className='mb-3 gap-1.5'
           >
-            <FiArrowLeft className='h-3.5 w-3.5' />
-            Back to Request List
+            <FiArrowLeft className='h-3.5 w-3.5' /> Back to Request List
           </Button>
           <div className='bg-white rounded-lg shadow-sm border p-4'>
             <InternalFundRequestForm
@@ -1105,18 +1106,20 @@ export default function InternalFundRequestPage({
     );
   }
 
+  // ── Main List View ──────────────────────────────────────────────────────────
   const currentTabData = getCurrentTabData();
 
   return (
     <div className='p-4 bg-gray-50 min-h-screen'>
       <div className='max-w-7xl mx-auto'>
+        {/* Page header */}
         <div className='flex items-center justify-between mb-4'>
           <div>
             <h1 className='text-xl font-bold text-gray-900'>
               Internal Fund Request Management (Cash)
             </h1>
             <p className='text-xs text-gray-600 mt-0.5'>
-              Master-detail fund requests with complete tracking
+              Master-detail fund requests with per-line approval tracking
             </p>
           </div>
           <div className='flex gap-2'>
@@ -1140,12 +1143,12 @@ export default function InternalFundRequestPage({
               size='sm'
               className='bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5'
             >
-              <FiFilePlus className='h-3.5 w-3.5' />
-              Add New Request
+              <FiFilePlus className='h-3.5 w-3.5' /> Add New Request
             </Button>
           </div>
         </div>
 
+        {/* Search / filter / export bar */}
         <div className='bg-white rounded-lg shadow-sm border p-3 mb-4'>
           <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-3'>
             <div className='flex items-center gap-2 flex-1 w-full md:w-auto'>
@@ -1153,7 +1156,7 @@ export default function InternalFundRequestPage({
                 <FiSearch className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
                 <Input
                   type='text'
-                  placeholder='Search by Job No, Account...'
+                  placeholder='Search by account, beneficiary, customer...'
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   className='pl-9 pr-9 py-1.5 text-sm h-9'
@@ -1173,9 +1176,9 @@ export default function InternalFundRequestPage({
                     <SelectValue placeholder='Filter by status' />
                   </SelectTrigger>
                   <SelectContent>
-                    {statusOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                    {statusFilterOptions.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1187,24 +1190,23 @@ export default function InternalFundRequestPage({
                 onClick={() => downloadPDFWithData(currentTabData, activeTab)}
                 size='sm'
                 className='flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs'
-                disabled={!currentTabData || currentTabData.length === 0}
+                disabled={!currentTabData?.length}
               >
-                <FiFilePlus className='h-3.5 w-3.5' />
-                Export PDF
+                <FiFilePlus className='h-3.5 w-3.5' /> Export PDF
               </Button>
               <Button
                 onClick={() => downloadExcelWithData(currentTabData, activeTab)}
                 size='sm'
                 className='flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs'
-                disabled={!currentTabData || currentTabData.length === 0}
+                disabled={!currentTabData?.length}
               >
-                <FiDownload className='h-3.5 w-3.5' />
-                Export Excel
+                <FiDownload className='h-3.5 w-3.5' /> Export Excel
               </Button>
             </div>
           </div>
         </div>
 
+        {/* Tabs */}
         <Tabs
           defaultValue='ALL_REQUESTS'
           value={activeTab}
@@ -1217,43 +1219,42 @@ export default function InternalFundRequestPage({
                 value='ALL_REQUESTS'
                 className='text-xs py-2 px-3 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiDollarSign className='w-3.5 h-3.5 mr-1.5' />
-                All ({data.length})
+                <FiDollarSign className='w-3.5 h-3.5 mr-1.5' /> All (
+                {data.length})
               </TabsTrigger>
               <TabsTrigger
                 value='PENDING'
                 className='text-xs py-2 px-3 data-[state=active]:bg-yellow-50 data-[state=active]:text-yellow-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiClock className='w-3.5 h-3.5 mr-1.5' />
-                Pending ({getRequestStats.pendingRequests})
+                <FiClock className='w-3.5 h-3.5 mr-1.5' /> {pendingStatus} (
+                {getRequestStats.pendingRequests})
               </TabsTrigger>
               <TabsTrigger
                 value='APPROVED'
                 className='text-xs py-2 px-3 data-[state=active]:bg-green-50 data-[state=active]:text-green-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiCheckCircle className='w-3.5 h-3.5 mr-1.5' />
-                Approved ({getRequestStats.approvedRequests})
+                <FiCheckCircle className='w-3.5 h-3.5 mr-1.5' />{" "}
+                {approvedStatus} ({getRequestStats.approvedRequests})
               </TabsTrigger>
               <TabsTrigger
                 value='REJECTED'
                 className='text-xs py-2 px-3 data-[state=active]:bg-red-50 data-[state=active]:text-red-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiXCircle className='w-3.5 h-3.5 mr-1.5' />
-                Rejected ({getRequestStats.rejectedRequests})
+                <FiXCircle className='w-3.5 h-3.5 mr-1.5' /> {rejectedStatus} (
+                {getRequestStats.rejectedRequests})
               </TabsTrigger>
               <TabsTrigger
                 value='PAID'
                 className='text-xs py-2 px-3 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiCheckCircle className='w-3.5 h-3.5 mr-1.5' />
-                Paid ({getRequestStats.paidRequests})
+                <FiCheckCircle className='w-3.5 h-3.5 mr-1.5' /> Paid (
+                {getRequestStats.paidRequests})
               </TabsTrigger>
               <TabsTrigger
                 value='STATISTICS'
                 className='text-xs py-2 px-3 data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 data-[state=active]:shadow-none rounded-md'
               >
-                <FiFilePlus className='w-3.5 h-3.5 mr-1.5' />
-                Statistics
+                <FiFilePlus className='w-3.5 h-3.5 mr-1.5' /> Statistics
               </TabsTrigger>
             </TabsList>
           </div>
@@ -1264,17 +1265,15 @@ export default function InternalFundRequestPage({
                 <div className='bg-white rounded-lg shadow-sm border'>
                   {currentTabData.length === 0 ? (
                     <div className='flex flex-col items-center justify-center py-16'>
-                      <div className='text-center'>
-                        <FiDollarSign className='mx-auto h-12 w-12 text-gray-400 mb-3' />
-                        <h3 className='text-base font-medium text-gray-900'>
-                          No fund requests found
-                        </h3>
-                        <p className='mt-1 text-sm text-gray-500'>
-                          {searchText || statusFilter !== "ALL"
-                            ? "Try adjusting your search or filter terms"
-                            : "Add your first fund request using the button above"}
-                        </p>
-                      </div>
+                      <FiDollarSign className='mx-auto h-12 w-12 text-gray-400 mb-3' />
+                      <h3 className='text-base font-medium text-gray-900'>
+                        No fund requests found
+                      </h3>
+                      <p className='mt-1 text-sm text-gray-500'>
+                        {searchText || statusFilter !== "ALL"
+                          ? "Try adjusting your search or filter terms"
+                          : "Add your first fund request using the button above"}
+                      </p>
                     </div>
                   ) : (
                     <AppDataTable
