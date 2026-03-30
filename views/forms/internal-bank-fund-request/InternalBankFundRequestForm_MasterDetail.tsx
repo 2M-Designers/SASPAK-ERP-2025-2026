@@ -271,6 +271,7 @@ export default function InternalBankFundRequestForm({
   const { toast } = useToast();
 
   const amountInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const jobSelectRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   const masterApprovalStatus = deriveMasterStatus(lineItems, pendingStatus);
@@ -727,9 +728,10 @@ export default function InternalBankFundRequestForm({
       subRequestStatus: pendingStatus,
     };
     setLineItems((prev) => [...prev, newItem]);
+    // Focus the Job Number select trigger of the newly added row
     setTimeout(() => {
-      amountInputRefs.current[lineItems.length]?.focus();
-    }, 100);
+      jobSelectRefs.current[lineItems.length]?.focus();
+    }, 120);
   };
 
   const removeLineItem = (id: string, index: number) => {
@@ -755,8 +757,11 @@ export default function InternalBankFundRequestForm({
   ) => {
     if (e.key === "Enter" || e.key === "ArrowDown") {
       e.preventDefault();
-      if (index === lineItems.length - 1) addLineItem();
-      else amountInputRefs.current[index + 1]?.focus();
+      if (index === lineItems.length - 1) {
+        addLineItem(); // focuses the new row's job select
+      } else {
+        jobSelectRefs.current[index + 1]?.focus();
+      }
     }
     if (e.key === "ArrowUp" && index > 0) {
       e.preventDefault();
@@ -915,6 +920,8 @@ export default function InternalBankFundRequestForm({
             item.onAccountOfId && item.onAccountOfId > 0
               ? item.onAccountOfId
               : null,
+          // Send "" on create — API rejects any non-empty status when requestedTo
+          // differs from requestorUserId, treating it as already processed.
           subRequestStatus: type === "edit" ? item.subRequestStatus : "",
           remarks: item.remarks || "",
           version: 0,
@@ -1048,7 +1055,14 @@ export default function InternalBankFundRequestForm({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <form onSubmit={handleSubmit} className='space-y-4'>
+    <form
+      onSubmit={handleSubmit}
+      className='space-y-4'
+      onKeyDown={(e) => {
+        // Only Ctrl+Enter / Cmd+Enter should submit; plain Enter stays in the field
+        if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) e.preventDefault();
+      }}
+    >
       <style jsx global>{`
         .bank-fund-table-wrapper::-webkit-scrollbar {
           width: 14px;
@@ -1356,6 +1370,18 @@ export default function InternalBankFundRequestForm({
                       const isRejected =
                         item.subRequestStatus === rejectedStatus;
 
+                      const resolvedOnAccountName = (() => {
+                        if (!item.onAccountOfId) return "";
+                        if (item.onAccountOfId === COMPANY_PARTY.partyId)
+                          return COMPANY_PARTY.partyName;
+                        return (
+                          parties.find((p) => p.partyId === item.onAccountOfId)
+                            ?.partyName ||
+                          item.onAccountOfName ||
+                          ""
+                        );
+                      })();
+
                       return (
                         <TableRow
                           key={item.id}
@@ -1374,7 +1400,10 @@ export default function InternalBankFundRequestForm({
                                 handleLineJobChange(item.id, v)
                               }
                             >
-                              <SelectTrigger className='h-9 text-sm'>
+                              <SelectTrigger
+                                className='h-9 text-sm'
+                                data-index={index}
+                              >
                                 <SelectValue placeholder='Optional'>
                                   {item.jobNumber || "Optional"}
                                 </SelectValue>
@@ -1580,7 +1609,9 @@ export default function InternalBankFundRequestForm({
                               }
                             >
                               <SelectTrigger className='h-9 text-sm'>
-                                <SelectValue placeholder='Select party' />
+                                <SelectValue placeholder='Select party'>
+                                  {resolvedOnAccountName || undefined}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectContent
                                 className='max-h-[300px] w-[280px]'
