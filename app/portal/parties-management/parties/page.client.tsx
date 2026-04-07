@@ -25,11 +25,10 @@ import {
   FiUpload,
   FiSearch,
   FiX,
-  FiFilter,
 } from "react-icons/fi";
+import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   Tooltip,
   TooltipContent,
@@ -61,12 +60,9 @@ import autoTable from "jspdf-autotable";
 import moment from "moment";
 import { useToast } from "@/hooks/use-toast";
 
-type PartiesPageProps = {
-  initialData?: any[];
-};
+type PartiesPageProps = { initialData?: any[] };
 
-// Static field configuration for Parties
-// Each entry maps: fieldName (camelCase from API response) -> displayName -> apiKey (PascalCase for POST body)
+// ─── Field config ─────────────────────────────────────────────────────────────
 const fieldConfig = [
   {
     fieldName: "partyId",
@@ -574,51 +570,37 @@ const fieldConfig = [
   },
 ];
 
-// Get only displayed fields for the table / Excel export
 const displayedFields = fieldConfig.filter(
-  (field) => field.isdisplayed && field.isselected,
+  (f) => f.isdisplayed && f.isselected,
 );
 
-// ─── Type conversion helpers ──────────────────────────────────────────────────
-
-/** Reliably parse any Excel cell value into a true boolean */
-const parseBool = (value: any): boolean => {
-  if (typeof value === "boolean") return value;
-  if (value === null || value === undefined) return false;
-  const str = String(value).trim().toLowerCase();
-  return str === "true" || str === "yes" || str === "1";
-};
-
-/** Parse any Excel cell value into an integer (0 when empty/invalid) */
-const parseInt_ = (value: any): number => {
-  if (value === null || value === undefined || value === "") return 0;
-  const n = parseInt(String(value), 10);
+// ─── Type helpers ─────────────────────────────────────────────────────────────
+const parseBool = (v: any) =>
+  typeof v === "boolean"
+    ? v
+    : ["true", "yes", "1"].includes(String(v).trim().toLowerCase());
+const parseInt_ = (v: any) => {
+  const n = parseInt(String(v ?? ""), 10);
   return isNaN(n) ? 0 : n;
 };
-
-/** Parse any Excel cell value into a decimal (0 when empty/invalid) */
-const parseDecimal = (value: any): number => {
-  if (value === null || value === undefined || value === "") return 0;
-  const n = parseFloat(String(value));
+const parseDecimal = (v: any) => {
+  const n = parseFloat(String(v ?? ""));
   return isNaN(n) ? 0 : n;
 };
-
-/** Convert a raw Excel cell value according to the field's declared type */
-const convertValue = (value: any, type: string): any => {
-  switch (type) {
+const convertValue = (v: any, t: string) => {
+  switch (t) {
     case "bool":
-      return parseBool(value);
+      return parseBool(v);
     case "int":
-      return parseInt_(value);
+      return parseInt_(v);
     case "decimal":
-      return parseDecimal(value);
+      return parseDecimal(v);
     default:
-      return value !== null && value !== undefined ? String(value) : "";
+      return v != null ? String(v) : "";
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function PartiesPage({ initialData }: PartiesPageProps) {
   const [data, setData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -629,15 +611,16 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
     {},
   );
+  const [fetchingPartyId, setFetchingPartyId] = useState<number | null>(null); // ← per-row loading
   const router = useRouter();
   const { toast } = useToast();
 
-  // ── Fetch parties ──────────────────────────────────────────────────────────
+  // ── Fetch list ──────────────────────────────────────────────────────────────
   const fetchParties = async () => {
     setIsLoading(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Party/GetList`, {
+      const res = await fetch(`${baseUrl}Party/GetList`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -649,15 +632,9 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
           pageSize: "1000",
         }),
       });
-
-      if (response.ok) {
-        const result = await response.json();
-        setData(result);
-      } else {
-        throw new Error("Failed to fetch parties");
-      }
-    } catch (error) {
-      console.error("Error fetching parties:", error);
+      if (res.ok) setData(await res.json());
+      else throw new Error("Failed to fetch parties");
+    } catch {
       toast({
         variant: "destructive",
         title: "Error",
@@ -669,39 +646,57 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
   };
 
   useEffect(() => {
-    if (initialData && Array.isArray(initialData)) {
-      setData(initialData);
-    } else {
-      fetchParties();
-    }
+    if (initialData && Array.isArray(initialData)) setData(initialData);
+    else fetchParties();
   }, []);
 
-  // ── Search ─────────────────────────────────────────────────────────────────
-  const searchInItem = (item: any, searchTerm: string) => {
-    if (!searchTerm) return true;
-    const searchLower = searchTerm.toLowerCase();
-    const searchableFields = [
-      item.partyId?.toString(),
-      item.partyCode?.toString(),
-      item.partyName?.toString(),
-      item.partyShortName?.toString(),
-      item.email?.toString(),
-      item.phone?.toString(),
-      item.contactPersonName?.toString(),
-      item.contactPersonEmail?.toString(),
-      item.contactPersonPhone?.toString(),
-      item.addressLine1?.toString(),
-      item.addressLine2?.toString(),
-      item.ntnNumber?.toString(),
-      item.strnNumber?.toString(),
-      item.bankName?.toString(),
-    ];
-    return searchableFields.some(
-      (field) => field && field.toLowerCase().includes(searchLower),
-    );
+  // ── Fetch full party record for edit ────────────────────────────────────────
+  const handleEditClick = async (partyId: number) => {
+    setFetchingPartyId(partyId);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const res = await fetch(`${baseUrl}Party/${partyId}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const fullParty = await res.json();
+      setSelectedParty(fullParty);
+      setShowForm(true);
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load party details. Please try again.",
+      });
+    } finally {
+      setFetchingPartyId(null);
+    }
   };
 
-  // ── Tab data helpers ───────────────────────────────────────────────────────
+  // ── Search ──────────────────────────────────────────────────────────────────
+  const searchInItem = (item: any, term: string) => {
+    if (!term) return true;
+    const t = term.toLowerCase();
+    return [
+      item.partyId,
+      item.partyCode,
+      item.partyName,
+      item.partyShortName,
+      item.email,
+      item.phone,
+      item.contactPersonName,
+      item.contactPersonEmail,
+      item.contactPersonPhone,
+      item.addressLine1,
+      item.addressLine2,
+      item.ntnNumber,
+      item.strnNumber,
+      item.bankName,
+    ].some((f) => f?.toString().toLowerCase().includes(t));
+  };
+
+  // ── Tab helpers ─────────────────────────────────────────────────────────────
   const getAllParties = () => data || [];
   const getActiveParties = () => data?.filter((i) => i.isActive) || [];
   const getCustomers = () => data?.filter((i) => i.isCustomer) || [];
@@ -731,34 +726,20 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
   };
 
   const getCurrentTabData = () => {
-    let tabData: any[] = [];
-    switch (activeTab) {
-      case "ALL_PARTIES":
-        tabData = getAllParties();
-        break;
-      case "ACTIVE":
-        tabData = getActiveParties();
-        break;
-      case "CUSTOMERS":
-        tabData = getCustomers();
-        break;
-      case "VENDORS":
-        tabData = getVendors();
-        break;
-      case "AGENTS":
-        tabData = getAgents();
-        break;
-      case "LOGISTICS":
-        tabData = getLogisticsParties();
-        break;
-      default:
-        tabData = getAllParties();
-    }
-    return tabData.filter((item: any) => searchInItem(item, searchText));
+    const map: Record<string, any[]> = {
+      ALL_PARTIES: getAllParties(),
+      ACTIVE: getActiveParties(),
+      CUSTOMERS: getCustomers(),
+      VENDORS: getVendors(),
+      AGENTS: getAgents(),
+      LOGISTICS: getLogisticsParties(),
+    };
+    return (map[activeTab] ?? getAllParties()).filter((i) =>
+      searchInItem(i, searchText),
+    );
   };
 
   const getGroupedParties = () => {
-    const parties = getCurrentTabData();
     const grouped: Record<string, any[]> = {
       Customers: [],
       Vendors: [],
@@ -767,63 +748,68 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       Transporters: [],
       "Other Parties": [],
     };
-    parties.forEach((party: any) => {
-      if (party.isCustomer) grouped["Customers"].push(party);
-      else if (party.isVendor) grouped["Vendors"].push(party);
-      else if (party.isAgent || party.isOverseasAgent)
-        grouped["Agents"].push(party);
-      else if (party.isShippingLine) grouped["Shipping Lines"].push(party);
-      else if (party.isTransporter) grouped["Transporters"].push(party);
-      else grouped["Other Parties"].push(party);
+    getCurrentTabData().forEach((p) => {
+      if (p.isCustomer) grouped["Customers"].push(p);
+      else if (p.isVendor) grouped["Vendors"].push(p);
+      else if (p.isAgent || p.isOverseasAgent) grouped["Agents"].push(p);
+      else if (p.isShippingLine) grouped["Shipping Lines"].push(p);
+      else if (p.isTransporter) grouped["Transporters"].push(p);
+      else grouped["Other Parties"].push(p);
     });
-    Object.keys(grouped).forEach((key) => {
-      if (grouped[key].length === 0) delete grouped[key];
+    Object.keys(grouped).forEach((k) => {
+      if (!grouped[k].length) delete grouped[k];
     });
     return grouped;
   };
 
-  // ── Columns ────────────────────────────────────────────────────────────────
+  // ── Columns ─────────────────────────────────────────────────────────────────
   const columns: ColumnDef<any>[] = [
     {
       accessorKey: "actions",
       header: "Actions",
-      cell: ({ row }) => (
-        <div className='flex gap-1.5'>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className='p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors'
-                  onClick={() => {
-                    setSelectedParty(row.original);
-                    setShowForm(true);
-                  }}
-                >
-                  <FiEdit size={14} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className='text-xs'>Edit Party</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className='p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors'
-                  onClick={() => handleDelete(row.original)}
-                >
-                  <FiTrash2 size={14} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className='text-xs'>Delete Party</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const party = row.original;
+        const isFetching = fetchingPartyId === party.partyId;
+        return (
+          <div className='flex gap-1.5'>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    disabled={isFetching}
+                    className='p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-40'
+                    onClick={() => handleEditClick(party.partyId)}
+                  >
+                    {isFetching ? (
+                      <Loader2 size={14} className='animate-spin' />
+                    ) : (
+                      <FiEdit size={14} />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className='text-xs'>Edit Party</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className='p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors'
+                    onClick={() => handleDelete(party)}
+                  >
+                    <FiTrash2 size={14} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className='text-xs'>Delete Party</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        );
+      },
       enableColumnFilter: false,
     },
     {
@@ -898,7 +884,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       accessorKey: "partyTypes",
       header: "Party Types",
       cell: ({ row }) => {
-        const types = [];
+        const types: string[] = [];
         if (row.original.isCustomer) types.push("Customer");
         if (row.original.isVendor) types.push("Vendor");
         if (row.original.isAgent) types.push("Agent");
@@ -917,12 +903,12 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
         if (row.original.isInLogistics) types.push("Logistics");
         return (
           <div className='flex flex-wrap gap-1'>
-            {types.slice(0, 2).map((type, index) => (
+            {types.slice(0, 2).map((t, i) => (
               <span
-                key={index}
+                key={i}
                 className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200'
               >
-                {type}
+                {t}
               </span>
             ))}
             {types.length > 2 && (
@@ -939,15 +925,13 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       accessorKey: "creditInfo",
       header: "Credit Info",
       cell: ({ row }) => {
-        const creditLimit = row.original.creditLimitLC;
-        const creditDays = row.original.allowedCreditDays;
+        const cl = row.original.creditLimitLC;
+        const cd = row.original.allowedCreditDays;
         return (
           <div className='text-xs text-gray-600'>
-            {creditLimit ? (
-              <div className='font-medium'>LC: {creditLimit}</div>
-            ) : null}
-            {creditDays ? <div>Days: {creditDays}</div> : null}
-            {!creditLimit && !creditDays ? "-" : null}
+            {cl ? <div className='font-medium'>LC: {cl}</div> : null}
+            {cd ? <div>Days: {cd}</div> : null}
+            {!cl && !cd ? "-" : null}
           </div>
         );
       },
@@ -970,273 +954,213 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     },
   ];
 
-  // ── Excel export ───────────────────────────────────────────────────────────
+  // ── Excel helpers ──────────────────────────────────────────────────────────
   const downloadExcelWithData = (dataToExport: any[], tabName: string) => {
-    if (!dataToExport || dataToExport.length === 0) {
+    if (!dataToExport?.length) {
       alert("No data to export");
       return;
     }
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet(`${tabName}`);
-    worksheet.addRow(displayedFields.map((f) => f.displayName));
-    dataToExport.forEach((party: any) => {
-      const row = displayedFields.map((field) => {
-        const value = party[field.fieldName];
-        if (field.fieldName === "createdAt" || field.fieldName === "updatedAt")
-          return value ? new Date(value) : "";
-        if (typeof value === "boolean") return value ? "Yes" : "No";
-        return value ?? "";
-      });
-      worksheet.addRow(row);
-    });
-    worksheet.columns = worksheet.columns.map((col) => ({ ...col, width: 15 }));
-    workbook.xlsx.writeBuffer().then((buffer: any) => {
-      saveAs(new Blob([buffer]), `${tabName}_Parties.xlsx`);
-    });
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(tabName);
+    ws.addRow(displayedFields.map((f) => f.displayName));
+    dataToExport.forEach((p) =>
+      ws.addRow(
+        displayedFields.map((field) => {
+          const v = p[field.fieldName];
+          if (typeof v === "boolean") return v ? "Yes" : "No";
+          return v ?? "";
+        }),
+      ),
+    );
+    ws.columns = ws.columns.map((c) => ({ ...c, width: 15 }));
+    wb.xlsx
+      .writeBuffer()
+      .then((buf: any) => saveAs(new Blob([buf]), `${tabName}_Parties.xlsx`));
   };
 
   const downloadSampleExcel = () => {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("SampleParties");
-    worksheet.addRow(displayedFields.map((f) => f.displayName));
-    const sampleRow = displayedFields.map((field) => {
-      switch (field.fieldName) {
-        case "partyCode":
-          return "PTY001";
-        case "partyName":
-          return "ABC Trading Company";
-        case "partyShortName":
-          return "ABC Trading";
-        case "isActive":
-          return "Yes";
-        case "isCustomer":
-          return "Yes";
-        case "isVendor":
-          return "No";
-        case "email":
-          return "contact@abctrading.com";
-        case "phone":
-          return "+1234567890";
-        case "contactPersonName":
-          return "John Smith";
-        case "contactPersonDesignation":
-          return "Manager";
-        case "addressLine1":
-          return "123 Main Street";
-        case "creditLimitLC":
-          return "50000";
-        case "allowedCreditDays":
-          return "30";
-        default:
-          return field.type === "bool" ? "No" : `Sample ${field.displayName}`;
-      }
-    });
-    worksheet.addRow(sampleRow);
-    worksheet.columns = worksheet.columns.map((col) => ({ ...col, width: 15 }));
-    workbook.xlsx.writeBuffer().then((buffer: any) => {
-      saveAs(new Blob([buffer]), "SampleFile_Parties.xlsx");
-    });
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("SampleParties");
+    ws.addRow(displayedFields.map((f) => f.displayName));
+    ws.addRow(
+      displayedFields.map((field) => {
+        switch (field.fieldName) {
+          case "partyCode":
+            return "PTY001";
+          case "partyName":
+            return "ABC Trading Company";
+          case "partyShortName":
+            return "ABC Trading";
+          case "isActive":
+            return "Yes";
+          case "isCustomer":
+            return "Yes";
+          case "email":
+            return "contact@abctrading.com";
+          case "phone":
+            return "+1234567890";
+          case "contactPersonName":
+            return "John Smith";
+          case "addressLine1":
+            return "123 Main Street";
+          case "creditLimitLC":
+            return "50000";
+          case "allowedCreditDays":
+            return "30";
+          default:
+            return field.type === "bool" ? "No" : `Sample ${field.displayName}`;
+        }
+      }),
+    );
+    ws.columns = ws.columns.map((c) => ({ ...c, width: 15 }));
+    wb.xlsx
+      .writeBuffer()
+      .then((buf: any) => saveAs(new Blob([buf]), "SampleFile_Parties.xlsx"));
   };
 
-  // ── Excel import ───────────────────────────────────────────────────────────
-
-  /**
-   * Build a lookup map:  displayName (lower-trimmed) → fieldConfig entry
-   * This lets us match Excel column headers to field definitions regardless
-   * of column order or whether the user uses an old/new sample template.
-   */
-  const buildHeaderMap = (): Record<string, (typeof fieldConfig)[0]> => {
+  // ── Import ─────────────────────────────────────────────────────────────────
+  const buildHeaderMap = () => {
     const map: Record<string, (typeof fieldConfig)[0]> = {};
-    fieldConfig.forEach((field) => {
-      map[field.displayName.trim().toLowerCase()] = field;
+    fieldConfig.forEach((f) => {
+      map[f.displayName.trim().toLowerCase()] = f;
     });
     return map;
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!event.target.files?.[0]) return;
-    const file = event.target.files[0];
-
-    readXlsxFile(file).then((rows: any[][]) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+    readXlsxFile(e.target.files[0]).then((rows: any[][]) => {
       if (!rows || rows.length < 2) {
         toast({
           variant: "destructive",
           title: "Empty File",
-          description: "The uploaded file has no data rows.",
+          description: "No data rows found.",
         });
         return;
       }
-
-      // Row 0 → header labels, Row 1+ → data
-      const headerRow: string[] = rows[0].map((h: any) =>
+      const headerRow = rows[0].map((h: any) =>
         h != null ? String(h).trim().toLowerCase() : "",
       );
-      const dataRows = rows.slice(1).filter((row) =>
-        // Skip completely empty rows
-        row.some((cell) => cell !== null && cell !== undefined && cell !== ""),
-      );
-
-      if (dataRows.length === 0) {
+      const dataRows = rows
+        .slice(1)
+        .filter((row) => row.some((c) => c != null && c !== ""));
+      if (!dataRows.length) {
         toast({
           variant: "destructive",
           title: "No Data",
-          description: "No data rows found in the file after the header.",
+          description: "No data rows after header.",
         });
         return;
       }
-
       setIsLoading(true);
       insertData(headerRow, dataRows);
     });
-
-    // Reset so the same file can be re-uploaded
-    event.target.value = "";
+    e.target.value = "";
   };
 
   const insertData = async (headerRow: string[], dataRows: any[][]) => {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
     const headerMap = buildHeaderMap();
-    let successCount = 0;
-    let failCount = 0;
-
+    let success = 0,
+      fail = 0;
     try {
       await Promise.all(
         dataRows.map(async (row) => {
-          // ── Build dto by matching each column header to its field ──────────
           const dto: Record<string, any> = {};
-
-          // Default all fields to safe zero/false/empty values first
-          fieldConfig.forEach((field) => {
-            switch (field.type) {
-              case "bool":
-                dto[field.apiKey] = false;
-                break;
-              case "int":
-                dto[field.apiKey] = 0;
-                break;
-              case "decimal":
-                dto[field.apiKey] = 0;
-                break;
-              default:
-                dto[field.apiKey] = "";
-                break;
-            }
+          fieldConfig.forEach((f) => {
+            dto[f.apiKey] =
+              f.type === "bool"
+                ? false
+                : f.type === "int" || f.type === "decimal"
+                  ? 0
+                  : "";
           });
-
-          // Override with actual Excel values, matched by column header name
-          headerRow.forEach((header, colIndex) => {
-            const fieldDef = headerMap[header];
-            if (!fieldDef) return; // unknown column — skip gracefully
-
-            const rawValue = colIndex < row.length ? row[colIndex] : null;
-            dto[fieldDef.apiKey] = convertValue(rawValue, fieldDef.type);
+          headerRow.forEach((header, idx) => {
+            const def = headerMap[header];
+            if (def)
+              dto[def.apiKey] = convertValue(
+                idx < row.length ? row[idx] : null,
+                def.type,
+              );
           });
-
-          // Always treat as a new record
           dto["PartyId"] = 0;
-
-          // ── Log the dto for debugging ──────────────────────────────────────
-          console.log("Importing party dto:", JSON.stringify(dto, null, 2));
-
           try {
-            const response = await fetch(`${baseUrl}Party`, {
+            const res = await fetch(`${baseUrl}Party`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ dto }),
+              body: JSON.stringify(dto),
             });
-
-            if (response.ok) {
-              successCount++;
-            } else {
-              failCount++;
-              const errText = await response.text();
-              console.error(
-                `Failed to import row (${dto["PartyCode"] || "unknown"}):`,
-                errText,
-              );
+            if (res.ok) success++;
+            else {
+              fail++;
+              console.error("Import fail:", await res.text());
             }
           } catch (err) {
-            failCount++;
-            console.error(
-              `Exception importing row (${dto["PartyCode"] || "unknown"}):`,
-              err,
-            );
+            fail++;
+            console.error("Import exception:", err);
           }
         }),
       );
-
       setIsLoading(false);
-
-      if (failCount === 0) {
+      if (fail === 0)
         toast({
           title: "Import Successful",
-          description: `${successCount} ${successCount === 1 ? "party" : "parties"} imported successfully.`,
+          description: `${success} ${success === 1 ? "party" : "parties"} imported.`,
         });
-      } else {
+      else
         toast({
           variant: "destructive",
           title: "Partial Import",
-          description: `${successCount} imported, ${failCount} failed. Check the browser console for details.`,
+          description: `${success} imported, ${fail} failed.`,
         });
-      }
-
       fetchParties();
-    } catch (error) {
+    } catch {
       setIsLoading(false);
       toast({
         variant: "destructive",
         title: "Import Failed",
-        description: "Unexpected error during import. Check the console.",
+        description: "Unexpected error during import.",
       });
-      console.error("Error importing data:", error);
     }
   };
 
   // ── Delete ─────────────────────────────────────────────────────────────────
   const handleDelete = async (item: any) => {
-    if (confirm(`Are you sure you want to delete "${item.partyName}"?`)) {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        const response = await fetch(`${baseUrl}Party/${item.partyId}`, {
-          method: "DELETE",
-        });
-        if (response.ok) {
-          setData((prev: any) =>
-            prev.filter((record: any) => record.partyId !== item.partyId),
-          );
-          toast({
-            title: "Deleted",
-            description: "Party deleted successfully.",
-          });
-        } else {
-          throw new Error("Failed to delete Party");
-        }
-      } catch (error) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Error deleting Party. Please try again.",
-        });
-        console.error("Error deleting Party:", error);
-      }
+    if (!confirm(`Are you sure you want to delete "${item.partyName}"?`))
+      return;
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const res = await fetch(`${baseUrl}Party/${item.partyId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setData((prev) => prev.filter((r) => r.partyId !== item.partyId));
+        toast({ title: "Deleted", description: "Party deleted successfully." });
+      } else throw new Error();
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Error deleting Party. Please try again.",
+      });
     }
   };
 
-  // ── PDF export ─────────────────────────────────────────────────────────────
-  const getPartyTypes = (party: any) => {
-    const types = [];
-    if (party.isCustomer) types.push("Customer");
-    if (party.isVendor) types.push("Vendor");
-    if (party.isAgent) types.push("Agent");
-    if (party.isShippingLine) types.push("Shipping Line");
-    if (party.isTransporter) types.push("Transporter");
-    if (party.isOverseasAgent) types.push("Overseas Agent");
-    return types;
+  // ── PDF ─────────────────────────────────────────────────────────────────────
+  const getPartyTypes = (p: any) => {
+    const t: string[] = [];
+    if (p.isCustomer) t.push("Customer");
+    if (p.isVendor) t.push("Vendor");
+    if (p.isAgent) t.push("Agent");
+    if (p.isShippingLine) t.push("Shipping Line");
+    if (p.isTransporter) t.push("Transporter");
+    if (p.isOverseasAgent) t.push("Overseas Agent");
+    return t;
   };
 
   const downloadPDFWithData = (dataToExport: any[], tabName: string) => {
-    if (!dataToExport || dataToExport.length === 0) {
-      alert(`No data available to export for ${tabName}`);
+    if (!dataToExport?.length) {
+      alert(`No data for ${tabName}`);
       return;
     }
     try {
@@ -1248,31 +1172,29 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       doc.setTextColor(0, 0, 0);
       doc.text(`Export Date: ${new Date().toLocaleDateString()}`, 20, 30);
       doc.text(`Total Records: ${dataToExport.length}`, 20, 37);
-
-      const tableHeaders = [
-        "Code",
-        "Name",
-        "Short Name",
-        "Contact Person",
-        "Email",
-        "Phone",
-        "Types",
-        "Status",
-      ];
-      const tableData = dataToExport.map((item) => [
-        item.partyCode?.toString() || "N/A",
-        (item.partyName?.toString() || "N/A").substring(0, 25),
-        (item.partyShortName?.toString() || "N/A").substring(0, 15),
-        (item.contactPersonName?.toString() || "N/A").substring(0, 20),
-        (item.email?.toString() || "N/A").substring(0, 25),
-        item.phone?.toString() || "N/A",
-        getPartyTypes(item).join(", ").substring(0, 30),
-        item.isActive ? "Active" : "Inactive",
-      ]);
-
       autoTable(doc, {
-        head: [tableHeaders],
-        body: tableData,
+        head: [
+          [
+            "Code",
+            "Name",
+            "Short Name",
+            "Contact Person",
+            "Email",
+            "Phone",
+            "Types",
+            "Status",
+          ],
+        ],
+        body: dataToExport.map((i) => [
+          i.partyCode || "N/A",
+          (i.partyName || "N/A").substring(0, 25),
+          (i.partyShortName || "N/A").substring(0, 15),
+          (i.contactPersonName || "N/A").substring(0, 20),
+          (i.email || "N/A").substring(0, 25),
+          i.phone || "N/A",
+          getPartyTypes(i).join(", ").substring(0, 30),
+          i.isActive ? "Active" : "Inactive",
+        ]),
         startY: 45,
         theme: "striped",
         headStyles: {
@@ -1281,36 +1203,25 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
           fontStyle: "bold",
         },
         styles: { fontSize: 8, cellPadding: 2, overflow: "linebreak" },
-        columnStyles: {
-          0: { cellWidth: 20 },
-          1: { cellWidth: 30 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 25 },
-          4: { cellWidth: 30 },
-          5: { cellWidth: 20 },
-          6: { cellWidth: 35 },
-          7: { cellWidth: 15 },
-        },
       });
       doc.save(`${tabName}_Parties_${moment().format("YYYY-MM-DD")}.pdf`);
-    } catch (error) {
-      console.error("Error generating PDF:", error);
-      alert("Failed to generate PDF. Please check the console for details.");
+    } catch (e) {
+      console.error("PDF error:", e);
+      alert("Failed to generate PDF.");
     }
   };
 
-  // ── Add/Edit complete ──────────────────────────────────────────────────────
+  // ── Add/Edit complete ───────────────────────────────────────────────────────
   const handleAddEditComplete = () => {
     setShowForm(false);
     setSelectedParty(null);
     fetchParties();
   };
 
-  const toggleGroupExpansion = (groupKey: string) => {
-    setExpandedGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
-  };
+  const toggleGroupExpansion = (key: string) =>
+    setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // ── Statistics Component ───────────────────────────────────────────────────
+  // ── Stats ───────────────────────────────────────────────────────────────────
   const PartiesStatsPage = () => {
     const stats = getPartiesStats();
     const partyTypeData = [
@@ -1320,13 +1231,12 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       { name: "Shipping Lines", value: stats.shippingLines, color: "#ef4444" },
       { name: "Transporters", value: stats.transporters, color: "#8b5cf6" },
     ];
-    const operationTypeData = [
+    const opData = [
       { name: "Sea Import", value: stats.seaImportParties, color: "#3b82f6" },
       { name: "Sea Export", value: stats.seaExportParties, color: "#60a5fa" },
       { name: "Air Import", value: stats.airImportParties, color: "#ef4444" },
       { name: "Air Export", value: stats.airExportParties, color: "#f87171" },
     ];
-
     const exportStatsPDF = () => {
       const doc = new jsPDF();
       doc.setFontSize(20);
@@ -1336,29 +1246,18 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
       doc.setTextColor(0, 0, 0);
       doc.text(`Export Date: ${new Date().toLocaleDateString()}`, 20, 35);
       doc.text(`Total Parties: ${stats.totalParties}`, 20, 45);
-      doc.setFontSize(14);
-      doc.setTextColor(40, 116, 166);
-      doc.text("Statistics Summary", 20, 65);
-      doc.setFontSize(11);
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Active Parties: ${stats.activeParties}`, 30, 80);
-      doc.text(`Customers: ${stats.customers}`, 30, 90);
-      doc.text(`Vendors: ${stats.vendors}`, 30, 100);
-      doc.text(`Agents: ${stats.agents}`, 30, 110);
-      doc.text(`Shipping Lines: ${stats.shippingLines}`, 30, 120);
-      doc.text(`Transporters: ${stats.transporters}`, 30, 130);
-      doc.setFontSize(14);
-      doc.setTextColor(40, 116, 166);
-      doc.text("Operations Summary", 20, 150);
-      doc.setFontSize(11);
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Sea Import Parties: ${stats.seaImportParties}`, 30, 165);
-      doc.text(`Sea Export Parties: ${stats.seaExportParties}`, 30, 175);
-      doc.text(`Air Import Parties: ${stats.airImportParties}`, 30, 185);
-      doc.text(`Air Export Parties: ${stats.airExportParties}`, 30, 195);
+      [
+        ["Active Parties", stats.activeParties],
+        ["Customers", stats.customers],
+        ["Vendors", stats.vendors],
+        ["Agents", stats.agents],
+        ["Shipping Lines", stats.shippingLines],
+        ["Transporters", stats.transporters],
+      ].forEach(([label, val], i) => {
+        doc.text(`${label}: ${val}`, 30, 80 + i * 10);
+      });
       doc.save(`Parties_Statistics_${moment().format("YYYY-MM-DD")}.pdf`);
     };
-
     return (
       <div className='space-y-4'>
         <div className='flex justify-between items-center'>
@@ -1370,65 +1269,55 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
             size='sm'
             className='flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white'
           >
-            <FiDownload size={14} /> Export PDF Report
+            <FiDownload size={14} /> Export PDF
           </Button>
         </div>
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3'>
-          <Card className='border border-blue-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-blue-700 uppercase tracking-wide'>
-                Total Parties
-              </CardTitle>
-              <div className='text-2xl font-bold text-blue-900 mt-1'>
-                {stats.totalParties}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>
-                {stats.activeParties} active •{" "}
-                {stats.totalParties - stats.activeParties} inactive
-              </div>
-            </CardContent>
-          </Card>
-          <Card className='border border-green-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-green-700 uppercase tracking-wide'>
-                Customers
-              </CardTitle>
-              <div className='text-2xl font-bold text-green-900 mt-1'>
-                {stats.customers}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>Business clients</div>
-            </CardContent>
-          </Card>
-          <Card className='border border-orange-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-orange-700 uppercase tracking-wide'>
-                Vendors
-              </CardTitle>
-              <div className='text-2xl font-bold text-orange-900 mt-1'>
-                {stats.vendors}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>Service providers</div>
-            </CardContent>
-          </Card>
-          <Card className='border border-purple-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-purple-700 uppercase tracking-wide'>
-                Agents
-              </CardTitle>
-              <div className='text-2xl font-bold text-purple-900 mt-1'>
-                {stats.agents}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>Representatives</div>
-            </CardContent>
-          </Card>
+          {[
+            {
+              label: "Total Parties",
+              val: stats.totalParties,
+              sub: `${stats.activeParties} active`,
+              color: "blue",
+            },
+            {
+              label: "Customers",
+              val: stats.customers,
+              sub: "Business clients",
+              color: "green",
+            },
+            {
+              label: "Vendors",
+              val: stats.vendors,
+              sub: "Service providers",
+              color: "orange",
+            },
+            {
+              label: "Agents",
+              val: stats.agents,
+              sub: "Representatives",
+              color: "purple",
+            },
+          ].map(({ label, val, sub, color }) => (
+            <Card
+              key={label}
+              className={`border border-${color}-200 shadow-sm`}
+            >
+              <CardHeader className='pb-2 pt-3 px-4'>
+                <CardTitle
+                  className={`text-xs font-medium text-${color}-700 uppercase tracking-wide`}
+                >
+                  {label}
+                </CardTitle>
+                <div className={`text-2xl font-bold text-${color}-900 mt-1`}>
+                  {val}
+                </div>
+              </CardHeader>
+              <CardContent className='pt-0 pb-3 px-4'>
+                <div className='text-xs text-gray-600'>{sub}</div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
         <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
           <Card className='border shadow-sm'>
@@ -1450,8 +1339,8 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
                       paddingAngle={5}
                       dataKey='value'
                     >
-                      {partyTypeData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      {partyTypeData.map((e, i) => (
+                        <Cell key={i} fill={e.color} />
                       ))}
                     </Pie>
                     <RechartsTooltip />
@@ -1470,14 +1359,10 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
             <CardContent className='pt-0 pb-4 px-4'>
               <div className='h-64'>
                 <ResponsiveContainer width='100%' height='100%'>
-                  <BarChart data={operationTypeData}>
+                  <BarChart data={opData}>
                     <CartesianGrid strokeDasharray='3 3' stroke='#e5e7eb' />
-                    <XAxis
-                      dataKey='name'
-                      tick={{ fontSize: 11 }}
-                      stroke='#6b7280'
-                    />
-                    <YAxis tick={{ fontSize: 11 }} stroke='#6b7280' />
+                    <XAxis dataKey='name' tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
                     <RechartsTooltip />
                     <Bar dataKey='value' fill='#3b82f6' radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -1490,46 +1375,41 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     );
   };
 
-  // ── Render helpers ─────────────────────────────────────────────────────────
+  // ── Render helpers ──────────────────────────────────────────────────────────
+  const EmptyState = ({ term }: { term: string }) => (
+    <div className='flex flex-col items-center justify-center py-16'>
+      <FiUsers className='mx-auto h-12 w-12 text-gray-400 mb-3' />
+      <h3 className='text-base font-medium text-gray-900'>No parties found</h3>
+      <p className='mt-1 text-sm text-gray-500'>
+        {term
+          ? "Try adjusting your search terms"
+          : "Add your first party using the button above"}
+      </p>
+    </div>
+  );
+
   const renderCategorizedView = () => {
-    const groupedData = getGroupedParties();
-    if (Object.keys(groupedData).length === 0) {
-      return (
-        <div className='flex flex-col items-center justify-center py-16'>
-          <FiUsers className='mx-auto h-12 w-12 text-gray-400 mb-3' />
-          <h3 className='text-base font-medium text-gray-900'>
-            No parties found
-          </h3>
-          <p className='mt-1 text-sm text-gray-500'>
-            {searchText
-              ? "Try adjusting your search terms"
-              : "Add your first party using the button above"}
-          </p>
-        </div>
-      );
-    }
+    const grouped = getGroupedParties();
+    if (!Object.keys(grouped).length) return <EmptyState term={searchText} />;
     return (
       <div className='space-y-3'>
-        {Object.entries(groupedData).map(([groupKey, items]) => (
-          <Card key={groupKey} className='border shadow-sm'>
+        {Object.entries(grouped).map(([key, items]) => (
+          <Card key={key} className='border shadow-sm'>
             <Collapsible
-              open={expandedGroups[groupKey]}
-              onOpenChange={() => toggleGroupExpansion(groupKey)}
+              open={expandedGroups[key]}
+              onOpenChange={() => toggleGroupExpansion(key)}
             >
               <CollapsibleTrigger asChild>
                 <CardHeader className='cursor-pointer hover:bg-gray-50 transition-colors py-3 px-4'>
                   <div className='flex items-center justify-between'>
                     <CardTitle className='text-sm font-semibold text-gray-900'>
-                      {groupKey}
+                      {key}
                     </CardTitle>
                     <div className='flex items-center gap-2'>
-                      <Badge
-                        variant='outline'
-                        className='text-xs px-2 py-0.5 font-medium'
-                      >
-                        {items.length} party{items.length !== 1 ? "ies" : ""}
+                      <Badge variant='outline' className='text-xs px-2 py-0.5'>
+                        {items.length} part{items.length !== 1 ? "ies" : "y"}
                       </Badge>
-                      {expandedGroups[groupKey] ? (
+                      {expandedGroups[key] ? (
                         <FiChevronDown className='h-4 w-4 text-gray-500' />
                       ) : (
                         <FiChevronRight className='h-4 w-4 text-gray-500' />
@@ -1558,25 +1438,11 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
   };
 
   const renderTableView = () => {
-    const currentData = getCurrentTabData();
-    if (!currentData || currentData.length === 0) {
-      return (
-        <div className='flex flex-col items-center justify-center py-16'>
-          <FiUsers className='mx-auto h-12 w-12 text-gray-400 mb-3' />
-          <h3 className='text-base font-medium text-gray-900'>
-            No parties found
-          </h3>
-          <p className='mt-1 text-sm text-gray-500'>
-            {searchText
-              ? "Try adjusting your search terms"
-              : "Add your first party using the button above"}
-          </p>
-        </div>
-      );
-    }
+    const d = getCurrentTabData();
+    if (!d?.length) return <EmptyState term={searchText} />;
     return (
       <AppDataTable
-        data={currentData}
+        data={d}
         loading={false}
         columns={columns}
         searchText={searchText}
@@ -1586,7 +1452,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     );
   };
 
-  // ── Show form ──────────────────────────────────────────────────────────────
+  // ── Show form ───────────────────────────────────────────────────────────────
   if (showForm) {
     return (
       <div className='p-4 bg-gray-50 min-h-screen'>
@@ -1600,8 +1466,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
             }}
             className='mb-3 gap-1.5'
           >
-            <FiArrowLeft className='h-3.5 w-3.5' />
-            Back to Parties List
+            <FiArrowLeft className='h-3.5 w-3.5' /> Back to Parties List
           </Button>
           <div className='bg-white rounded-lg shadow-sm border p-4'>
             <PartiesForm
@@ -1617,7 +1482,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
 
   const currentTabData = getCurrentTabData();
 
-  // ── Main render ────────────────────────────────────────────────────────────
+  // ── Main render ─────────────────────────────────────────────────────────────
   return (
     <div className='p-4 bg-gray-50 min-h-screen'>
       <div className='max-w-7xl mx-auto'>
@@ -1641,7 +1506,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
             >
               <FiRefreshCw
                 className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`}
-              />
+              />{" "}
               Refresh
             </Button>
             <Button
@@ -1652,34 +1517,31 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
               size='sm'
               className='bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5'
             >
-              <FiUsers className='h-3.5 w-3.5' />
-              Add New Party
+              <FiUsers className='h-3.5 w-3.5' /> Add New Party
             </Button>
           </div>
         </div>
 
-        {/* Search & Actions Bar */}
+        {/* Search & Actions */}
         <div className='bg-white rounded-lg shadow-sm border p-3 mb-4'>
           <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-3'>
-            <div className='flex items-center gap-2 flex-1 w-full md:w-auto'>
-              <div className='relative flex-1 max-w-md'>
-                <FiSearch className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
-                <Input
-                  type='text'
-                  placeholder='Search by code, name, email, phone...'
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  className='pl-9 pr-9 py-1.5 text-sm h-9'
-                />
-                {searchText && (
-                  <button
-                    onClick={() => setSearchText("")}
-                    className='absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600'
-                  >
-                    <FiX className='h-4 w-4' />
-                  </button>
-                )}
-              </div>
+            <div className='relative flex-1 max-w-md'>
+              <FiSearch className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400' />
+              <Input
+                type='text'
+                placeholder='Search by code, name, email, phone...'
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className='pl-9 pr-9 py-1.5 text-sm h-9'
+              />
+              {searchText && (
+                <button
+                  onClick={() => setSearchText("")}
+                  className='absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'
+                >
+                  <FiX className='h-4 w-4' />
+                </button>
+              )}
             </div>
             <div className='flex gap-2 items-center'>
               <Button
@@ -1688,25 +1550,21 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
                 className='flex items-center gap-1.5 text-xs'
                 variant='outline'
               >
-                <FiDownload className='h-3.5 w-3.5' />
-                Sample File
+                <FiDownload className='h-3.5 w-3.5' /> Sample File
               </Button>
-              <div className='flex items-center gap-2'>
-                <label
-                  htmlFor='file-upload'
-                  className='cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors'
-                >
-                  <FiUpload className='h-3.5 w-3.5' />
-                  Import Excel
-                </label>
-                <Input
-                  id='file-upload'
-                  type='file'
-                  accept='.xlsx'
-                  onChange={handleFileUpload}
-                  className='hidden'
-                />
-              </div>
+              <label
+                htmlFor='file-upload'
+                className='cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors'
+              >
+                <FiUpload className='h-3.5 w-3.5' /> Import Excel
+              </label>
+              <Input
+                id='file-upload'
+                type='file'
+                accept='.xlsx'
+                onChange={handleFileUpload}
+                className='hidden'
+              />
             </div>
           </div>
         </div>
@@ -1720,54 +1578,59 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
         >
           <div className='bg-white rounded-lg shadow-sm border p-1'>
             <TabsList className='grid w-full grid-cols-7 gap-1 bg-transparent h-auto p-0'>
-              <TabsTrigger
-                value='ALL_PARTIES'
-                className='text-xs py-2 px-3 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiUsers className='w-3.5 h-3.5 mr-1.5' /> All (
-                {getAllParties().length})
-              </TabsTrigger>
-              <TabsTrigger
-                value='ACTIVE'
-                className='text-xs py-2 px-3 data-[state=active]:bg-green-50 data-[state=active]:text-green-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiBriefcase className='w-3.5 h-3.5 mr-1.5' /> Active (
-                {getActiveParties().length})
-              </TabsTrigger>
-              <TabsTrigger
-                value='CUSTOMERS'
-                className='text-xs py-2 px-3 data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiUsers className='w-3.5 h-3.5 mr-1.5' /> Customers (
-                {getCustomers().length})
-              </TabsTrigger>
-              <TabsTrigger
-                value='VENDORS'
-                className='text-xs py-2 px-3 data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiBriefcase className='w-3.5 h-3.5 mr-1.5' /> Vendors (
-                {getVendors().length})
-              </TabsTrigger>
-              <TabsTrigger
-                value='AGENTS'
-                className='text-xs py-2 px-3 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiUsers className='w-3.5 h-3.5 mr-1.5' /> Agents (
-                {getAgents().length})
-              </TabsTrigger>
-              <TabsTrigger
-                value='LOGISTICS'
-                className='text-xs py-2 px-3 data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiTruck className='w-3.5 h-3.5 mr-1.5' /> Logistics (
-                {getLogisticsParties().length})
-              </TabsTrigger>
-              <TabsTrigger
-                value='STATISTICS'
-                className='text-xs py-2 px-3 data-[state=active]:bg-pink-50 data-[state=active]:text-pink-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiFilePlus className='w-3.5 h-3.5 mr-1.5' /> Stats
-              </TabsTrigger>
+              {[
+                {
+                  value: "ALL_PARTIES",
+                  label: `All (${getAllParties().length})`,
+                  icon: <FiUsers className='w-3.5 h-3.5 mr-1.5' />,
+                  active: "blue",
+                },
+                {
+                  value: "ACTIVE",
+                  label: `Active (${getActiveParties().length})`,
+                  icon: <FiBriefcase className='w-3.5 h-3.5 mr-1.5' />,
+                  active: "green",
+                },
+                {
+                  value: "CUSTOMERS",
+                  label: `Customers (${getCustomers().length})`,
+                  icon: <FiUsers className='w-3.5 h-3.5 mr-1.5' />,
+                  active: "purple",
+                },
+                {
+                  value: "VENDORS",
+                  label: `Vendors (${getVendors().length})`,
+                  icon: <FiBriefcase className='w-3.5 h-3.5 mr-1.5' />,
+                  active: "orange",
+                },
+                {
+                  value: "AGENTS",
+                  label: `Agents (${getAgents().length})`,
+                  icon: <FiUsers className='w-3.5 h-3.5 mr-1.5' />,
+                  active: "indigo",
+                },
+                {
+                  value: "LOGISTICS",
+                  label: `Logistics (${getLogisticsParties().length})`,
+                  icon: <FiTruck className='w-3.5 h-3.5 mr-1.5' />,
+                  active: "teal",
+                },
+                {
+                  value: "STATISTICS",
+                  label: "Stats",
+                  icon: <FiFilePlus className='w-3.5 h-3.5 mr-1.5' />,
+                  active: "pink",
+                },
+              ].map(({ value, label, icon, active }) => (
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  className={`text-xs py-2 px-3 data-[state=active]:bg-${active}-50 data-[state=active]:text-${active}-700 data-[state=active]:shadow-none rounded-md`}
+                >
+                  {icon}
+                  {label}
+                </TabsTrigger>
+              ))}
             </TabsList>
           </div>
 
@@ -1787,7 +1650,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
                   }
                   size='sm'
                   className='flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs'
-                  disabled={!currentTabData || currentTabData.length === 0}
+                  disabled={!currentTabData?.length}
                 >
                   <FiFilePlus className='h-3.5 w-3.5' /> Export PDF
                 </Button>
@@ -1797,7 +1660,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
                   }
                   size='sm'
                   className='flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs'
-                  disabled={!currentTabData || currentTabData.length === 0}
+                  disabled={!currentTabData?.length}
                 >
                   <FiDownload className='h-3.5 w-3.5' /> Export Excel
                 </Button>
@@ -1817,7 +1680,6 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
           </TabsContent>
         </Tabs>
       </div>
-
       {isLoading && <AppLoader />}
     </div>
   );

@@ -29,8 +29,12 @@ import {
   CheckCircle,
   Info,
   X,
+  Receipt,
+  Plus,
+  Trash2,
+  Search,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -48,8 +52,15 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { version } from "os";
 
-// Define validation schema
+// ─── Schema ───────────────────────────────────────────────────────────────────
+const partyChargeSchema = z.object({
+  partyWiseChargesId: z.number().optional(),
+  chargesId: z.number(),
+  isActive: z.boolean().default(true),
+});
+
 const formSchema = z
   .object({
     partyId: z.number().optional(),
@@ -121,12 +132,13 @@ const formSchema = z
     salesRepId: z.number().optional(),
     docsRepId: z.number().optional(),
     accountsRepId: z.number().optional(),
+    // ── Party Charges ──
+    partyCharges: z.array(partyChargeSchema).default([]),
+    version: z.number().default(0),
   })
   .refine(
     (data) => {
-      if (data.isCustomerVendor) {
-        return !data.isCustomer && !data.isVendor;
-      }
+      if (data.isCustomerVendor) return !data.isCustomer && !data.isVendor;
       return true;
     },
     {
@@ -137,9 +149,7 @@ const formSchema = z
   )
   .refine(
     (data) => {
-      if (data.isCustomer) {
-        return !data.isVendor && !data.isCustomerVendor;
-      }
+      if (data.isCustomer) return !data.isVendor && !data.isCustomerVendor;
       return true;
     },
     {
@@ -150,9 +160,7 @@ const formSchema = z
   )
   .refine(
     (data) => {
-      if (data.isVendor) {
-        return !data.isCustomer && !data.isCustomerVendor;
-      }
+      if (data.isVendor) return !data.isCustomer && !data.isCustomerVendor;
       return true;
     },
     {
@@ -162,7 +170,16 @@ const formSchema = z
     },
   );
 
-// Define form steps
+// ─── Charge interface ─────────────────────────────────────────────────────────
+interface AvailableCharge {
+  chargeId: number;
+  chargeCode: string;
+  chargeName: string;
+  chargeType: string;
+  isActive: boolean;
+}
+
+// ─── Steps config ─────────────────────────────────────────────────────────────
 const formSteps = [
   {
     id: 1,
@@ -208,6 +225,13 @@ const formSteps = [
   },
   {
     id: 7,
+    title: "Charges",
+    fullTitle: "Party Charges",
+    icon: Receipt,
+    description: "Assign applicable charges",
+  },
+  {
+    id: 8,
     title: "Review",
     fullTitle: "Review & Submit",
     icon: CheckCircle,
@@ -215,6 +239,7 @@ const formSteps = [
   },
 ];
 
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function PartiesForm({
   type,
   defaultState,
@@ -229,53 +254,60 @@ export default function PartiesForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+
+  // Dropdown data
   const [unLocations, setUnLocations] = useState<any[]>([]);
   const [glAccounts, setGlAccounts] = useState<any[]>([]);
   const [salesReps, setSalesReps] = useState<any[]>([]);
   const [docsReps, setDocsReps] = useState<any[]>([]);
   const [accountsReps, setAccountsReps] = useState<any[]>([]);
+  const [availableCharges, setAvailableCharges] = useState<AvailableCharge[]>(
+    [],
+  );
 
   const [loadingUnlocations, setLoadingUnlocations] = useState(false);
   const [loadingGlAccounts, setLoadingGlAccounts] = useState(false);
   const [loadingSalesReps, setLoadingSalesReps] = useState(false);
   const [loadingDocsReps, setLoadingDocsReps] = useState(false);
   const [loadingAccountsReps, setLoadingAccountsReps] = useState(false);
+  const [loadingCharges, setLoadingCharges] = useState(false);
 
-  // Fetch data functions
+  // Charge search
+  const [chargeSearch, setChargeSearch] = useState("");
+
+  // ── Fetchers ──────────────────────────────────────────────────────────────
   const fetchUnlocations = async () => {
     setLoadingUnlocations(true);
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}UnLocation/GetList`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BASE_URL}UnLocation/GetList`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            select:
+              "UnlocationId,LocationName,Uncode,IsCountry,IsCity,IsSeaPort,IsDryPort",
+            where: "IsActive == true",
+            sortOn: "LocationName",
+            page: "1",
+            pageSize: "100",
+          }),
         },
-        body: JSON.stringify({
-          select:
-            "UnlocationId,LocationName,Uncode,IsCountry,IsCity,IsSeaPort,IsDryPort",
-          where: "IsActive == true",
-          sortOn: "LocationName",
-          page: "1",
-          pageSize: "100",
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
+      );
+      if (res.ok) {
+        const data = await res.json();
         setUnLocations(
-          data.map((location: any) => ({
-            value: location.unlocationId,
-            label: `${location.uncode} - ${location.locationName}`,
+          data.map((l: any) => ({
+            value: l.unlocationId,
+            label: `${l.uncode} - ${l.locationName}`,
           })),
         );
       }
-    } catch (error) {
-      console.error("Error fetching UN locations:", error);
+    } catch (e) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to load UN locations list",
+        description: "Failed to load UN locations",
       });
     } finally {
       setLoadingUnlocations(false);
@@ -285,83 +317,107 @@ export default function PartiesForm({
   const fetchGlAccounts = async () => {
     setLoadingGlAccounts(true);
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}GlAccount/GetList`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BASE_URL}GlAccount/GetList`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            select: "AccountId,AccountCode,AccountName",
+            where:
+              "IsHeader==true && ParentAccountId != null && IsActive == true",
+            sortOn: "AccountCode",
+            page: "",
+            pageSize: "",
+          }),
         },
-        body: JSON.stringify({
-          select: "AccountId,AccountCode,AccountName",
-          where:
-            "IsHeader==true && ParentAccountId != null && IsActive == true",
-          sortOn: "AccountCode",
-          page: "",
-          pageSize: "",
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
+      );
+      if (res.ok) {
+        const data = await res.json();
         setGlAccounts(
-          data.map((account: any) => ({
-            value: account.accountId,
-            label: `${account.accountCode} - ${account.accountName}`,
+          data.map((a: any) => ({
+            value: a.accountId,
+            label: `${a.accountCode} - ${a.accountName}`,
           })),
         );
       }
-    } catch (error) {
-      console.error("Error fetching GL accounts:", error);
+    } catch (e) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to load GL accounts list",
+        description: "Failed to load GL accounts",
       });
     } finally {
       setLoadingGlAccounts(false);
     }
   };
 
-  const fetchEmployees = async (
-    setter: any,
-    setLoader: any,
-    repType: string,
-  ) => {
+  const fetchEmployees = async (setter: any, setLoader: any, label: string) => {
     setLoader(true);
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const response = await fetch(`${baseUrl}Employee/GetList`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BASE_URL}Employee/GetList`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            select: "EmployeeId,FirstName,LastName,EmployeeCode",
+            where: "IsActive == true",
+            sortOn: "FirstName",
+            page: "1",
+            pageSize: "100",
+          }),
         },
-        body: JSON.stringify({
-          select: "EmployeeId,FirstName,LastName,EmployeeCode",
-          where: "IsActive == true",
-          sortOn: "FirstName",
-          page: "1",
-          pageSize: "100",
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
+      );
+      if (res.ok) {
+        const data = await res.json();
         setter(
-          data.map((emp: any) => ({
-            value: emp.employeeId,
-            label: `${emp.employeeCode} - ${emp.firstName} ${emp.lastName}`,
+          data.map((e: any) => ({
+            value: e.employeeId,
+            label: `${e.employeeCode} - ${e.firstName} ${e.lastName}`,
           })),
         );
       }
-    } catch (error) {
-      console.error(`Error fetching ${repType}:`, error);
+    } catch (e) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: `Failed to load ${repType} list`,
+        description: `Failed to load ${label}`,
       });
     } finally {
       setLoader(false);
+    }
+  };
+
+  const fetchCharges = async () => {
+    setLoadingCharges(true);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BASE_URL}ChargesMaster/GetList`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            select: "ChargeId,ChargeCode,ChargeName,ChargeType,IsActive",
+            where: "IsActive == true",
+            sortOn: "ChargeName",
+            page: "1",
+            pageSize: "500",
+          }),
+        },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableCharges(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load charges list",
+      });
+    } finally {
+      setLoadingCharges(false);
     }
   };
 
@@ -369,45 +425,179 @@ export default function PartiesForm({
     fetchUnlocations();
     fetchGlAccounts();
     fetchEmployees(setSalesReps, setLoadingSalesReps, "sales representatives");
-    fetchEmployees(
-      setDocsReps,
-      setLoadingDocsReps,
-      "documentation representatives",
-    );
+    fetchEmployees(setDocsReps, setLoadingDocsReps, "docs representatives");
     fetchEmployees(
       setAccountsReps,
       setLoadingAccountsReps,
       "accounts representatives",
     );
+    fetchCharges();
   }, []);
 
+  // ── Form ──────────────────────────────────────────────────────────────────
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      companyId: 1,
-      isActive: true,
-      ...defaultState,
-      creditLimitLC: defaultState?.creditLimitLC
-        ? Number(defaultState.creditLimitLC)
+      // ── IDs ──
+      partyId: defaultState?.partyId ?? undefined,
+      companyId: defaultState?.companyId ?? 1,
+
+      // ── Basic ──
+      partyCode: defaultState?.partyCode ?? "",
+      partyName: defaultState?.partyName ?? "",
+      partyShortName: defaultState?.partyShortName ?? "",
+      isActive: defaultState?.isActive ?? true,
+      unLocationId: defaultState?.unlocationId ?? undefined,
+
+      // ── Classification ──
+      isGLLinked: defaultState?.isGllinked ?? false,
+      isCustomer: defaultState?.isCustomer ?? false,
+      isVendor: defaultState?.isVendor ?? false,
+      isCustomerVendor: defaultState?.isCustomerVendor ?? false,
+      isAgent: defaultState?.isAgent ?? false,
+      isOverseasAgent: defaultState?.isOverseasAgent ?? false,
+      isShippingLine: defaultState?.isShippingLine ?? false,
+      isTransporter: defaultState?.isTransporter ?? false,
+      isConsignee: defaultState?.isConsignee ?? false,
+      isShipper: defaultState?.isShipper ?? false,
+      isPrincipal: defaultState?.isPrincipal ?? false,
+      isTerminal: defaultState?.isTerminal ?? false,
+      isBondedCarrier: defaultState?.isBondedCarier ?? false, // API typo: single r
+      isNonGLParty: defaultState?.isNonGlparty ?? false,
+      isInSeaImport: defaultState?.isInSeaImport ?? false,
+      isInSeaExport: defaultState?.isInSeaExport ?? false,
+      isInAirImport: defaultState?.isInAirImport ?? false,
+      isInAirExport: defaultState?.isInAirExport ?? false,
+      isInLogistics: defaultState?.isInLogistics ?? false,
+
+      // ── Contact ──
+      addressLine1: defaultState?.addressLine1 ?? "",
+      addressLine2: defaultState?.addressLine2 ?? "",
+      postalCode: defaultState?.postalCode ?? "",
+      phone: defaultState?.phone ?? "",
+      fax: defaultState?.fax ?? "",
+      email: defaultState?.email ?? "",
+      website: defaultState?.website ?? "",
+      contactPersonName: defaultState?.contactPersonName ?? "",
+      contactPersonDesignation: defaultState?.contactPersonDesignation ?? "",
+      contactPersonEmail: defaultState?.contactPersonEmail ?? "",
+      contactPersonPhone: defaultState?.contactPersonPhone ?? "",
+
+      // ── Financial ──
+      ntnNumber: defaultState?.ntnnumber ?? "",
+      strnNumber: defaultState?.strnnumber ?? "",
+      bankName: defaultState?.bankName ?? "",
+      bankAccountNumber: defaultState?.bankAccountNumber ?? "",
+      ibanNumber: defaultState?.ibannumber ?? "",
+      creditLimitLC: defaultState?.creditLimitLc
+        ? Number(defaultState.creditLimitLc)
         : 0,
-      creditLimitFC: defaultState?.creditLimitFC
-        ? Number(defaultState.creditLimitFC)
+      creditLimitFC: defaultState?.creditLimitFc
+        ? Number(defaultState.creditLimitFc)
         : 0,
       allowedCreditDays: defaultState?.allowedCreditDays
         ? Number(defaultState.allowedCreditDays)
         : 0,
+      paymentTerms: defaultState?.paymentTerms ?? "",
+
+      // ── GL ──
+      glParentAccountId: defaultState?.glparentAccountId ?? undefined,
+
+      // ── Settings ──
+      trackIdAllowed: defaultState?.trackIdAllowed ?? false,
+      idPasswordAllowed: defaultState?.idPasswordAllowed ?? false,
+      sendEmail: defaultState?.sendEmail ?? false,
+      canSeeBills: defaultState?.canSeeBills ?? false,
+      canSeeLedger: defaultState?.canSeeLedger ?? false,
+      isProcessOwner: defaultState?.isProcessOwner ?? false,
+      clearanceByOps: defaultState?.clearanceByOps ?? false,
+      clearanceByAcm: defaultState?.clearanceByAcm ?? false,
+      atTradeForGDInsustrial: defaultState?.attradeForGdinsustrial ?? false,
+      atTradeForGDCommercial: defaultState?.attradeForGdcommercial ?? false,
+      benificiaryNameOfPO: defaultState?.benificiaryNameOfPo ?? "",
+
+      // ── Reps ──
+      salesRepId: defaultState?.salesRepId ?? undefined,
+      docsRepId: defaultState?.docsRepId ?? undefined,
+      accountsRepId: defaultState?.accountsRepId ?? undefined,
+
+      // ── Charges ──
+      partyCharges: (defaultState?.partyCharges ?? []).map((pc: any) => ({
+        partyWiseChargesId: pc.partyWiseChargesId ?? undefined,
+        chargesId: pc.chargesId,
+        isActive: pc.isActive ?? true,
+      })),
+
+      version: defaultState?.version ?? 0,
     },
   });
 
-  // Watch important fields
   const isNonGLParty = form.watch("isNonGLParty");
   const isGLLinked = form.watch("isGLLinked");
   const isCustomer = form.watch("isCustomer");
   const isVendor = form.watch("isVendor");
   const isCustomerVendor = form.watch("isCustomerVendor");
   const formValues = form.watch();
+  const partyCharges = form.watch("partyCharges");
 
-  // Handle toggle logic
+  // ── Charge helpers ────────────────────────────────────────────────────────
+  const selectedChargeIds = useMemo(
+    () => new Set(partyCharges.map((pc) => pc.chargesId)),
+    [partyCharges],
+  );
+
+  const filteredCharges = useMemo(
+    () =>
+      availableCharges.filter(
+        (c) =>
+          c.chargeName.toLowerCase().includes(chargeSearch.toLowerCase()) ||
+          c.chargeCode.toLowerCase().includes(chargeSearch.toLowerCase()) ||
+          (c.chargeType ?? "")
+            .toLowerCase()
+            .includes(chargeSearch.toLowerCase()),
+      ),
+    [availableCharges, chargeSearch],
+  );
+
+  const addCharge = (charge: AvailableCharge) => {
+    if (selectedChargeIds.has(charge.chargeId)) return;
+    const current = form.getValues("partyCharges");
+    form.setValue("partyCharges", [
+      ...current,
+      { chargesId: charge.chargeId, isActive: true },
+    ]);
+  };
+
+  const removeCharge = (chargesId: number) => {
+    const current = form.getValues("partyCharges");
+    form.setValue(
+      "partyCharges",
+      current.filter((pc) => pc.chargesId !== chargesId),
+    );
+  };
+
+  const toggleChargeActive = (chargesId: number, value: boolean) => {
+    const current = form.getValues("partyCharges");
+    form.setValue(
+      "partyCharges",
+      current.map((pc) =>
+        pc.chargesId === chargesId ? { ...pc, isActive: value } : pc,
+      ),
+    );
+  };
+
+  const getChargeName = (chargesId: number) => {
+    const c = availableCharges.find((a) => a.chargeId === chargesId);
+    return c ? `${c.chargeCode} – ${c.chargeName}` : `Charge #${chargesId}`;
+  };
+
+  const getChargeType = (chargesId: number) => {
+    return (
+      availableCharges.find((a) => a.chargeId === chargesId)?.chargeType ?? ""
+    );
+  };
+
+  // ── Toggle logic ──────────────────────────────────────────────────────────
   const handleCustomerVendorToggle = (field: string, value: boolean) => {
     if (field === "isCustomerVendor" && value) {
       form.setValue("isCustomer", false);
@@ -423,37 +613,29 @@ export default function PartiesForm({
 
   const handleNonGLPartyToggle = (value: boolean) => {
     if (value) {
-      // If Non-GL Party is enabled, disable GL Linkage
       form.setValue("isGLLinked", false);
       form.setValue("glParentAccountId", undefined);
     } else {
-      // If Non-GL Party is disabled, auto-enable GL Linkage
       form.setValue("isGLLinked", true);
     }
   };
 
   const handleGLLinkedToggle = (value: boolean) => {
-    if (value) {
-      // If GL Linkage is enabled, disable Non-GL Party
-      form.setValue("isNonGLParty", false);
-    }
+    if (value) form.setValue("isNonGLParty", false);
   };
 
-  // Validation function for each step
+  // ── Step validation ───────────────────────────────────────────────────────
   const validateCurrentStep = async () => {
     let isValid = true;
     const errors: string[] = [];
-
     switch (currentStep) {
       case 1:
-        if (!formValues.partyName || formValues.partyName.trim() === "") {
+        if (!formValues.partyName?.trim()) {
           errors.push("Party Name is required");
           isValid = false;
         }
         break;
-
       case 2:
-        // Check if at least one of Customer, Vendor, or Customer/Vendor is selected
         if (
           !formValues.isCustomer &&
           !formValues.isVendor &&
@@ -465,50 +647,37 @@ export default function PartiesForm({
           isValid = false;
         }
         break;
-
       case 3:
-        if (!formValues.addressLine1 || formValues.addressLine1.trim() === "") {
+        if (!formValues.addressLine1?.trim()) {
           errors.push("Address Line 1 is required");
           isValid = false;
         }
-        if (!formValues.phone || formValues.phone.trim() === "") {
+        if (!formValues.phone?.trim()) {
           errors.push("Phone is required");
           isValid = false;
         }
-        if (!formValues.email || formValues.email.trim() === "") {
+        if (!formValues.email?.trim()) {
           errors.push("Email is required");
           isValid = false;
         } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.email)) {
           errors.push("Invalid email address");
           isValid = false;
         }
-        if (
-          !formValues.contactPersonEmail ||
-          formValues.contactPersonEmail.trim() === ""
-        ) {
+        if (!formValues.contactPersonEmail?.trim()) {
           errors.push("Contact Person Email is required");
           isValid = false;
         } else if (
           !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.contactPersonEmail)
         ) {
-          errors.push("Invalid contact person email address");
+          errors.push("Invalid contact person email");
           isValid = false;
         }
-        if (
-          !formValues.contactPersonPhone ||
-          formValues.contactPersonPhone.trim() === ""
-        ) {
+        if (!formValues.contactPersonPhone?.trim()) {
           errors.push("Contact Person Phone is required");
           isValid = false;
         }
         break;
-
-      case 4:
-        // No mandatory fields in step 4
-        break;
-
       case 5:
-        // If not a Non-GL Party and GL Linked, then GL Parent Account is required
         if (
           !formValues.isNonGLParty &&
           formValues.isGLLinked &&
@@ -520,39 +689,70 @@ export default function PartiesForm({
           isValid = false;
         }
         break;
-
       case 6:
-        if (
-          !formValues.benificiaryNameOfPO ||
-          formValues.benificiaryNameOfPO.trim() === ""
-        ) {
+        if (!formValues.benificiaryNameOfPO?.trim()) {
           errors.push("Beneficiary Name of PO is required");
           isValid = false;
         }
         break;
-
-      default:
-        break;
+      // Step 7 (Charges) has no mandatory fields
     }
-
-    if (!isValid) {
+    if (!isValid)
       toast({
         variant: "destructive",
         title: "Required Fields Missing",
         description: errors.join(", "),
       });
-    }
-
     return isValid;
   };
 
-  const nextStep = async () => {
-    const isValid = await validateCurrentStep();
+  // ── Per-step error map (used by Review + step nav indicator) ────────────
+  const getStepErrors = (): Record<number, string[]> => {
+    const v = form.getValues();
+    const errs: Record<number, string[]> = {};
 
-    if (isValid) {
-      if (!completedSteps.includes(currentStep)) {
+    const add = (step: number, msg: string) => {
+      if (!errs[step]) errs[step] = [];
+      errs[step].push(msg);
+    };
+
+    // Step 1
+    if (!v.partyName?.trim()) add(1, "Party Name is required");
+
+    // Step 2
+    if (!v.isCustomer && !v.isVendor && !v.isCustomerVendor)
+      add(2, "Select at least one: Customer, Vendor, or Customer/Vendor");
+
+    // Step 3
+    if (!v.addressLine1?.trim()) add(3, "Address Line 1 is required");
+    if (!v.phone?.trim()) add(3, "Phone is required");
+    if (!v.email?.trim()) add(3, "Email is required");
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email))
+      add(3, "Invalid email address");
+    if (!v.contactPersonEmail?.trim())
+      add(3, "Contact Person Email is required");
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.contactPersonEmail))
+      add(3, "Invalid contact person email");
+    if (!v.contactPersonPhone?.trim())
+      add(3, "Contact Person Phone is required");
+
+    // Step 4 — no mandatory fields
+
+    // Step 5
+    if (!v.isNonGLParty && v.isGLLinked && !v.glParentAccountId)
+      add(5, "GL Parent Account is required when GL Linkage is enabled");
+
+    // Step 6
+    if (!v.benificiaryNameOfPO?.trim())
+      add(6, "Beneficiary Name of PO is required");
+
+    return errs;
+  };
+
+  const nextStep = async () => {
+    if (await validateCurrentStep()) {
+      if (!completedSteps.includes(currentStep))
         setCompletedSteps([...completedSteps, currentStep]);
-      }
       if (currentStep < formSteps.length) {
         setCurrentStep(currentStep + 1);
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -566,60 +766,138 @@ export default function PartiesForm({
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
-
   const goToStep = (step: number) => {
     setCurrentStep(step);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // ── Submit ────────────────────────────────────────────────────────────────
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsSubmitting(true);
     try {
-      const user = localStorage.getItem("user");
-      let userID = 0;
-      if (user) {
-        try {
-          const u = JSON.parse(user);
-          userID = u?.userID || 0;
-        } catch (error) {
-          console.error("User parse error:", error);
-        }
-      }
+      const isUpdate = type === "edit";
 
-      const payload = {
-        ...values,
+      // Build payload with exact API field names (from the swagger schema)
+      // Note: several field names differ from the form's internal camelCase
+      const payload: any = {
+        // Basic
+        partyCode: values.partyCode || "",
+        partyName: values.partyName,
+        partyShortName: values.partyShortName || "",
+        companyId: values.companyId,
+        isActive: values.isActive,
+
+        // Location
+        unlocationId: values.unLocationId ?? null,
+        addressLine1: values.addressLine1 || "",
+        addressLine2: values.addressLine2 || "",
+        postalCode: values.postalCode || "",
+
+        // Contact
+        phone: values.phone || "",
+        fax: values.fax || "",
+        email: values.email || "",
+        website: values.website || "",
+        contactPersonName: values.contactPersonName || "",
+        contactPersonDesignation: values.contactPersonDesignation || "",
+        contactPersonEmail: values.contactPersonEmail || "",
+        contactPersonPhone: values.contactPersonPhone || "",
+
+        // Classification — API uses lowercase 'l' in GL-related flags
+        isGllinked: values.isGLLinked,
+        isCustomer: values.isCustomer,
+        isVendor: values.isVendor,
+        isCustomerVendor: values.isCustomerVendor,
+        isAgent: values.isAgent,
+        isOverseasAgent: values.isOverseasAgent,
+        isShippingLine: values.isShippingLine,
+        isTransporter: values.isTransporter,
+        isConsignee: values.isConsignee,
+        isShipper: values.isShipper,
+        isPrincipal: values.isPrincipal,
+        isTerminal: values.isTerminal,
+        isBondedCarier: values.isBondedCarrier, // API has single 'r' (typo in schema)
+        isNonGlparty: values.isNonGLParty,
+        isInSeaImport: values.isInSeaImport,
+        isInSeaExport: values.isInSeaExport,
+        isInAirImport: values.isInAirImport,
+        isInAirExport: values.isInAirExport,
+        isInLogistics: values.isInLogistics,
+
+        // Financial — API uses lowercase acronyms (ntnnumber, ibannumber, creditLimitLc, etc.)
+        ntnnumber: values.ntnNumber || "",
+        strnnumber: values.strnNumber || "",
+        bankName: values.bankName || "",
+        bankAccountNumber: values.bankAccountNumber || "",
+        ibannumber: values.ibanNumber || "",
+        creditLimitLc: values.creditLimitLC ?? 0,
+        creditLimitFc: values.creditLimitFC ?? 0,
+        allowedCreditDays: values.allowedCreditDays ?? 0,
+        paymentTerms: values.paymentTerms || "",
+
+        // GL
+        glparentAccountId: values.glParentAccountId ?? null,
+
+        // Portal & operational settings
+        trackIdAllowed: values.trackIdAllowed,
+        idPasswordAllowed: values.idPasswordAllowed,
+        sendEmail: values.sendEmail,
+        canSeeBills: values.canSeeBills,
+        canSeeLedger: values.canSeeLedger,
+        isProcessOwner: values.isProcessOwner,
+        clearanceByOps: values.clearanceByOps,
+        clearanceByAcm: values.clearanceByAcm,
+        attradeForGdinsustrial: values.atTradeForGDInsustrial,
+        attradeForGdcommercial: values.atTradeForGDCommercial,
+        benificiaryNameOfPo: values.benificiaryNameOfPO || "",
+
+        // Representatives
+        salesRepId: values.salesRepId ?? null,
+        docsRepId: values.docsRepId ?? null,
+        accountsRepId: values.accountsRepId ?? null,
+
+        // Charges
+        partyCharges: values.partyCharges.map((pc) => {
+          const item: any = { chargesId: pc.chargesId, isActive: pc.isActive };
+          if (isUpdate && pc.partyWiseChargesId) {
+            item.partyWiseChargesId = pc.partyWiseChargesId;
+            item.partyId = values.partyId;
+          }
+          return item;
+        }),
       };
 
-      const endpoint = "Party";
+      // For edit include partyId
+      if (isUpdate) payload.partyId = values.partyId;
+
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
-      if (!baseUrl) {
+      if (!baseUrl)
         throw new Error("Configuration error: BASE_URL is not defined");
-      }
 
-      const response = await fetch(`${baseUrl}${endpoint}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      const response = await fetch(`${baseUrl}Party`, {
+        method: isUpdate ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Request failed");
+        let errMsg = `HTTP ${response.status}`;
+        try {
+          const e = await response.json();
+          if (e?.errors)
+            errMsg = (Object.values(e.errors).flat() as string[]).join("\n");
+          else errMsg = e?.message || e?.title || errMsg;
+        } catch {}
+        throw new Error(errMsg);
       }
 
       const result = await response.json();
       toast({
         title: "Success!",
-        description: `Party ${
-          type === "edit" ? "updated" : "created"
-        } successfully`,
+        description: `Party ${type === "edit" ? "updated" : "created"} successfully`,
       });
       handleAddEdit(result);
     } catch (error: any) {
-      console.error("Submission error:", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -630,10 +908,11 @@ export default function PartiesForm({
     }
   };
 
+  // ── ToggleField ───────────────────────────────────────────────────────────
   const ToggleField = ({
     name,
     label,
-    description,
+    description = "",
     disabled = false,
     onChange,
     highlight = false,
@@ -642,7 +921,7 @@ export default function PartiesForm({
     label: string;
     description?: string;
     disabled?: boolean;
-    onChange?: (checked: boolean) => void;
+    onChange?: (v: boolean) => void;
     highlight?: boolean;
   }) => (
     <FormField
@@ -667,11 +946,9 @@ export default function PartiesForm({
           <FormControl>
             <Switch
               checked={field.value as boolean}
-              onCheckedChange={(checked) => {
-                field.onChange(checked);
-                if (onChange) {
-                  onChange(checked);
-                }
+              onCheckedChange={(v) => {
+                field.onChange(v);
+                onChange?.(v);
               }}
               disabled={disabled}
             />
@@ -685,8 +962,10 @@ export default function PartiesForm({
     ((currentStep - 1) / (formSteps.length - 1)) * 100,
   );
 
+  // ── Step rendering ────────────────────────────────────────────────────────
   const renderStepContent = () => {
     switch (currentStep) {
+      // ── STEP 1: Basic Info ──────────────────────────────────────────────
       case 1:
         return (
           <Card className='border shadow-sm'>
@@ -712,7 +991,7 @@ export default function PartiesForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                      Party Code
+                      Party Code{" "}
                       <Badge
                         variant='secondary'
                         className='text-[10px] px-1.5 py-0.5'
@@ -729,35 +1008,30 @@ export default function PartiesForm({
                         className='bg-gray-100 h-10 text-sm border-gray-200'
                       />
                     </FormControl>
-                    <FormMessage className='text-xs' />
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name='partyName'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                      Party Name
+                      Party Name{" "}
                       <span className='text-red-500 text-base'>*</span>
                     </FormLabel>
                     <FormControl>
                       <Input
                         placeholder='Enter full party name'
                         {...field}
-                        className='font-medium h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+                        value={field.value ?? ""}
+                        className='font-medium h-10 text-sm border-gray-300 focus:border-blue-500'
                       />
                     </FormControl>
-                    <FormDescription className='text-xs text-gray-500'>
-                      Official registered name of the party
-                    </FormDescription>
                     <FormMessage className='text-xs' />
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name='partyShortName'
@@ -770,17 +1044,13 @@ export default function PartiesForm({
                       <Input
                         placeholder='Enter abbreviated name'
                         {...field}
-                        className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                        value={field.value ?? ""}
+                        className='h-10 text-sm border-gray-300'
                       />
                     </FormControl>
-                    <FormDescription className='text-xs text-gray-500'>
-                      A shorter version for display purposes
-                    </FormDescription>
-                    <FormMessage className='text-xs' />
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name='unLocationId'
@@ -792,53 +1062,42 @@ export default function PartiesForm({
                     <FormControl>
                       <Select
                         options={unLocations}
-                        value={unLocations.find(
-                          (option) => option.value === field.value,
-                        )}
-                        onChange={(val) => field.onChange(val?.value)}
+                        value={unLocations.find((o) => o.value === field.value)}
+                        onChange={(v) => field.onChange(v?.value)}
                         placeholder={
                           loadingUnlocations
-                            ? "Loading locations..."
+                            ? "Loading..."
                             : "Select UN Location"
                         }
-                        className='react-select-container'
-                        classNamePrefix='react-select'
                         isLoading={loadingUnlocations}
                         isDisabled={loadingUnlocations}
                         styles={{
-                          control: (base) => ({
-                            ...base,
+                          control: (b) => ({
+                            ...b,
                             minHeight: "40px",
                             fontSize: "14px",
                             borderColor: "#d1d5db",
                           }),
-                          menu: (base) => ({
-                            ...base,
-                            zIndex: 50,
-                          }),
+                          menu: (b) => ({ ...b, zIndex: 50 }),
                         }}
                       />
                     </FormControl>
-                    <FormDescription className='text-xs text-gray-500'>
-                      Primary location for this party
-                    </FormDescription>
-                    <FormMessage className='text-xs' />
                   </FormItem>
                 )}
               />
-
               <div className='md:col-span-2'>
                 <ToggleField
                   name='isActive'
                   label='Active Party'
                   description='Enable to make this party active and visible in the system'
-                  highlight={true}
+                  highlight
                 />
               </div>
             </CardContent>
           </Card>
         );
 
+      // ── STEP 2: Classification ──────────────────────────────────────────
       case 2:
         return (
           <>
@@ -847,7 +1106,7 @@ export default function PartiesForm({
             (isCustomerVendor && (isCustomer || isVendor)) ? (
               <Alert
                 variant='destructive'
-                className='mb-4 animate-in fade-in-50 border-red-300 bg-red-50'
+                className='mb-4 border-red-300 bg-red-50'
               >
                 <AlertCircle className='h-4 w-4 text-red-600' />
                 <AlertTitle className='font-semibold text-sm text-red-900'>
@@ -855,28 +1114,24 @@ export default function PartiesForm({
                 </AlertTitle>
                 <AlertDescription className='mt-1 text-xs text-red-800'>
                   A party cannot be both Customer and Vendor simultaneously.
-                  Please select only one of: Customer, Vendor, or
-                  Customer/Vendor.
                 </AlertDescription>
               </Alert>
             ) : null}
-
             {!isCustomer && !isVendor && !isCustomerVendor ? (
               <Alert
                 variant='destructive'
-                className='mb-4 animate-in fade-in-50 border-orange-300 bg-orange-50'
+                className='mb-4 border-orange-300 bg-orange-50'
               >
                 <AlertCircle className='h-4 w-4 text-orange-600' />
                 <AlertTitle className='font-semibold text-sm text-orange-900'>
                   Selection Required
                 </AlertTitle>
                 <AlertDescription className='mt-1 text-xs text-orange-800'>
-                  Please select at least one option: Customer, Vendor, or
-                  Customer/Vendor to proceed to the next step.
+                  Please select at least one: Customer, Vendor, or
+                  Customer/Vendor.
                 </AlertDescription>
               </Alert>
             ) : null}
-
             <Card className='border shadow-sm'>
               <CardHeader className='bg-gradient-to-r from-purple-50 to-pink-50 py-4 px-5 border-b'>
                 <div className='flex items-center gap-3'>
@@ -888,7 +1143,7 @@ export default function PartiesForm({
                       Party Classification
                     </CardTitle>
                     <CardDescription className='text-xs text-gray-600'>
-                      Define the type and operational scope of the party
+                      Define the type and operational scope
                     </CardDescription>
                   </div>
                 </div>
@@ -898,13 +1153,12 @@ export default function PartiesForm({
                   <div className='flex gap-2 mb-3'>
                     <Info className='h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5' />
                     <div>
-                      <h4 className='text-xs font-semibold text-amber-900 flex items-center gap-1.5'>
-                        Customer/Vendor Relationship
+                      <h4 className='text-xs font-semibold text-amber-900'>
+                        Customer/Vendor Relationship{" "}
                         <span className='text-red-500 text-sm'>*</span>
                       </h4>
                       <p className='text-xs text-amber-700 mt-0.5'>
-                        Select at least one option from the three below
-                        (required)
+                        Select at least one (required)
                       </p>
                     </div>
                   </div>
@@ -914,8 +1168,8 @@ export default function PartiesForm({
                       label='Customer'
                       description='Party purchases from us'
                       disabled={isVendor || isCustomerVendor}
-                      onChange={(checked) =>
-                        handleCustomerVendorToggle("isCustomer", checked)
+                      onChange={(v) =>
+                        handleCustomerVendorToggle("isCustomer", v)
                       }
                       highlight={isCustomer}
                     />
@@ -924,29 +1178,27 @@ export default function PartiesForm({
                       label='Vendor'
                       description='We purchase from party'
                       disabled={isCustomer || isCustomerVendor}
-                      onChange={(checked) =>
-                        handleCustomerVendorToggle("isVendor", checked)
+                      onChange={(v) =>
+                        handleCustomerVendorToggle("isVendor", v)
                       }
                       highlight={isVendor}
                     />
                     <ToggleField
                       name='isCustomerVendor'
                       label='Customer/Vendor'
-                      description='Both relationships exist'
+                      description='Both relationships'
                       disabled={isCustomer || isVendor}
-                      onChange={(checked) =>
-                        handleCustomerVendorToggle("isCustomerVendor", checked)
+                      onChange={(v) =>
+                        handleCustomerVendorToggle("isCustomerVendor", v)
                       }
                       highlight={isCustomerVendor}
                     />
                   </div>
                 </div>
-
                 <Separator />
-
                 <div>
                   <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
-                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600' />
                     Party Roles
                   </h4>
                   <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
@@ -1004,12 +1256,10 @@ export default function PartiesForm({
                     />
                   </div>
                 </div>
-
                 <Separator />
-
                 <div>
                   <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
-                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600' />
                     Business Operations
                   </h4>
                   <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3'>
@@ -1025,6 +1275,7 @@ export default function PartiesForm({
           </>
         );
 
+      // ── STEP 3: Contact ─────────────────────────────────────────────────
       case 3:
         return (
           <div className='space-y-4'>
@@ -1039,162 +1290,85 @@ export default function PartiesForm({
                       Company Contact
                     </CardTitle>
                     <CardDescription className='text-xs text-gray-600'>
-                      General contact information for the party
+                      General contact information
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className='grid grid-cols-1 md:grid-cols-2 gap-5 pt-5 pb-4 px-5'>
-                <FormField
-                  control={form.control}
-                  name='addressLine1'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                        Address Line 1
-                        <span className='text-red-500 text-base'>*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='Street address, building name'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='addressLine2'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Address Line 2
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='Apartment, suite, unit, floor'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='postalCode'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Postal Code
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='ZIP/Postal code'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='phone'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                        Phone
-                        <span className='text-red-500 text-base'>*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='+92 XXX XXXXXXX'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormDescription className='text-xs text-gray-500'>
-                        Include country code
-                      </FormDescription>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='fax'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>Fax</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='Fax number'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='email'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                        Email
-                        <span className='text-red-500 text-base'>*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type='email'
-                          placeholder='company@example.com'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormDescription className='text-xs text-gray-500'>
-                        Primary company email
-                      </FormDescription>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='website'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Website
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='https://www.example.com'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                {[
+                  {
+                    name: "addressLine1" as const,
+                    label: "Address Line 1",
+                    req: true,
+                    placeholder: "Street address, building name",
+                  },
+                  {
+                    name: "addressLine2" as const,
+                    label: "Address Line 2",
+                    req: false,
+                    placeholder: "Apartment, suite, unit, floor",
+                  },
+                  {
+                    name: "postalCode" as const,
+                    label: "Postal Code",
+                    req: false,
+                    placeholder: "ZIP/Postal code",
+                  },
+                  {
+                    name: "phone" as const,
+                    label: "Phone",
+                    req: true,
+                    placeholder: "+92 XXX XXXXXXX",
+                  },
+                  {
+                    name: "fax" as const,
+                    label: "Fax",
+                    req: false,
+                    placeholder: "Fax number",
+                  },
+                  {
+                    name: "email" as const,
+                    label: "Email",
+                    req: true,
+                    placeholder: "company@example.com",
+                    type: "email",
+                  },
+                  {
+                    name: "website" as const,
+                    label: "Website",
+                    req: false,
+                    placeholder: "https://www.example.com",
+                  },
+                ].map(({ name, label, req, placeholder, type }) => (
+                  <FormField
+                    key={name}
+                    control={form.control}
+                    name={name}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                          {label}
+                          {req && (
+                            <span className='text-red-500 text-base'>*</span>
+                          )}
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type={type || "text"}
+                            placeholder={placeholder}
+                            {...field}
+                            value={field.value ?? ""}
+                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                          />
+                        </FormControl>
+                        <FormMessage className='text-xs' />
+                      </FormItem>
+                    )}
+                  />
+                ))}
               </CardContent>
             </Card>
-
             <Card className='border shadow-sm'>
               <CardHeader className='bg-gradient-to-r from-cyan-50 to-blue-50 py-4 px-5 border-b'>
                 <div className='flex items-center gap-3'>
@@ -1206,105 +1380,71 @@ export default function PartiesForm({
                       Contact Person
                     </CardTitle>
                     <CardDescription className='text-xs text-gray-600'>
-                      Primary point of contact for this party
+                      Primary point of contact
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className='grid grid-cols-1 md:grid-cols-2 gap-5 pt-5 pb-4 px-5'>
-                <FormField
-                  control={form.control}
-                  name='contactPersonName'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Full Name
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='John Doe'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='contactPersonDesignation'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Designation
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='Manager, Director, etc.'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='contactPersonEmail'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                        Contact Email
-                        <span className='text-red-500 text-base'>*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type='email'
-                          placeholder='contact@example.com'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormDescription className='text-xs text-gray-500'>
-                        Direct email of contact person
-                      </FormDescription>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='contactPersonPhone'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                        Contact Phone
-                        <span className='text-red-500 text-base'>*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='+92 XXX XXXXXXX'
-                          {...field}
-                          className='h-10 text-sm border-gray-300 focus:border-blue-500'
-                        />
-                      </FormControl>
-                      <FormDescription className='text-xs text-gray-500'>
-                        Direct phone of contact person
-                      </FormDescription>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                {[
+                  {
+                    name: "contactPersonName" as const,
+                    label: "Full Name",
+                    req: false,
+                    placeholder: "John Doe",
+                  },
+                  {
+                    name: "contactPersonDesignation" as const,
+                    label: "Designation",
+                    req: false,
+                    placeholder: "Manager, Director…",
+                  },
+                  {
+                    name: "contactPersonEmail" as const,
+                    label: "Contact Email",
+                    req: true,
+                    placeholder: "contact@example.com",
+                    type: "email",
+                  },
+                  {
+                    name: "contactPersonPhone" as const,
+                    label: "Contact Phone",
+                    req: true,
+                    placeholder: "+92 XXX XXXXXXX",
+                  },
+                ].map(({ name, label, req, placeholder, type }) => (
+                  <FormField
+                    key={name}
+                    control={form.control}
+                    name={name}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                          {label}
+                          {req && (
+                            <span className='text-red-500 text-base'>*</span>
+                          )}
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type={type || "text"}
+                            placeholder={placeholder}
+                            {...field}
+                            value={field.value ?? ""}
+                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                          />
+                        </FormControl>
+                        <FormMessage className='text-xs' />
+                      </FormItem>
+                    )}
+                  />
+                ))}
               </CardContent>
             </Card>
           </div>
         );
 
+      // ── STEP 4: Financial ───────────────────────────────────────────────
       case 4:
         return (
           <Card className='border shadow-sm'>
@@ -1318,15 +1458,15 @@ export default function PartiesForm({
                     Financial Information
                   </CardTitle>
                   <CardDescription className='text-xs text-gray-600'>
-                    Banking and tax details for the party
+                    Banking and tax details
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className='pt-5 pb-4 px-5 space-y-5'>
               <div>
-                <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
-                  <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                <h4 className='text-sm font-semibold mb-3 flex items-center gap-2'>
+                  <span className='h-1.5 w-1.5 rounded-full bg-blue-600' />
                   Tax Information
                 </h4>
                 <div className='grid grid-cols-1 md:grid-cols-2 gap-5'>
@@ -1342,17 +1482,13 @@ export default function PartiesForm({
                           <Input
                             placeholder='National Tax Number'
                             {...field}
-                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            value={field.value ?? ""}
+                            className='h-10 text-sm border-gray-300'
                           />
                         </FormControl>
-                        <FormDescription className='text-xs text-gray-500'>
-                          Tax registration number
-                        </FormDescription>
-                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
-
                   <FormField
                     control={form.control}
                     name='strnNumber'
@@ -1365,24 +1501,19 @@ export default function PartiesForm({
                           <Input
                             placeholder='Sales Tax Registration Number'
                             {...field}
-                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            value={field.value ?? ""}
+                            className='h-10 text-sm border-gray-300'
                           />
                         </FormControl>
-                        <FormDescription className='text-xs text-gray-500'>
-                          Sales tax number
-                        </FormDescription>
-                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
                 </div>
               </div>
-
               <Separator />
-
               <div>
-                <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
-                  <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                <h4 className='text-sm font-semibold mb-3 flex items-center gap-2'>
+                  <span className='h-1.5 w-1.5 rounded-full bg-blue-600' />
                   Banking Details
                 </h4>
                 <div className='grid grid-cols-1 md:grid-cols-2 gap-5'>
@@ -1398,34 +1529,32 @@ export default function PartiesForm({
                           <Input
                             placeholder='Enter bank name'
                             {...field}
-                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            value={field.value ?? ""}
+                            className='h-10 text-sm border-gray-300'
                           />
                         </FormControl>
-                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
-
                   <FormField
                     control={form.control}
                     name='bankAccountNumber'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className='text-sm font-medium'>
-                          Bank Account Number
+                          Account Number
                         </FormLabel>
                         <FormControl>
                           <Input
                             placeholder='Account number'
                             {...field}
-                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            value={field.value ?? ""}
+                            className='h-10 text-sm border-gray-300'
                           />
                         </FormControl>
-                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
-
                   <FormField
                     control={form.control}
                     name='ibanNumber'
@@ -1438,24 +1567,19 @@ export default function PartiesForm({
                           <Input
                             placeholder='PK XX XXXX XXXX XXXX XXXX XXXX XXXX'
                             {...field}
-                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            value={field.value ?? ""}
+                            className='h-10 text-sm border-gray-300'
                           />
                         </FormControl>
-                        <FormDescription className='text-xs text-gray-500'>
-                          International Bank Account Number
-                        </FormDescription>
-                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
                 </div>
               </div>
-
               <Separator />
-
               <div>
-                <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
-                  <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                <h4 className='text-sm font-semibold mb-3 flex items-center gap-2'>
+                  <span className='h-1.5 w-1.5 rounded-full bg-blue-600' />
                   Credit Terms
                 </h4>
                 <div className='grid grid-cols-1 md:grid-cols-3 gap-5'>
@@ -1472,20 +1596,19 @@ export default function PartiesForm({
                             type='number'
                             placeholder='0.00'
                             {...field}
+                            value={field.value ?? 0}
                             onChange={(e) =>
                               field.onChange(Number(e.target.value))
                             }
-                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            className='h-10 text-sm border-gray-300'
                           />
                         </FormControl>
                         <FormDescription className='text-xs text-gray-500'>
                           Local currency
                         </FormDescription>
-                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
-
                   <FormField
                     control={form.control}
                     name='creditLimitFC'
@@ -1499,48 +1622,46 @@ export default function PartiesForm({
                             type='number'
                             placeholder='0.00'
                             {...field}
+                            value={field.value ?? 0}
                             onChange={(e) =>
                               field.onChange(Number(e.target.value))
                             }
-                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            className='h-10 text-sm border-gray-300'
                           />
                         </FormControl>
                         <FormDescription className='text-xs text-gray-500'>
                           Foreign currency
                         </FormDescription>
-                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
-
                   <FormField
                     control={form.control}
                     name='allowedCreditDays'
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className='text-sm font-medium'>
-                          Allowed Credit Days
+                          Credit Days
                         </FormLabel>
                         <FormControl>
                           <Input
                             type='number'
                             placeholder='0'
                             {...field}
+                            value={field.value ?? 0}
                             onChange={(e) =>
                               field.onChange(Number(e.target.value))
                             }
-                            className='h-10 text-sm border-gray-300 focus:border-blue-500'
+                            className='h-10 text-sm border-gray-300'
                           />
                         </FormControl>
                         <FormDescription className='text-xs text-gray-500'>
                           Payment period
                         </FormDescription>
-                        <FormMessage className='text-xs' />
                       </FormItem>
                     )}
                   />
                 </div>
-
                 <FormField
                   control={form.control}
                   name='paymentTerms'
@@ -1552,14 +1673,10 @@ export default function PartiesForm({
                       <FormControl>
                         <Textarea
                           placeholder='Enter detailed payment terms and conditions...'
-                          className='min-h-[90px] text-sm border-gray-300 focus:border-blue-500'
+                          className='min-h-[90px] text-sm border-gray-300 resize-none'
                           {...field}
                         />
                       </FormControl>
-                      <FormDescription className='text-xs text-gray-500'>
-                        Additional payment terms or conditions
-                      </FormDescription>
-                      <FormMessage className='text-xs' />
                     </FormItem>
                   )}
                 />
@@ -1568,103 +1685,9 @@ export default function PartiesForm({
           </Card>
         );
 
+      // ── STEP 5: GL Setup ────────────────────────────────────────────────
       case 5:
-        return !isNonGLParty ? (
-          <Card className='border shadow-sm'>
-            <CardHeader className='bg-gradient-to-r from-indigo-50 to-purple-50 py-4 px-5 border-b'>
-              <div className='flex items-center gap-3'>
-                <div className='p-2 bg-indigo-600 rounded-lg shadow-sm'>
-                  <FileText className='h-5 w-5 text-white' />
-                </div>
-                <div>
-                  <CardTitle className='text-lg font-semibold text-gray-900'>
-                    GL Integration
-                  </CardTitle>
-                  <CardDescription className='text-xs text-gray-600'>
-                    Link this party to your General Ledger
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className='pt-5 pb-4 px-5 space-y-5'>
-              <ToggleField
-                name='isGLLinked'
-                label='Enable GL Linkage'
-                description='Connect this party to your General Ledger system for automatic accounting'
-                onChange={handleGLLinkedToggle}
-                disabled={isNonGLParty}
-                highlight={isGLLinked}
-              />
-
-              {isGLLinked && (
-                <>
-                  <Separator />
-                  <div className='bg-blue-50 p-4 rounded-lg border border-blue-200'>
-                    <div className='flex gap-2 mb-2'>
-                      <Info className='h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5' />
-                      <div>
-                        <h4 className='text-xs font-semibold text-blue-900'>
-                          GL Account Selection
-                        </h4>
-                        <p className='text-xs text-blue-700 mt-0.5'>
-                          Select the parent GL account for this party
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name='glParentAccountId'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
-                          GL Parent Account
-                          <span className='text-red-500 text-base'>*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Select
-                            options={glAccounts}
-                            value={glAccounts.find(
-                              (option) => option.value === field.value,
-                            )}
-                            onChange={(val) => field.onChange(val?.value)}
-                            placeholder={
-                              loadingGlAccounts
-                                ? "Loading GL accounts..."
-                                : "Select GL Account"
-                            }
-                            className='react-select-container'
-                            classNamePrefix='react-select'
-                            isLoading={loadingGlAccounts}
-                            isDisabled={loadingGlAccounts}
-                            styles={{
-                              control: (base) => ({
-                                ...base,
-                                minHeight: "40px",
-                                fontSize: "14px",
-                                borderColor: "#d1d5db",
-                              }),
-                              menu: (base) => ({
-                                ...base,
-                                zIndex: 50,
-                              }),
-                            }}
-                          />
-                        </FormControl>
-                        <FormDescription className='text-xs text-gray-500'>
-                          The parent account under which this party transactions
-                          will be recorded (Required)
-                        </FormDescription>
-                        <FormMessage className='text-xs' />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
+        return isNonGLParty ? (
           <Card className='border shadow-sm'>
             <CardHeader className='bg-gradient-to-r from-indigo-50 to-purple-50 py-4 px-5 border-b'>
               <div className='flex items-center gap-3'>
@@ -1688,16 +1711,91 @@ export default function PartiesForm({
                   GL Integration Not Available
                 </AlertTitle>
                 <AlertDescription className='text-yellow-800 mt-1 text-xs'>
-                  This party is marked as a <strong>Non-GL Party</strong>, which
-                  means GL linking options are disabled. To enable GL
-                  integration, go back to Step 2 (Party Classification) and turn
-                  off the Non-GL Party option.
+                  This party is marked as a <strong>Non-GL Party</strong>. To
+                  enable GL integration, go back to Step 2 and turn off Non-GL
+                  Party.
                 </AlertDescription>
               </Alert>
             </CardContent>
           </Card>
+        ) : (
+          <Card className='border shadow-sm'>
+            <CardHeader className='bg-gradient-to-r from-indigo-50 to-purple-50 py-4 px-5 border-b'>
+              <div className='flex items-center gap-3'>
+                <div className='p-2 bg-indigo-600 rounded-lg shadow-sm'>
+                  <FileText className='h-5 w-5 text-white' />
+                </div>
+                <div>
+                  <CardTitle className='text-lg font-semibold text-gray-900'>
+                    GL Integration
+                  </CardTitle>
+                  <CardDescription className='text-xs text-gray-600'>
+                    Link this party to your General Ledger
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className='pt-5 pb-4 px-5 space-y-5'>
+              <ToggleField
+                name='isGLLinked'
+                label='Enable GL Linkage'
+                description='Connect this party to your General Ledger for automatic accounting'
+                onChange={handleGLLinkedToggle}
+                disabled={isNonGLParty}
+                highlight={isGLLinked}
+              />
+              {isGLLinked && (
+                <>
+                  <Separator />
+                  <FormField
+                    control={form.control}
+                    name='glParentAccountId'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                          GL Parent Account{" "}
+                          <span className='text-red-500 text-base'>*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Select
+                            options={glAccounts}
+                            value={glAccounts.find(
+                              (o) => o.value === field.value,
+                            )}
+                            onChange={(v) => field.onChange(v?.value)}
+                            placeholder={
+                              loadingGlAccounts
+                                ? "Loading..."
+                                : "Select GL Account"
+                            }
+                            isLoading={loadingGlAccounts}
+                            isDisabled={loadingGlAccounts}
+                            styles={{
+                              control: (b) => ({
+                                ...b,
+                                minHeight: "40px",
+                                fontSize: "14px",
+                                borderColor: "#d1d5db",
+                              }),
+                              menu: (b) => ({ ...b, zIndex: 50 }),
+                            }}
+                          />
+                        </FormControl>
+                        <FormDescription className='text-xs text-gray-500'>
+                          Parent account under which this party's transactions
+                          will be recorded
+                        </FormDescription>
+                        <FormMessage className='text-xs' />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+            </CardContent>
+          </Card>
         );
 
+      // ── STEP 6: Settings ────────────────────────────────────────────────
       case 6:
         return (
           <div className='space-y-4'>
@@ -1719,8 +1817,8 @@ export default function PartiesForm({
               </CardHeader>
               <CardContent className='pt-5 pb-4 px-5 space-y-5'>
                 <div>
-                  <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
-                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                  <h4 className='text-sm font-semibold mb-3 flex items-center gap-2'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600' />
                     Portal Access
                   </h4>
                   <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
@@ -1751,12 +1849,10 @@ export default function PartiesForm({
                     />
                   </div>
                 </div>
-
                 <Separator />
-
                 <div>
-                  <h4 className='text-sm font-semibold mb-3 flex items-center gap-2 text-gray-900'>
-                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600'></span>
+                  <h4 className='text-sm font-semibold mb-3 flex items-center gap-2'>
+                    <span className='h-1.5 w-1.5 rounded-full bg-blue-600' />
                     Operational Settings
                   </h4>
                   <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
@@ -1767,7 +1863,7 @@ export default function PartiesForm({
                     />
                     <ToggleField
                       name='clearanceByOps'
-                      label='Clearance By Operations'
+                      label='Clearance By Ops'
                       description='Ops team clearance'
                     />
                     <ToggleField
@@ -1777,38 +1873,34 @@ export default function PartiesForm({
                     />
                     <ToggleField
                       name='atTradeForGDInsustrial'
-                      label='AT Trade - Industrial'
+                      label='AT Trade – Industrial'
                       description='Industrial GD trade'
                     />
                     <ToggleField
                       name='atTradeForGDCommercial'
-                      label='AT Trade - Commercial'
+                      label='AT Trade – Commercial'
                       description='Commercial GD trade'
                     />
                   </div>
                 </div>
-
                 <Separator />
-
                 <FormField
                   control={form.control}
                   name='benificiaryNameOfPO'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className='text-sm font-medium'>
-                        Beneficiary Name for Purchase Orders
-                        <span className='text-red-500 text-base'>*</span>
+                        Beneficiary Name for Purchase Orders{" "}
+                        <span className='text-red-500'>*</span>
                       </FormLabel>
                       <FormControl>
                         <Input
                           placeholder='Enter beneficiary name'
                           {...field}
+                          value={field.value ?? ""}
                           className='h-10 text-sm border-gray-300 focus:border-blue-500'
                         />
                       </FormControl>
-                      <FormDescription className='text-xs text-gray-500'>
-                        Name to be used as beneficiary in purchase orders
-                      </FormDescription>
                       <FormMessage className='text-xs' />
                     </FormItem>
                   )}
@@ -1816,6 +1908,7 @@ export default function PartiesForm({
               </CardContent>
             </Card>
 
+            {/* Representatives */}
             <Card className='border shadow-sm'>
               <CardHeader className='bg-gradient-to-r from-violet-50 to-purple-50 py-4 px-5 border-b'>
                 <div className='flex items-center gap-3'>
@@ -1833,156 +1926,302 @@ export default function PartiesForm({
                 </div>
               </CardHeader>
               <CardContent className='grid grid-cols-1 md:grid-cols-3 gap-5 pt-5 pb-4 px-5'>
-                <FormField
-                  control={form.control}
-                  name='salesRepId'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Sales Representative
-                      </FormLabel>
-                      <FormControl>
-                        <Select
-                          options={salesReps}
-                          value={salesReps.find(
-                            (option) => option.value === field.value,
-                          )}
-                          onChange={(val) => field.onChange(val?.value)}
-                          placeholder={
-                            loadingSalesReps ? "Loading..." : "Select Sales Rep"
-                          }
-                          className='react-select-container'
-                          classNamePrefix='react-select'
-                          isLoading={loadingSalesReps}
-                          isDisabled={loadingSalesReps}
-                          styles={{
-                            control: (base) => ({
-                              ...base,
-                              minHeight: "40px",
-                              fontSize: "14px",
-                              borderColor: "#d1d5db",
-                            }),
-                            menu: (base) => ({
-                              ...base,
-                              zIndex: 50,
-                            }),
-                          }}
-                        />
-                      </FormControl>
-                      <FormDescription className='text-xs text-gray-500'>
-                        Handles sales activities
-                      </FormDescription>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='docsRepId'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Documentation Rep
-                      </FormLabel>
-                      <FormControl>
-                        <Select
-                          options={docsReps}
-                          value={docsReps.find(
-                            (option) => option.value === field.value,
-                          )}
-                          onChange={(val) => field.onChange(val?.value)}
-                          placeholder={
-                            loadingDocsReps ? "Loading..." : "Select Docs Rep"
-                          }
-                          className='react-select-container'
-                          classNamePrefix='react-select'
-                          isLoading={loadingDocsReps}
-                          isDisabled={loadingDocsReps}
-                          styles={{
-                            control: (base) => ({
-                              ...base,
-                              minHeight: "40px",
-                              fontSize: "14px",
-                              borderColor: "#d1d5db",
-                            }),
-                            menu: (base) => ({
-                              ...base,
-                              zIndex: 50,
-                            }),
-                          }}
-                        />
-                      </FormControl>
-                      <FormDescription className='text-xs text-gray-500'>
-                        Handles documentation
-                      </FormDescription>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='accountsRepId'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='text-sm font-medium'>
-                        Accounts Representative
-                      </FormLabel>
-                      <FormControl>
-                        <Select
-                          options={accountsReps}
-                          value={accountsReps.find(
-                            (option) => option.value === field.value,
-                          )}
-                          onChange={(val) => field.onChange(val?.value)}
-                          placeholder={
-                            loadingAccountsReps
-                              ? "Loading..."
-                              : "Select Accounts Rep"
-                          }
-                          className='react-select-container'
-                          classNamePrefix='react-select'
-                          isLoading={loadingAccountsReps}
-                          isDisabled={loadingAccountsReps}
-                          styles={{
-                            control: (base) => ({
-                              ...base,
-                              minHeight: "40px",
-                              fontSize: "14px",
-                              borderColor: "#d1d5db",
-                            }),
-                            menu: (base) => ({
-                              ...base,
-                              zIndex: 50,
-                            }),
-                          }}
-                        />
-                      </FormControl>
-                      <FormDescription className='text-xs text-gray-500'>
-                        Handles accounting
-                      </FormDescription>
-                      <FormMessage className='text-xs' />
-                    </FormItem>
-                  )}
-                />
+                {[
+                  {
+                    name: "salesRepId" as const,
+                    label: "Sales Representative",
+                    options: salesReps,
+                    loading: loadingSalesReps,
+                    placeholder: "Select Sales Rep",
+                  },
+                  {
+                    name: "docsRepId" as const,
+                    label: "Documentation Rep",
+                    options: docsReps,
+                    loading: loadingDocsReps,
+                    placeholder: "Select Docs Rep",
+                  },
+                  {
+                    name: "accountsRepId" as const,
+                    label: "Accounts Representative",
+                    options: accountsReps,
+                    loading: loadingAccountsReps,
+                    placeholder: "Select Accounts Rep",
+                  },
+                ].map(({ name, label, options, loading, placeholder }) => (
+                  <FormField
+                    key={name}
+                    control={form.control}
+                    name={name}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className='text-sm font-medium'>
+                          {label}
+                        </FormLabel>
+                        <FormControl>
+                          <Select
+                            options={options}
+                            value={options.find(
+                              (o: any) => o.value === field.value,
+                            )}
+                            onChange={(v: any) => field.onChange(v?.value)}
+                            placeholder={loading ? "Loading..." : placeholder}
+                            isLoading={loading}
+                            isDisabled={loading}
+                            styles={{
+                              control: (b) => ({
+                                ...b,
+                                minHeight: "40px",
+                                fontSize: "14px",
+                                borderColor: "#d1d5db",
+                              }),
+                              menu: (b) => ({ ...b, zIndex: 50 }),
+                            }}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                ))}
               </CardContent>
             </Card>
           </div>
         );
 
+      // ── STEP 7: Party Charges ────────────────────────────────────────────
       case 7:
-        const isFormValid =
-          formValues.partyName &&
-          formValues.addressLine1 &&
-          formValues.phone &&
-          formValues.email &&
-          formValues.contactPersonEmail &&
-          formValues.contactPersonPhone &&
-          (!isGLLinked || (isGLLinked && formValues.glParentAccountId)) &&
-          (!formValues.isNonGLParty || !isNonGLParty) &&
-          formValues.benificiaryNameOfPO;
+        return (
+          <div className='space-y-4'>
+            <Card className='border shadow-sm'>
+              <CardHeader className='bg-gradient-to-r from-emerald-50 to-teal-50 py-4 px-5 border-b'>
+                <div className='flex items-center gap-3'>
+                  <div className='p-2 bg-emerald-600 rounded-lg shadow-sm'>
+                    <Receipt className='h-5 w-5 text-white' />
+                  </div>
+                  <div>
+                    <CardTitle className='text-lg font-semibold text-gray-900'>
+                      Party Charges
+                    </CardTitle>
+                    <CardDescription className='text-xs text-gray-600'>
+                      Select the charges applicable to this party
+                    </CardDescription>
+                  </div>
+                </div>
+                {/* Summary badge */}
+                {partyCharges.length > 0 && (
+                  <div className='mt-3'>
+                    <Badge className='bg-emerald-100 text-emerald-800 border-emerald-300 text-xs'>
+                      {partyCharges.length} charge
+                      {partyCharges.length !== 1 ? "s" : ""} selected
+                    </Badge>
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent className='pt-5 pb-4 px-5'>
+                <div className='grid grid-cols-1 lg:grid-cols-2 gap-5'>
+                  {/* ── Left: Available charges ── */}
+                  <div className='flex flex-col gap-3'>
+                    <div className='flex items-center justify-between'>
+                      <h4 className='text-sm font-semibold text-gray-800 flex items-center gap-2'>
+                        <span className='h-1.5 w-1.5 rounded-full bg-emerald-600' />
+                        Available Charges
+                      </h4>
+                      {loadingCharges && (
+                        <Loader2 className='h-4 w-4 animate-spin text-gray-400' />
+                      )}
+                    </div>
 
+                    {/* Search */}
+                    <div className='relative'>
+                      <Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400' />
+                      <Input
+                        placeholder='Search by name, code or type…'
+                        value={chargeSearch}
+                        onChange={(e) => setChargeSearch(e.target.value)}
+                        className='pl-9 h-9 text-sm border-gray-200 focus:border-emerald-400'
+                      />
+                    </div>
+
+                    {/* Charge list */}
+                    <div className='border rounded-xl overflow-hidden'>
+                      {loadingCharges ? (
+                        <div className='flex items-center justify-center py-10 text-slate-400 text-sm gap-2'>
+                          <Loader2 className='h-4 w-4 animate-spin' /> Loading
+                          charges…
+                        </div>
+                      ) : filteredCharges.length === 0 ? (
+                        <div className='py-10 text-center text-sm text-slate-400'>
+                          {chargeSearch
+                            ? "No charges match your search"
+                            : "No charges available"}
+                        </div>
+                      ) : (
+                        <div className='max-h-[360px] overflow-y-auto divide-y divide-slate-100'>
+                          {filteredCharges.map((charge) => {
+                            const alreadyAdded = selectedChargeIds.has(
+                              charge.chargeId,
+                            );
+                            return (
+                              <div
+                                key={charge.chargeId}
+                                className={cn(
+                                  "flex items-center justify-between px-4 py-3 transition-colors",
+                                  alreadyAdded
+                                    ? "bg-emerald-50"
+                                    : "hover:bg-slate-50",
+                                )}
+                              >
+                                <div className='min-w-0'>
+                                  <p className='text-sm font-medium text-slate-800 truncate'>
+                                    {charge.chargeName}
+                                  </p>
+                                  <p className='text-xs text-slate-400 mt-0.5'>
+                                    {charge.chargeCode}
+                                    {charge.chargeType
+                                      ? ` · ${charge.chargeType}`
+                                      : ""}
+                                  </p>
+                                </div>
+                                <button
+                                  type='button'
+                                  onClick={() =>
+                                    !alreadyAdded && addCharge(charge)
+                                  }
+                                  disabled={alreadyAdded}
+                                  className={cn(
+                                    "ml-3 flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                                    alreadyAdded
+                                      ? "bg-emerald-100 text-emerald-700 cursor-default"
+                                      : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm hover:shadow",
+                                  )}
+                                >
+                                  {alreadyAdded ? (
+                                    <>
+                                      <CheckCircle className='h-3.5 w-3.5' />{" "}
+                                      Added
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Plus className='h-3.5 w-3.5' /> Add
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Right: Selected charges ── */}
+                  <div className='flex flex-col gap-3'>
+                    <h4 className='text-sm font-semibold text-gray-800 flex items-center gap-2'>
+                      <span className='h-1.5 w-1.5 rounded-full bg-blue-600' />
+                      Selected Charges
+                    </h4>
+
+                    {partyCharges.length === 0 ? (
+                      <div className='border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center py-14 text-slate-400'>
+                        <Receipt className='h-8 w-8 mb-2 opacity-40' />
+                        <p className='text-sm'>No charges selected yet</p>
+                        <p className='text-xs mt-1'>
+                          Add charges from the list on the left
+                        </p>
+                      </div>
+                    ) : (
+                      <div className='border rounded-xl overflow-hidden'>
+                        <div className='max-h-[360px] overflow-y-auto divide-y divide-slate-100'>
+                          {partyCharges.map((pc, idx) => (
+                            <div
+                              key={pc.chargesId}
+                              className='flex items-center gap-3 px-4 py-3'
+                            >
+                              {/* Index */}
+                              <span className='flex-shrink-0 w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-xs flex items-center justify-center font-medium'>
+                                {idx + 1}
+                              </span>
+
+                              {/* Name + type */}
+                              <div className='flex-1 min-w-0'>
+                                <p className='text-sm font-medium text-slate-800 truncate'>
+                                  {getChargeName(pc.chargesId)}
+                                </p>
+                                {getChargeType(pc.chargesId) && (
+                                  <p className='text-xs text-slate-400 mt-0.5'>
+                                    {getChargeType(pc.chargesId)}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Active toggle */}
+                              <div className='flex items-center gap-1.5 flex-shrink-0'>
+                                <span
+                                  className={cn(
+                                    "text-xs font-medium",
+                                    pc.isActive
+                                      ? "text-emerald-600"
+                                      : "text-slate-400",
+                                  )}
+                                >
+                                  {pc.isActive ? "Active" : "Inactive"}
+                                </span>
+                                <Switch
+                                  checked={pc.isActive}
+                                  onCheckedChange={(v) =>
+                                    toggleChargeActive(pc.chargesId, v)
+                                  }
+                                  className='scale-90'
+                                />
+                              </div>
+
+                              {/* Remove */}
+                              <button
+                                type='button'
+                                onClick={() => removeCharge(pc.chargesId)}
+                                className='flex-shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors'
+                                title='Remove charge'
+                              >
+                                <Trash2 className='h-4 w-4' />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Footer summary */}
+                        <div className='border-t bg-slate-50 px-4 py-2.5 flex items-center justify-between'>
+                          <span className='text-xs text-slate-500'>
+                            {partyCharges.filter((pc) => pc.isActive).length}{" "}
+                            active / {partyCharges.length} total
+                          </span>
+                          <button
+                            type='button'
+                            onClick={() => form.setValue("partyCharges", [])}
+                            className='text-xs text-red-500 hover:text-red-700 font-medium'
+                          >
+                            Clear all
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Alert className='border-blue-200 bg-blue-50'>
+              <Info className='h-4 w-4 text-blue-600' />
+              <AlertDescription className='text-blue-800 text-xs'>
+                Party charges are optional. You can add, remove, or toggle
+                active status for each charge. These charges will be available
+                for use in shipment jobs for this party.
+              </AlertDescription>
+            </Alert>
+          </div>
+        );
+
+      // ── STEP 8: Review ──────────────────────────────────────────────────
+      case 8: {
         return (
           <Card className='border shadow-sm'>
             <CardHeader className='bg-gradient-to-r from-green-50 to-emerald-50 py-4 px-5 border-b'>
@@ -2001,31 +2240,68 @@ export default function PartiesForm({
               </div>
             </CardHeader>
             <CardContent className='pt-5 pb-4 px-5 space-y-5'>
-              {!isFormValid && (
-                <Alert
-                  variant='destructive'
-                  className='border-red-300 bg-red-50'
-                >
-                  <AlertCircle className='h-4 w-4 text-red-600' />
-                  <AlertTitle className='text-sm font-semibold text-red-900'>
-                    Incomplete Information
-                  </AlertTitle>
-                  <AlertDescription className='text-xs text-red-800'>
-                    Please ensure all required fields are filled correctly
-                    before submitting.
-                  </AlertDescription>
-                </Alert>
-              )}
-
+              {/* Per-step error breakdown — far more useful than a generic message */}
+              {(() => {
+                const stepErrs = getStepErrors();
+                const totalErrors = Object.values(stepErrs).flat().length;
+                if (totalErrors === 0)
+                  return (
+                    <Alert className='border-green-200 bg-green-50'>
+                      <CheckCircle className='h-4 w-4 text-green-600' />
+                      <AlertTitle className='text-sm font-semibold text-green-900'>
+                        All sections complete
+                      </AlertTitle>
+                      <AlertDescription className='text-green-800 text-xs'>
+                        Everything looks good — you can submit the form.
+                      </AlertDescription>
+                    </Alert>
+                  );
+                return (
+                  <Alert
+                    variant='destructive'
+                    className='border-red-300 bg-red-50'
+                  >
+                    <AlertCircle className='h-4 w-4 text-red-600' />
+                    <AlertTitle className='text-sm font-semibold text-red-900'>
+                      {totalErrors} required field{totalErrors !== 1 ? "s" : ""}{" "}
+                      still missing
+                    </AlertTitle>
+                    <AlertDescription className='text-red-800 text-xs mt-2 space-y-2'>
+                      {Object.entries(stepErrs).map(([stepId, msgs]) => {
+                        const step = formSteps.find(
+                          (s) => s.id === Number(stepId),
+                        );
+                        return (
+                          <div key={stepId} className='flex flex-col gap-0.5'>
+                            <button
+                              type='button'
+                              onClick={() => goToStep(Number(stepId))}
+                              className='font-semibold text-red-900 underline underline-offset-2 text-left hover:text-red-700 w-fit'
+                            >
+                              Step {stepId}: {step?.fullTitle}
+                            </button>
+                            <ul className='ml-3 list-disc space-y-0.5'>
+                              {(msgs as string[]).map((msg) => (
+                                <li key={msg}>{msg}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        );
+                      })}
+                    </AlertDescription>
+                  </Alert>
+                );
+              })()}
               <Alert className='border-blue-200 bg-blue-50'>
                 <Info className='h-4 w-4 text-blue-600' />
                 <AlertDescription className='text-blue-900 text-xs'>
-                  Review all the information below. You can go back to any step
-                  to make changes.
+                  Click any step name above (or the step pills at the top) to
+                  jump directly to the section that needs attention.
                 </AlertDescription>
               </Alert>
 
               <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                {/* Basic */}
                 <Card className='border shadow-sm bg-white'>
                   <CardHeader className='pb-2 pt-3 px-4 bg-gray-50 border-b'>
                     <CardTitle className='text-sm flex items-center gap-2 font-semibold text-gray-900'>
@@ -2034,15 +2310,15 @@ export default function PartiesForm({
                     </CardTitle>
                   </CardHeader>
                   <CardContent className='space-y-2.5 pb-3 px-4 pt-3'>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         Party Name:
                       </span>
-                      <span className='font-semibold text-xs text-right text-gray-900'>
+                      <span className='font-semibold text-xs text-gray-900'>
                         {formValues.partyName || "—"}
                       </span>
                     </div>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         Short Name:
                       </span>
@@ -2050,13 +2326,13 @@ export default function PartiesForm({
                         {formValues.partyShortName || "—"}
                       </span>
                     </div>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         Status:
                       </span>
                       <Badge
                         variant={formValues.isActive ? "default" : "secondary"}
-                        className='text-[10px] px-2 py-0.5'
+                        className='text-[10px]'
                       >
                         {formValues.isActive ? "Active" : "Inactive"}
                       </Badge>
@@ -2064,6 +2340,7 @@ export default function PartiesForm({
                   </CardContent>
                 </Card>
 
+                {/* Party type */}
                 <Card className='border shadow-sm bg-white'>
                   <CardHeader className='pb-2 pt-3 px-4 bg-gray-50 border-b'>
                     <CardTitle className='text-sm flex items-center gap-2 font-semibold text-gray-900'>
@@ -2072,29 +2349,29 @@ export default function PartiesForm({
                     </CardTitle>
                   </CardHeader>
                   <CardContent className='space-y-2.5 pb-3 px-4 pt-3'>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         Customer:
                       </span>
                       <Badge
                         variant={formValues.isCustomer ? "default" : "outline"}
-                        className='text-[10px] px-2 py-0.5'
+                        className='text-[10px]'
                       >
                         {formValues.isCustomer ? "Yes" : "No"}
                       </Badge>
                     </div>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         Vendor:
                       </span>
                       <Badge
                         variant={formValues.isVendor ? "default" : "outline"}
-                        className='text-[10px] px-2 py-0.5'
+                        className='text-[10px]'
                       >
                         {formValues.isVendor ? "Yes" : "No"}
                       </Badge>
                     </div>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         Non-GL Party:
                       </span>
@@ -2102,7 +2379,7 @@ export default function PartiesForm({
                         variant={
                           formValues.isNonGLParty ? "default" : "outline"
                         }
-                        className='text-[10px] px-2 py-0.5'
+                        className='text-[10px]'
                       >
                         {formValues.isNonGLParty ? "Yes" : "No"}
                       </Badge>
@@ -2110,6 +2387,7 @@ export default function PartiesForm({
                   </CardContent>
                 </Card>
 
+                {/* Contact */}
                 <Card className='border shadow-sm bg-white'>
                   <CardHeader className='pb-2 pt-3 px-4 bg-gray-50 border-b'>
                     <CardTitle className='text-sm flex items-center gap-2 font-semibold text-gray-900'>
@@ -2118,7 +2396,7 @@ export default function PartiesForm({
                     </CardTitle>
                   </CardHeader>
                   <CardContent className='space-y-2.5 pb-3 px-4 pt-3'>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         Phone:
                       </span>
@@ -2126,7 +2404,7 @@ export default function PartiesForm({
                         {formValues.phone || "—"}
                       </span>
                     </div>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         Email:
                       </span>
@@ -2134,7 +2412,7 @@ export default function PartiesForm({
                         {formValues.email || "—"}
                       </span>
                     </div>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         Contact Person:
                       </span>
@@ -2145,6 +2423,7 @@ export default function PartiesForm({
                   </CardContent>
                 </Card>
 
+                {/* Financial */}
                 <Card className='border shadow-sm bg-white'>
                   <CardHeader className='pb-2 pt-3 px-4 bg-gray-50 border-b'>
                     <CardTitle className='text-sm flex items-center gap-2 font-semibold text-gray-900'>
@@ -2153,7 +2432,7 @@ export default function PartiesForm({
                     </CardTitle>
                   </CardHeader>
                   <CardContent className='space-y-2.5 pb-3 px-4 pt-3'>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         NTN:
                       </span>
@@ -2161,7 +2440,7 @@ export default function PartiesForm({
                         {formValues.ntnNumber || "—"}
                       </span>
                     </div>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         Credit Limit (LC):
                       </span>
@@ -2169,7 +2448,7 @@ export default function PartiesForm({
                         {formValues.creditLimitLC}
                       </span>
                     </div>
-                    <div className='flex justify-between items-start'>
+                    <div className='flex justify-between'>
                       <span className='text-xs text-gray-600 font-medium'>
                         Credit Days:
                       </span>
@@ -2179,60 +2458,142 @@ export default function PartiesForm({
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* Charges summary */}
+                <Card className='border shadow-sm bg-white md:col-span-2'>
+                  <CardHeader className='pb-2 pt-3 px-4 bg-gray-50 border-b'>
+                    <CardTitle className='text-sm flex items-center gap-2 font-semibold text-gray-900'>
+                      <Receipt className='h-4 w-4 text-emerald-600' />
+                      Party Charges ({partyCharges.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className='pb-3 px-4 pt-3'>
+                    {partyCharges.length === 0 ? (
+                      <p className='text-xs text-gray-400 italic'>
+                        No charges selected
+                      </p>
+                    ) : (
+                      <div className='flex flex-wrap gap-2'>
+                        {partyCharges.map((pc) => (
+                          <Badge
+                            key={pc.chargesId}
+                            variant='outline'
+                            className={cn(
+                              "text-[11px] px-2 py-0.5 gap-1",
+                              pc.isActive
+                                ? "border-emerald-300 text-emerald-700 bg-emerald-50"
+                                : "border-gray-200 text-gray-400",
+                            )}
+                          >
+                            {getChargeName(pc.chargesId)}
+                            {!pc.isActive && (
+                              <span className='ml-1 text-[9px] text-gray-400'>
+                                (inactive)
+                              </span>
+                            )}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
 
               <Separator />
 
-              <div className='bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200'>
-                <h4 className='font-semibold mb-3 text-green-900 flex items-center gap-2 text-sm'>
-                  <CheckCircle className='h-4 w-4' />
-                  Completion Summary
-                </h4>
-                <ul className='space-y-2'>
-                  {formSteps.slice(0, -1).map((step) => {
-                    const Icon = step.icon;
-                    const isCompleted =
-                      completedSteps.includes(step.id) || currentStep > step.id;
-                    return (
-                      <li key={step.id} className='flex items-center gap-2.5'>
-                        <div
-                          className={cn(
-                            "flex items-center justify-center w-6 h-6 rounded-full transition-colors",
-                            isCompleted
-                              ? "bg-green-600 text-white"
-                              : "bg-gray-200 text-gray-600",
-                          )}
-                        >
-                          {isCompleted ? (
-                            <CheckCircle className='h-3.5 w-3.5' />
-                          ) : (
-                            <Icon className='h-3.5 w-3.5' />
-                          )}
-                        </div>
-                        <span
-                          className={cn(
-                            "text-xs",
-                            isCompleted
-                              ? "text-green-900 font-semibold"
-                              : "text-gray-600",
-                          )}
-                        >
-                          {step.fullTitle}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+              {/* Step completion summary — shows green tick OR red errors per step */}
+              {(() => {
+                const stepErrs = getStepErrors();
+                return (
+                  <div className='rounded-xl border overflow-hidden'>
+                    <div className='bg-slate-50 border-b px-4 py-2.5'>
+                      <h4 className='font-semibold text-slate-800 flex items-center gap-2 text-sm'>
+                        <CheckCircle className='h-4 w-4 text-slate-500' />
+                        Section Checklist
+                      </h4>
+                    </div>
+                    <ul className='divide-y divide-slate-100'>
+                      {formSteps.slice(0, -1).map((step) => {
+                        const Icon = step.icon;
+                        const errs = stepErrs[step.id] ?? [];
+                        const hasError = errs.length > 0;
+                        return (
+                          <li key={step.id} className='px-4 py-3'>
+                            <div className='flex items-start gap-3'>
+                              {/* Status icon */}
+                              <div
+                                className={cn(
+                                  "flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full mt-0.5",
+                                  hasError
+                                    ? "bg-red-100 text-red-600"
+                                    : "bg-green-100 text-green-700",
+                                )}
+                              >
+                                {hasError ? (
+                                  <AlertCircle className='h-4 w-4' />
+                                ) : (
+                                  <CheckCircle className='h-4 w-4' />
+                                )}
+                              </div>
+
+                              <div className='flex-1 min-w-0'>
+                                <div className='flex items-center justify-between gap-2'>
+                                  <span
+                                    className={cn(
+                                      "text-sm font-semibold",
+                                      hasError
+                                        ? "text-red-700"
+                                        : "text-green-800",
+                                    )}
+                                  >
+                                    Step {step.id}: {step.fullTitle}
+                                  </span>
+                                  {hasError && (
+                                    <button
+                                      type='button'
+                                      onClick={() => goToStep(step.id)}
+                                      className='flex-shrink-0 text-[11px] font-medium text-white bg-red-500 hover:bg-red-600 px-2 py-0.5 rounded-md transition-colors'
+                                    >
+                                      Fix →
+                                    </button>
+                                  )}
+                                </div>
+
+                                {hasError && (
+                                  <ul className='mt-1.5 space-y-0.5'>
+                                    {errs.map((err) => (
+                                      <li
+                                        key={err}
+                                        className='flex items-start gap-1.5 text-xs text-red-600'
+                                      >
+                                        <span className='mt-0.5 flex-shrink-0'>
+                                          •
+                                        </span>
+                                        {err}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         );
+      }
 
       default:
         return null;
     }
   };
 
+  // ── Main render ───────────────────────────────────────────────────────────
   return (
     <div className='min-h-screen bg-gradient-to-br from-gray-50 to-blue-50'>
       <div className='container mx-auto px-4 py-5 max-w-7xl'>
@@ -2255,8 +2616,7 @@ export default function PartiesForm({
             disabled={isSubmitting}
             className='h-9 hover:bg-red-50 hover:text-red-600'
           >
-            <X className='h-4 w-4 mr-1.5' />
-            Cancel
+            <X className='h-4 w-4 mr-1.5' /> Cancel
           </Button>
         </div>
 
@@ -2285,47 +2645,69 @@ export default function PartiesForm({
           </CardContent>
         </Card>
 
-        {/* Step Navigation */}
+        {/* Step Navigation — 8 steps, wrap gracefully */}
         <div className='mb-5'>
-          <div className='grid grid-cols-7 gap-2'>
+          <div className='grid grid-cols-4 md:grid-cols-8 gap-2'>
             {formSteps.map((step) => {
               const Icon = step.icon;
+              const stepErrs = getStepErrors();
               const isCompleted =
                 completedSteps.includes(step.id) || currentStep > step.id;
               const isCurrent = currentStep === step.id;
-
+              const hasStepError =
+                isCompleted &&
+                !isCurrent &&
+                (stepErrs[step.id]?.length ?? 0) > 0;
               return (
                 <button
                   key={step.id}
                   type='button'
                   onClick={() => goToStep(step.id)}
                   className={cn(
-                    "flex flex-col items-center p-3 rounded-xl transition-all duration-200 border-2 shadow-sm hover:shadow-md",
+                    "relative flex flex-col items-center p-2.5 rounded-xl transition-all duration-200 border-2 shadow-sm hover:shadow-md",
                     isCurrent &&
                       "bg-blue-600 text-white shadow-lg scale-105 border-blue-600",
                     isCompleted &&
                       !isCurrent &&
+                      !hasStepError &&
                       "bg-green-50 text-green-700 border-green-300 hover:bg-green-100",
+                    isCompleted &&
+                      !isCurrent &&
+                      hasStepError &&
+                      "bg-red-50 text-red-700 border-red-300 hover:bg-red-100",
                     !isCurrent &&
                       !isCompleted &&
                       "bg-white hover:bg-gray-50 border-gray-200 hover:border-blue-300",
                   )}
                 >
+                  {/* Error dot */}
+                  {hasStepError && !isCurrent && (
+                    <span className='absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white' />
+                  )}
                   <div
                     className={cn(
-                      "flex items-center justify-center w-10 h-10 rounded-full mb-2 transition-colors",
+                      "flex items-center justify-center w-8 h-8 rounded-full mb-1.5 transition-colors",
                       isCurrent && "bg-white text-blue-600",
-                      isCompleted && !isCurrent && "bg-green-600 text-white",
+                      isCompleted &&
+                        !isCurrent &&
+                        !hasStepError &&
+                        "bg-green-600 text-white",
+                      isCompleted &&
+                        !isCurrent &&
+                        hasStepError &&
+                        "bg-red-500 text-white",
                       !isCurrent && !isCompleted && "bg-gray-100 text-gray-600",
                     )}
                   >
-                    {isCompleted && !isCurrent ? (
-                      <CheckCircle className='h-5 w-5' />
+                    {isCompleted && !isCurrent && !hasStepError ? (
+                      <CheckCircle className='h-4 w-4' />
+                    ) : isCompleted && !isCurrent && hasStepError ? (
+                      <AlertCircle className='h-4 w-4' />
                     ) : (
-                      <Icon className='h-5 w-5' />
+                      <Icon className='h-4 w-4' />
                     )}
                   </div>
-                  <span className='text-[10px] text-center font-semibold leading-tight'>
+                  <span className='text-[9px] text-center font-semibold leading-tight'>
                     {step.title}
                   </span>
                 </button>
@@ -2336,37 +2718,35 @@ export default function PartiesForm({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-5'>
-            {/* Hidden Fields */}
+            {/* Hidden fields */}
             <FormField
               control={form.control}
               name='partyId'
               render={({ field }) => (
                 <FormItem className='hidden'>
                   <FormControl>
-                    <Input type='hidden' {...field} />
+                    <Input type='hidden' {...field} value={field.value ?? ""} />
                   </FormControl>
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name='companyId'
               render={({ field }) => (
                 <FormItem className='hidden'>
                   <FormControl>
-                    <Input type='hidden' {...field} />
+                    <Input type='hidden' {...field} value={field.value ?? ""} />
                   </FormControl>
                 </FormItem>
               )}
             />
 
-            {/* Current Step Content */}
             <div className='animate-in fade-in-50 duration-500 mb-6'>
               {renderStepContent()}
             </div>
 
-            {/* Navigation Buttons */}
+            {/* Navigation */}
             <Card className='border shadow-lg bg-white mt-6'>
               <CardContent className='p-4'>
                 <div className='flex justify-between items-center'>
@@ -2377,17 +2757,16 @@ export default function PartiesForm({
                         type='button'
                         onClick={prevStep}
                         disabled={isSubmitting}
-                        className='gap-2 h-10 px-5 border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all'
+                        className='gap-2 h-10 px-5 border-gray-300 hover:bg-gray-50 transition-all'
                         size='sm'
                       >
-                        <ChevronLeft className='h-4 w-4' />
-                        Previous
+                        <ChevronLeft className='h-4 w-4' /> Previous
                       </Button>
                     )}
                   </div>
 
-                  <div className='flex items-center gap-3 px-4'>
-                    <div className='text-center'>
+                  <div className='flex items-center gap-3 px-4 text-center'>
+                    <div>
                       <span className='text-sm text-gray-700 font-semibold block'>
                         {formSteps[currentStep - 1].fullTitle}
                       </span>
@@ -2402,11 +2781,10 @@ export default function PartiesForm({
                       <Button
                         type='button'
                         onClick={nextStep}
-                        className='gap-2 h-10 px-6 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all'
+                        className='gap-2 h-10 px-6 bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all'
                         size='sm'
                       >
-                        Next Step
-                        <ChevronRight className='h-4 w-4' />
+                        Next Step <ChevronRight className='h-4 w-4' />
                       </Button>
                     ) : (
                       <>
@@ -2416,7 +2794,7 @@ export default function PartiesForm({
                           onClick={() => setCurrentStep(1)}
                           disabled={isSubmitting}
                           size='sm'
-                          className='h-10 px-4 border-gray-300 hover:bg-gray-50'
+                          className='h-10 px-4 border-gray-300'
                         >
                           Edit Details
                         </Button>
@@ -2425,23 +2803,15 @@ export default function PartiesForm({
                           onClick={form.handleSubmit(onSubmit)}
                           disabled={
                             isSubmitting ||
-                            !formValues.partyName ||
-                            !formValues.addressLine1 ||
-                            !formValues.phone ||
-                            !formValues.email ||
-                            !formValues.contactPersonEmail ||
-                            !formValues.contactPersonPhone ||
-                            (isGLLinked && !formValues.glParentAccountId) ||
-                            (formValues.isNonGLParty && isNonGLParty) ||
-                            !formValues.benificiaryNameOfPO
+                            Object.keys(getStepErrors()).length > 0
                           }
-                          className='gap-2 min-w-[140px] h-10 px-6 bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed'
+                          className='gap-2 min-w-[140px] h-10 px-6 bg-green-600 hover:bg-green-700 text-white shadow-md transition-all disabled:opacity-50'
                           size='sm'
                         >
                           {isSubmitting ? (
                             <>
                               <Loader2 className='h-4 w-4 animate-spin' />
-                              Submitting...
+                              Submitting…
                             </>
                           ) : (
                             <>
