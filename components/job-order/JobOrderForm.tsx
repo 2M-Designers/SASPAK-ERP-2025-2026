@@ -453,6 +453,12 @@ export default function JobOrderForm({
   const documentType = form.watch("jobDocumentType");
   const showDetentionTab = form.watch("jobSubType") === "FCL";
 
+  // Watch LCL/AIR package fields — passed as plain props to DispatchTab
+  // so the child's useEffect dependency array fires on every change.
+  const shippingQtyOfPackages = form.watch("qtyOfPackages");
+  const shippingPackagesType = form.watch("packagesType");
+  const shippingPackageWeight = form.watch("packageWeight");
+
   // Helper function to transform API dates to form format (YYYY-MM-DD)
   const formatDateForForm = (isoDate: string | null | undefined) => {
     if (!isoDate) return "";
@@ -686,8 +692,8 @@ export default function JobOrderForm({
             invoiceItemId: item.jobInvoiceCommodityId || 0,
             jobInvoiceId: item.jobInvoiceId || 0,
             hsCodeId: item.hscodeId || null, // ✅ API returns lowercase 'hscodeId'
-            hsCode: "", // Will be populated from dropdown
-            description: item.description || "",
+            hsCode: item.hscode?.code || "", // ← read from nested object
+            description: item.description || item.hscode?.description || "",
             originId: item.originId || null, // ✅ ADDED
             quantity: item.quantity || 0,
             dutiableValue: item.dutiableValue || 0,
@@ -1756,6 +1762,10 @@ export default function JobOrderForm({
     setGoodsDeclarations,
     dispatchRecords,
     setDispatchRecords,
+    // LCL/AIR package sync props for DispatchTab
+    shippingQtyOfPackages,
+    shippingPackagesType,
+    shippingPackageWeight,
     detentionRecords,
     setDetentionRecords,
     insuranceType,

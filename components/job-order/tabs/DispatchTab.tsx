@@ -43,16 +43,22 @@ export default function DispatchTab({
   form,
   fclContainers = [],
   parties = [],
-  transporters = [], // ✅ NEW: Filtered transporter list (IsTransporter=true)
+  transporters = [],
   locations = [],
   containerTypes = [],
   containerSizes = [],
   packageTypes = [],
   shippingType,
+  shippingQtyOfPackages,
+  shippingPackagesType,
+  shippingPackageWeight,
   dispatchRecords = [],
   setDispatchRecords,
   toast,
 }: any) {
+  const isFCL = shippingType === "FCL";
+  const isLCLorAIR = shippingType === "LCL" || shippingType === "AIR";
+
   const [applyToAllValues, setApplyToAllValues] = useState({
     transporterPartyId: undefined as number | undefined,
     destinationLocationId: undefined as number | undefined,
@@ -62,43 +68,85 @@ export default function DispatchTab({
     dispatchDate: "",
   });
 
+  // ── FCL: sync containers from Shipping Tab into dispatch records ──────────
   useEffect(() => {
-    if (shippingType === "FCL" && fclContainers.length > 0) {
-      const existingIds = new Set(
-        dispatchRecords.map((r: DispatchRecord) => r.containerNumber),
-      );
+    if (!isFCL) return;
+    if (fclContainers.length === 0) return;
 
-      const newRecords = fclContainers
-        .filter((container: any) => !existingIds.has(container.containerNo))
-        .map((container: any) => ({
-          containerNumber: container.containerNo,
-          containerTypeId: container.containerTypeId,
-          containerSizeId: container.containerSizeId,
-          netWeight: container.tareWeight || 0,
-          transporterPartyId: undefined,
-          destinationLocationId: undefined,
-          containerReturnTerminalId: undefined,
-          buyingAmountLc: 0,
-          topayAmountLc: 0,
-          dispatchDate: "",
-        }));
+    const existingIds = new Set(
+      dispatchRecords.map((r: DispatchRecord) => r.containerNumber),
+    );
 
-      if (newRecords.length > 0) {
-        setDispatchRecords([...dispatchRecords, ...newRecords]);
-      }
+    const newRecords = fclContainers
+      .filter((container: any) => !existingIds.has(container.containerNo))
+      .map((container: any) => ({
+        containerNumber: container.containerNo,
+        containerTypeId: container.containerTypeId,
+        containerSizeId: container.containerSizeId,
+        netWeight: container.tareWeight || 0,
+        transporterPartyId: undefined,
+        destinationLocationId: undefined,
+        containerReturnTerminalId: undefined,
+        buyingAmountLc: 0,
+        topayAmountLc: 0,
+        dispatchDate: "",
+      }));
+
+    if (newRecords.length > 0) {
+      setDispatchRecords([...dispatchRecords, ...newRecords]);
     }
   }, [fclContainers, shippingType]);
 
+  // ── LCL / AIR: keep row[0] in sync with the three Shipping Tab props ───────
+  // The parent passes these as plain props via form.watch() so they are always
+  // fresh when the parent re-renders — no stale-closure issues.
+  useEffect(() => {
+    if (!isLCLorAIR) return;
+
+    // Fallback to getValues() in case the parent hasn't wired the new props yet
+    const qty = shippingQtyOfPackages ?? form.getValues("qtyOfPackages") ?? 0;
+    const type = shippingPackagesType ?? form.getValues("packagesType") ?? "";
+    const weight =
+      shippingPackageWeight ?? form.getValues("packageWeight") ?? 0;
+
+    setDispatchRecords((prev: DispatchRecord[]) => {
+      const existing = prev[0] ?? {};
+      const syncedRow: DispatchRecord = {
+        // Keep the stable ID so the row never flickers
+        containerNumber: existing.containerNumber || `PKG-${Date.now()}`,
+        // Preserve dispatch-only fields the user may have filled
+        transporterPartyId: existing.transporterPartyId,
+        destinationLocationId: existing.destinationLocationId,
+        containerReturnTerminalId: existing.containerReturnTerminalId,
+        buyingAmountLc: existing.buyingAmountLc ?? 0,
+        topayAmountLc: existing.topayAmountLc ?? 0,
+        dispatchDate: existing.dispatchDate ?? "",
+        // Always mirror the three Shipping Tab fields
+        packageType: type,
+        quantity: qty,
+        netWeight: weight,
+      };
+
+      if (prev.length === 0) return [syncedRow];
+      // Replace only row[0]; leave any manually-added rows untouched
+      return [syncedRow, ...prev.slice(1)];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isLCLorAIR,
+    shippingQtyOfPackages,
+    shippingPackagesType,
+    shippingPackageWeight,
+  ]);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
   const updateDispatchRecord = (
     index: number,
     field: keyof DispatchRecord,
     value: any,
   ) => {
     const updatedRecords = [...dispatchRecords];
-    updatedRecords[index] = {
-      ...updatedRecords[index],
-      [field]: value,
-    };
+    updatedRecords[index] = { ...updatedRecords[index], [field]: value };
     setDispatchRecords(updatedRecords);
   };
 
@@ -120,9 +168,11 @@ export default function DispatchTab({
       ...(applyToAllValues.destinationLocationId && {
         destinationLocationId: applyToAllValues.destinationLocationId,
       }),
-      ...(applyToAllValues.containerReturnTerminalId && {
-        containerReturnTerminalId: applyToAllValues.containerReturnTerminalId,
-      }),
+      // Only apply Empty Return for FCL
+      ...(isFCL &&
+        applyToAllValues.containerReturnTerminalId && {
+          containerReturnTerminalId: applyToAllValues.containerReturnTerminalId,
+        }),
       ...(applyToAllValues.buyingAmountLc > 0 && {
         buyingAmountLc: applyToAllValues.buyingAmountLc,
       }),
@@ -135,7 +185,6 @@ export default function DispatchTab({
     }));
 
     setDispatchRecords(updatedRecords);
-
     toast({
       title: "Success",
       description: `Applied values to ${updatedRecords.length} record(s)`,
@@ -163,35 +212,28 @@ export default function DispatchTab({
       setDispatchRecords(
         dispatchRecords.filter((_: any, i: number) => i !== index),
       );
-      toast({
-        title: "Deleted",
-        description: "Dispatch record removed",
-      });
+      toast({ title: "Deleted", description: "Dispatch record removed" });
     }
   };
 
   const getPartyLabel = (partyId: number | undefined) => {
     if (!partyId) return "";
-    const party = parties.find((p: any) => p.value === partyId);
-    return party?.label || "";
+    return parties.find((p: any) => p.value === partyId)?.label || "";
   };
 
   const getLocationLabel = (locationId: number | undefined) => {
     if (!locationId) return "";
-    const location = locations.find((l: any) => l.value === locationId);
-    return location?.label || "";
+    return locations.find((l: any) => l.value === locationId)?.label || "";
   };
 
   const getContainerTypeLabel = (typeId: number | undefined) => {
     if (!typeId) return "";
-    const type = containerTypes.find((t: any) => t.value === typeId);
-    return type?.label || "";
+    return containerTypes.find((t: any) => t.value === typeId)?.label || "";
   };
 
   const getContainerSizeLabel = (sizeId: number | undefined) => {
     if (!sizeId) return "";
-    const size = containerSizes.find((s: any) => s.value === sizeId);
-    return size?.label || "";
+    return containerSizes.find((s: any) => s.value === sizeId)?.label || "";
   };
 
   const totals = {
@@ -210,17 +252,16 @@ export default function DispatchTab({
     ),
   };
 
-  const isFCL = shippingType === "FCL";
-
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <TabsContent value='dispatch' className='space-y-4'>
-      {/* Header with Info */}
+      {/* Info Banner */}
       <div className='bg-blue-50 p-4 rounded-lg border border-blue-200'>
         <div className='flex items-start gap-2'>
           <Info className='h-5 w-5 text-blue-600 mt-0.5' />
           <div>
             <h3 className='font-semibold text-blue-900 mb-1'>
-              Dispatch - Handed Over To
+              Dispatch – Handed Over To
             </h3>
             <p className='text-sm text-blue-700'>
               {isFCL
@@ -231,7 +272,7 @@ export default function DispatchTab({
         </div>
       </div>
 
-      {/* Apply to All Section */}
+      {/* ── Apply to All ─────────────────────────────────────────────────── */}
       <div className='bg-white p-6 rounded-lg border'>
         <div className='flex items-center justify-between mb-4'>
           <h3 className='text-lg font-semibold'>Apply Common Values to All</h3>
@@ -247,13 +288,12 @@ export default function DispatchTab({
             <Select
               key={`transporter-${applyToAllValues.transporterPartyId || "none"}`}
               defaultValue={applyToAllValues.transporterPartyId?.toString()}
-              onValueChange={(value) => {
-                console.log("Transporter selected:", value);
+              onValueChange={(value) =>
                 setApplyToAllValues({
                   ...applyToAllValues,
                   transporterPartyId: parseInt(value),
-                });
-              }}
+                })
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder='Select Transporter'>
@@ -298,13 +338,12 @@ export default function DispatchTab({
             <Select
               key={`destination-${applyToAllValues.destinationLocationId || "none"}`}
               defaultValue={applyToAllValues.destinationLocationId?.toString()}
-              onValueChange={(value) => {
-                console.log("Destination selected:", value);
+              onValueChange={(value) =>
                 setApplyToAllValues({
                   ...applyToAllValues,
                   destinationLocationId: parseInt(value),
-                });
-              }}
+                })
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder='Select Destination'>
@@ -319,7 +358,7 @@ export default function DispatchTab({
                 className='max-h-[300px] overflow-y-auto'
               >
                 {locations
-                  .filter((location: any) => location?.value)
+                  .filter((l: any) => l?.value)
                   .map((location: any) => (
                     <SelectItem
                       key={location.value}
@@ -338,20 +377,19 @@ export default function DispatchTab({
             )}
           </div>
 
-          {/* Empty Return */}
-          {shippingType === "FCL" && (
+          {/* Empty Return — FCL only */}
+          {isFCL && (
             <div className='space-y-2'>
               <Label>Empty Return (Terminal)</Label>
               <Select
                 key={`return-${applyToAllValues.containerReturnTerminalId || "none"}`}
                 defaultValue={applyToAllValues.containerReturnTerminalId?.toString()}
-                onValueChange={(value) => {
-                  console.log("Return terminal selected:", value);
+                onValueChange={(value) =>
                   setApplyToAllValues({
                     ...applyToAllValues,
                     containerReturnTerminalId: parseInt(value),
-                  });
-                }}
+                  })
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder='Select Return Terminal'>
@@ -368,7 +406,7 @@ export default function DispatchTab({
                   className='max-h-[300px] overflow-y-auto'
                 >
                   {locations
-                    .filter((location: any) => location?.value)
+                    .filter((l: any) => l?.value)
                     .map((location: any) => (
                       <SelectItem
                         key={location.value}
@@ -449,13 +487,14 @@ export default function DispatchTab({
         </Button>
       </div>
 
-      {/* Dispatch Records Table */}
+      {/* ── Dispatch Records Table ────────────────────────────────────────── */}
       <div className='bg-white rounded-lg border'>
         <div className='p-4 border-b flex items-center justify-between'>
           <h3 className='text-lg font-semibold'>
             {isFCL ? "Container" : "Package"} Dispatch Details
           </h3>
-          {!isFCL && (
+          {/* Add row button — LCL / AIR only (FCL rows come from Shipping Tab) */}
+          {isLCLorAIR && (
             <Button type='button' onClick={handleAddPackageRow} size='sm'>
               + Add Package Row
             </Button>
@@ -469,12 +508,11 @@ export default function DispatchTab({
             <p className='text-sm'>
               {isFCL
                 ? "Add containers in Shipping Tab first"
-                : "Click 'Add Package Row' to start"}
+                : "Fill in package details in the Shipping Tab or click 'Add Package Row'"}
             </p>
           </div>
         ) : (
           <>
-            {/* ✅ Better scrollbar styling */}
             <style jsx>{`
               .dispatch-table-wrapper::-webkit-scrollbar {
                 width: 14px;
@@ -495,7 +533,6 @@ export default function DispatchTab({
               .dispatch-table-wrapper::-webkit-scrollbar-corner {
                 background: #f1f1f1;
               }
-              /* Firefox */
               .dispatch-table-wrapper {
                 scrollbar-width: thick;
                 scrollbar-color: #888 #f1f1f1;
@@ -509,7 +546,9 @@ export default function DispatchTab({
                     <TableHead className='w-[50px] sticky left-0 bg-gray-50 z-20'>
                       #
                     </TableHead>
-                    {isFCL ? (
+
+                    {/* ── FCL columns ── */}
+                    {isFCL && (
                       <>
                         <TableHead className='min-w-[140px]'>
                           Container No.
@@ -520,7 +559,10 @@ export default function DispatchTab({
                           Weight (kg)
                         </TableHead>
                       </>
-                    ) : (
+                    )}
+
+                    {/* ── LCL / AIR columns ── */}
+                    {isLCLorAIR && (
                       <>
                         <TableHead className='min-w-[180px]'>
                           Package Type
@@ -531,11 +573,17 @@ export default function DispatchTab({
                         </TableHead>
                       </>
                     )}
+
                     <TableHead className='min-w-[220px]'>Transporter</TableHead>
                     <TableHead className='min-w-[220px]'>Destination</TableHead>
-                    <TableHead className='min-w-[220px]'>
-                      Empty Return
-                    </TableHead>
+
+                    {/* Empty Return — FCL only */}
+                    {isFCL && (
+                      <TableHead className='min-w-[220px]'>
+                        Empty Return
+                      </TableHead>
+                    )}
+
                     <TableHead className='min-w-[130px]'>
                       Buying (PKR)
                     </TableHead>
@@ -550,15 +598,18 @@ export default function DispatchTab({
                     </TableHead>
                   </TableRow>
                 </TableHeader>
+
                 <TableBody>
                   {dispatchRecords.map(
                     (record: DispatchRecord, index: number) => (
                       <TableRow key={index} className='hover:bg-gray-50'>
+                        {/* Row number */}
                         <TableCell className='font-medium sticky left-0 bg-white z-10'>
                           {index + 1}
                         </TableCell>
 
-                        {isFCL ? (
+                        {/* ── FCL cells ── */}
+                        {isFCL && (
                           <>
                             <TableCell className='font-mono text-sm'>
                               {record.containerNumber}
@@ -570,11 +621,15 @@ export default function DispatchTab({
                               {getContainerSizeLabel(record.containerSizeId)}
                             </TableCell>
                             <TableCell className='text-right'>
-                              {record.netWeight.toFixed(2)}
+                              {(record.netWeight || 0).toFixed(2)}
                             </TableCell>
                           </>
-                        ) : (
+                        )}
+
+                        {/* ── LCL / AIR cells ── */}
+                        {isLCLorAIR && (
                           <>
+                            {/* Package Type */}
                             <TableCell>
                               <Select
                                 key={`pkg-${index}-${record.packageType || "none"}`}
@@ -588,7 +643,9 @@ export default function DispatchTab({
                                 }
                               >
                                 <SelectTrigger className='h-9'>
-                                  <SelectValue placeholder='Select' />
+                                  <SelectValue placeholder='Select'>
+                                    {record.packageType || "Select"}
+                                  </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent
                                   position='popper'
@@ -610,11 +667,13 @@ export default function DispatchTab({
                                 </SelectContent>
                               </Select>
                             </TableCell>
+
+                            {/* Qty */}
                             <TableCell>
                               <Input
                                 type='number'
                                 className='h-9'
-                                value={record.quantity || ""}
+                                value={record.quantity ?? ""}
                                 onChange={(e) =>
                                   updateDispatchRecord(
                                     index,
@@ -624,12 +683,14 @@ export default function DispatchTab({
                                 }
                               />
                             </TableCell>
+
+                            {/* Weight */}
                             <TableCell>
                               <Input
                                 type='number'
                                 step='0.01'
                                 className='h-9'
-                                value={record.netWeight || ""}
+                                value={record.netWeight ?? ""}
                                 onChange={(e) =>
                                   updateDispatchRecord(
                                     index,
@@ -712,7 +773,7 @@ export default function DispatchTab({
                               className='max-h-[300px] overflow-y-auto z-50'
                             >
                               {locations
-                                .filter((location: any) => location?.value)
+                                .filter((l: any) => l?.value)
                                 .map((location: any) => (
                                   <SelectItem
                                     key={location.value}
@@ -725,46 +786,48 @@ export default function DispatchTab({
                           </Select>
                         </TableCell>
 
-                        {/* Empty Return */}
-                        <TableCell>
-                          <Select
-                            key={`return-${index}-${record.containerReturnTerminalId || "none"}`}
-                            defaultValue={record.containerReturnTerminalId?.toString()}
-                            onValueChange={(value) =>
-                              updateDispatchRecord(
-                                index,
-                                "containerReturnTerminalId",
-                                parseInt(value),
-                              )
-                            }
-                          >
-                            <SelectTrigger className='h-9'>
-                              <SelectValue placeholder='Select Return'>
-                                {record.containerReturnTerminalId
-                                  ? getLocationLabel(
-                                      record.containerReturnTerminalId,
-                                    )
-                                  : "Select Return"}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent
-                              position='popper'
-                              sideOffset={5}
-                              className='max-h-[300px] overflow-y-auto z-50'
+                        {/* Empty Return — FCL only */}
+                        {isFCL && (
+                          <TableCell>
+                            <Select
+                              key={`return-${index}-${record.containerReturnTerminalId || "none"}`}
+                              defaultValue={record.containerReturnTerminalId?.toString()}
+                              onValueChange={(value) =>
+                                updateDispatchRecord(
+                                  index,
+                                  "containerReturnTerminalId",
+                                  parseInt(value),
+                                )
+                              }
                             >
-                              {locations
-                                .filter((location: any) => location?.value)
-                                .map((location: any) => (
-                                  <SelectItem
-                                    key={location.value}
-                                    value={location.value.toString()}
-                                  >
-                                    {location.label || "Unknown"}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
+                              <SelectTrigger className='h-9'>
+                                <SelectValue placeholder='Select Return'>
+                                  {record.containerReturnTerminalId
+                                    ? getLocationLabel(
+                                        record.containerReturnTerminalId,
+                                      )
+                                    : "Select Return"}
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent
+                                position='popper'
+                                sideOffset={5}
+                                className='max-h-[300px] overflow-y-auto z-50'
+                              >
+                                {locations
+                                  .filter((l: any) => l?.value)
+                                  .map((location: any) => (
+                                    <SelectItem
+                                      key={location.value}
+                                      value={location.value.toString()}
+                                    >
+                                      {location.label || "Unknown"}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        )}
 
                         {/* Buying Amount */}
                         <TableCell>
@@ -818,7 +881,7 @@ export default function DispatchTab({
                           />
                         </TableCell>
 
-                        {/* Actions */}
+                        {/* Delete */}
                         <TableCell className='sticky right-0 bg-white z-10'>
                           <Button
                             type='button'
@@ -878,7 +941,7 @@ export default function DispatchTab({
         )}
       </div>
 
-      {/* Additional Notes */}
+      {/* Dispatch Notes */}
       <div className='bg-white p-6 rounded-lg border'>
         <h3 className='text-lg font-semibold mb-4'>Dispatch Notes</h3>
         <textarea

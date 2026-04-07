@@ -597,7 +597,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                               (item: InvoiceItem, itemIdx: number) => (
                                 <TableRow key={itemIdx}>
                                   <TableCell className='text-xs'>
-                                    {item.hsCodeId}
+                                    {item.hsCode || item.hsCodeId || "-"}
                                   </TableCell>
                                   <TableCell className='text-xs max-w-[200px] truncate'>
                                     {item.description}
@@ -1112,7 +1112,7 @@ export default function InvoiceTab(props: InvoiceTabProps) {
                             (item: InvoiceItem, idx: number) => (
                               <TableRow key={idx}>
                                 <TableCell className='text-xs'>
-                                  {item.hsCodeId}
+                                  {item.hsCode || item.hsCodeId || "-"}
                                 </TableCell>
                                 <TableCell className='text-xs max-w-[200px] truncate'>
                                   {item.description}

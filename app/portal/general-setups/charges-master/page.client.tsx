@@ -87,6 +87,24 @@ const fieldConfig = [
     isselected: true,
   },
   {
+    fieldName: "paymentMode",
+    displayName: "Payment Mode",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "calculationType",
+    displayName: "Calculation Type",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
+    fieldName: "chargesNature",
+    displayName: "Charges Nature",
+    isdisplayed: true,
+    isselected: true,
+  },
+  {
     fieldName: "isActive",
     displayName: "Status",
     isdisplayed: true,
@@ -400,6 +418,54 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
       },
       enableColumnFilter: false,
     },
+    // Payment Mode
+    {
+      accessorKey: "paymentMode",
+      header: "Payment Mode",
+      cell: ({ row }) => {
+        const value = row.getValue("paymentMode");
+        return (
+          <span>
+            {typeof value === "string" || typeof value === "number"
+              ? String(value)
+              : "-"}
+          </span>
+        );
+      },
+      enableColumnFilter: false,
+    },
+    // Calculation Type
+    {
+      accessorKey: "calculationType",
+      header: "Calculation Type",
+      cell: ({ row }) => {
+        const value = row.getValue("calculationType");
+        return (
+          <span>
+            {typeof value === "string" || typeof value === "number"
+              ? String(value)
+              : "-"}
+          </span>
+        );
+      },
+      enableColumnFilter: false,
+    },
+    // Charges Nature
+    {
+      accessorKey: "chargesNature",
+      header: "Charges Nature",
+      cell: ({ row }) => {
+        const value = row.getValue("chargesNature");
+        return (
+          <span>
+            {typeof value === "string" || typeof value === "number"
+              ? String(value)
+              : "-"}
+          </span>
+        );
+      },
+      enableColumnFilter: false,
+    },
     // Is Active
     {
       accessorKey: "isActive",
@@ -541,9 +607,15 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
         case "chargeGroup":
           return "Transportation";
         case "revenueGlaccountId":
-          return "1"; // Just the ID in sample
+          return "1";
         case "costGlaccountId":
-          return "3"; // Just the ID in sample
+          return "3";
+        case "paymentMode":
+          return "Cash";
+        case "calculationType":
+          return "Fixed";
+        case "chargesNature":
+          return "Local";
         case "remarks":
           return "Sample remarks for freight charge";
         default:
@@ -667,6 +739,12 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
                   value = value?.toString().toUpperCase();
                   break;
 
+                case "paymentMode":
+                case "calculationType":
+                case "chargesNature":
+                  value = value?.toString() || "";
+                  break;
+
                 default:
                   value = value?.toString() || "";
               }
@@ -677,8 +755,14 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
                   ? "RevenueGlaccountId"
                   : field.fieldName === "costGlaccountId"
                     ? "CostGlaccountId"
-                    : field.fieldName.charAt(0).toUpperCase() +
-                      field.fieldName.slice(1);
+                    : field.fieldName === "paymentMode"
+                      ? "PaymentMode"
+                      : field.fieldName === "calculationType"
+                        ? "CalculationType"
+                        : field.fieldName === "chargesNature"
+                          ? "ChargesNature"
+                          : field.fieldName.charAt(0).toUpperCase() +
+                            field.fieldName.slice(1);
               payload[apiFieldName] = value;
             }
           });

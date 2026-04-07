@@ -16,7 +16,7 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "ChargeId,CompanyId,ChargeCode,ChargeName,ChargeType,ChargeGroup,RevenueGLAccountId,CostGLAccountId,IsTaxable,DefaultTaxPercentage,IsReimbursable,IsActive,Remarks,Version",
+      "ChargeId, CompanyId, ChargeCode, ChargeName, ChargeType, ChargeGroup, RevenueGLAccountId, CostGLAccountId, IsTaxable, DefaultTaxPercentage, IsReimbursable, IsActive, Remarks, CreatedBy, CreatedAt, UpdatedAt, Version, paymentMode, calculationType, chargesNature",
     where: "",
     sortOn: "ChargeName",
     page: "1",
