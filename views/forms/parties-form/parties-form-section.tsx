@@ -59,6 +59,7 @@ const partyChargeSchema = z.object({
   partyWiseChargesId: z.number().optional(),
   chargesId: z.number(),
   isActive: z.boolean().default(true),
+  version: z.number().default(0), // needed for PUT concurrency check
 });
 
 const formSchema = z
@@ -526,6 +527,7 @@ export default function PartiesForm({
         partyWiseChargesId: pc.partyWiseChargesId ?? undefined,
         chargesId: pc.chargesId,
         isActive: pc.isActive ?? true,
+        version: pc.version ?? 0, // preserve per-charge version for PUT
       })),
 
       version: defaultState?.version ?? 0,
@@ -564,7 +566,7 @@ export default function PartiesForm({
     const current = form.getValues("partyCharges");
     form.setValue("partyCharges", [
       ...current,
-      { chargesId: charge.chargeId, isActive: true },
+      { chargesId: charge.chargeId, isActive: true, version: 0 },
     ]);
   };
 
@@ -858,7 +860,11 @@ export default function PartiesForm({
 
         // Charges
         partyCharges: values.partyCharges.map((pc) => {
-          const item: any = { chargesId: pc.chargesId, isActive: pc.isActive };
+          const item: any = {
+            chargesId: pc.chargesId,
+            isActive: pc.isActive,
+            version: pc.version ?? 0, // send back per-charge version
+          };
           if (isUpdate && pc.partyWiseChargesId) {
             item.partyWiseChargesId = pc.partyWiseChargesId;
             item.partyId = values.partyId;
@@ -866,6 +872,9 @@ export default function PartiesForm({
           return item;
         }),
       };
+
+      // version must always be sent back to avoid optimistic-concurrency (version conflict) errors
+      payload.version = values.version ?? 0;
 
       // For edit include partyId
       if (isUpdate) payload.partyId = values.partyId;
