@@ -16,11 +16,11 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "BankFundRequestId, bankId, TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version",
+      "BankFundRequestId,BankId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,RequestorUserId,Remarks,Version",
     where: "",
     sortOn: "BankFundRequestId DESC",
     page: "1",
-    pageSize: "100", // Start with a reasonable page size
+    pageSize: "100",
   };
 
   try {
@@ -38,19 +38,31 @@ export default async function HomePage() {
 
     const initialData = await response.json();
 
+    // Debug log to check the data structure
+    console.log(
+      "📦 Server-side fetched data sample:",
+      initialData.slice(0, 2).map((item: any) => ({
+        bankFundRequestId: item.bankFundRequestId || item.BankFundRequestId,
+        bankId: item.bankId || item.BankId,
+        requestorUserId: item.requestorUserId || item.RequestorUserId,
+        requestedTo: item.requestedTo || item.RequestedTo,
+        approvalStatus: item.approvalStatus || item.ApprovalStatus,
+        remarks: item.remarks || item.Remarks,
+      })),
+    );
+
     return (
-      //<Suspense fallback={<AppLoader />}>
-      <ClientComponent initialData={initialData} />
-      //</Suspense>
+      <Suspense fallback={<AppLoader />}>
+        <ClientComponent initialData={initialData} />
+      </Suspense>
     );
   } catch (error) {
     console.error("Failed to fetch internal funds request bank data:", error);
 
-    // Return empty data to prevent client component from crashing
     return (
-      //<Suspense fallback={<AppLoader />}>
-      <ClientComponent initialData={[]} />
-      //</Suspense>
+      <Suspense fallback={<AppLoader />}>
+        <ClientComponent initialData={[]} />
+      </Suspense>
     );
   }
 }

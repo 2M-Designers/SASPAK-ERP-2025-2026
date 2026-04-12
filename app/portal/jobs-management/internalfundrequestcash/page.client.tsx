@@ -24,6 +24,7 @@ import {
   FiXCircle,
   FiList,
   FiAlertCircle,
+  FiLock,
 } from "react-icons/fi";
 import {
   Tooltip,
@@ -75,7 +76,7 @@ type CashFundRequest = {
   cashFundRequestId: number;
   cashHeadId?: number | null;
   cashHeadName?: string;
-  requestorUserId?: number;
+  requestorUserId?: number; // This might be the actual creator
   totalRequestedAmount: number;
   totalApprovedAmount: number;
   approvalStatus: string;
@@ -83,7 +84,7 @@ type CashFundRequest = {
   approvedOn?: string | null;
   requestedTo?: number | null;
   createdOn: string;
-  createdBy?: number;
+  createdBy?: number; // This might be null
   version: number;
   internalCashFundsRequests: DetailLineItem[];
 };
@@ -110,6 +111,17 @@ type DetailLineItem = {
 type StatusOption = {
   key: string;
   label: string;
+};
+
+type User = {
+  userId: number;
+  username: string;
+  fullName: string;
+  email: string;
+  designation?: string;
+  departmentId?: number;
+  isAllowedRequestApproval?: boolean;
+  roleId?: number;
 };
 
 type ApiResponse<T> = T[];
@@ -171,6 +183,12 @@ export default function InternalFundRequestPage({
   const [approvedStatus, setApprovedStatus] = useState("Approved");
   const [rejectedStatus, setRejectedStatus] = useState("Rejected");
 
+  // User permissions
+  const [userId, setUserId] = useState<number | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
 
@@ -181,6 +199,91 @@ export default function InternalFundRequestPage({
         abortControllerRef.current.abort();
       }
     };
+  }, []);
+
+  // ── Get current user from localStorage ──────────────────────────────────────
+  // Update the get current user from localStorage useEffect
+  useEffect(() => {
+    const storedUserId = localStorage.getItem("userId");
+    const storedUserRole = localStorage.getItem("userRole");
+    const storedUserData = localStorage.getItem("userData");
+
+    console.log("🔑 Current user from localStorage:", {
+      storedUserId,
+      storedUserRole,
+      storedUserData: storedUserData ? JSON.parse(storedUserData) : null,
+    });
+
+    if (storedUserId) {
+      setUserId(parseInt(storedUserId, 10));
+    }
+
+    if (storedUserRole) {
+      const roleLower = storedUserRole.toLowerCase();
+      setIsAdmin(roleLower === "admin" || storedUserRole === "1");
+    }
+
+    if (storedUserData) {
+      try {
+        const userData = JSON.parse(storedUserData);
+        // Ensure isAllowedRequestApproval is set
+        setCurrentUser({
+          ...userData,
+          userId:
+            userData.userId ||
+            userData.UserId ||
+            parseInt(storedUserId || "0", 10),
+          isAllowedRequestApproval:
+            userData.isAllowedRequestApproval ??
+            userData.IsAllowedRequestApproval ??
+            false,
+        });
+      } catch (e) {
+        console.error("Failed to parse user data:", e);
+      }
+    }
+  }, []);
+
+  // ── Fetch users with approval permission ────────────────────────────────────
+  // Update the fetchUsers useEffect to get ALL users
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const base = process.env.NEXT_PUBLIC_BASE_URL;
+        if (!base) return;
+
+        const res = await fetch(`${base}User/GetList`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            select:
+              "UserId, Username, FullName, Email, Designation, DepartmentId, IsAllowedRequestApproval, RoleId",
+            where: "", // Get ALL users, not filtered
+            sortOn: "FullName ASC",
+            page: "1",
+            pageSize: "500",
+          }),
+        });
+
+        if (res.ok) {
+          const usersData = await res.json();
+          console.log(
+            "📋 Users loaded:",
+            usersData.slice(0, 3).map((u: any) => ({
+              userId: u.userId || u.UserId,
+              fullName: u.fullName || u.FullName,
+              isAllowedRequestApproval:
+                u.isAllowedRequestApproval || u.IsAllowedRequestApproval,
+            })),
+          );
+          setUsers(usersData);
+        }
+      } catch (e) {
+        console.error("Users fetch error:", e);
+      }
+    };
+
+    fetchUsers();
   }, []);
 
   // ── Fetch status options ────────────────────────────────────────────────────
@@ -245,6 +348,88 @@ export default function InternalFundRequestPage({
     [pendingStatus, approvedStatus, rejectedStatus],
   );
 
+  // ── Permission check helpers ────────────────────────────────────────────────
+  const canApproveRequest = useCallback(
+    (request: CashFundRequest): boolean => {
+      if (!userId) {
+        console.log("❌ Cannot approve: No userId");
+        return false;
+      }
+
+      // Request must be pending
+      if (request.approvalStatus !== pendingStatus) {
+        console.log(
+          `❌ Cannot approve: Status is ${request.approvalStatus}, not ${pendingStatus}`,
+        );
+        return false;
+      }
+
+      // Current user must be the requestedTo user
+      if (request.requestedTo !== userId) {
+        console.log(
+          `❌ Cannot approve: Request sent to ${request.requestedTo}, but current user is ${userId}`,
+        );
+        return false;
+      }
+
+      // Check approval permission - first from currentUser, then from users list
+      let userHasApprovalPermission =
+        currentUser?.isAllowedRequestApproval === true;
+
+      // If not found in currentUser, check the users list
+      if (!userHasApprovalPermission) {
+        const userFromList = users.find((u) => u.userId === userId);
+        userHasApprovalPermission =
+          userFromList?.isAllowedRequestApproval === true;
+      }
+
+      console.log(`✅ Can approve check for user ${userId}:`, {
+        requestedTo: request.requestedTo,
+        approvalStatus: request.approvalStatus,
+        userHasApprovalPermission,
+        currentUserId: userId,
+      });
+
+      return userHasApprovalPermission;
+    },
+    [currentUser, userId, pendingStatus, users],
+  );
+  const canEditRequest = useCallback(
+    (request: CashFundRequest): boolean => {
+      if (!userId) return false;
+
+      // Admin can always edit
+      if (isAdmin) return true;
+
+      // Only allow editing if request is PENDING
+      if (request.approvalStatus !== pendingStatus) return false;
+
+      // Check if user is the creator - use requestorUserId as the creator identifier
+      const isCreator = request.requestorUserId === userId;
+
+      return isCreator;
+    },
+    [userId, isAdmin, pendingStatus],
+  );
+
+  const canDeleteRequest = useCallback(
+    (request: CashFundRequest): boolean => {
+      if (!userId) return false;
+
+      // Admin can always delete
+      if (isAdmin) return true;
+
+      // Only allow deleting if request is PENDING
+      if (request.approvalStatus !== pendingStatus) return false;
+
+      // Check if user is the creator - use requestorUserId as the creator identifier
+      const isCreator = request.requestorUserId === userId;
+
+      return isCreator;
+    },
+    [userId, isAdmin, pendingStatus],
+  );
+
   // ── Fetch list ──────────────────────────────────────────────────────────────
   const fetchFundRequests = useCallback(async () => {
     if (abortControllerRef.current) {
@@ -268,7 +453,7 @@ export default function InternalFundRequestPage({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             select:
-              "cashFundRequestId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version,CashHeadId,RequestorUserId",
+              "cashFundRequestId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,RequestorUserId,version,CashHeadId",
             where: "",
             sortOn: "cashFundRequestId DESC",
             page: "1",
@@ -291,10 +476,26 @@ export default function InternalFundRequestPage({
           : [],
         totalRequestedAmount: Number(item.totalRequestedAmount) || 0,
         totalApprovedAmount: Number(item.totalApprovedAmount) || 0,
-        cashHeadId: item.cashHeadId || null,
+        cashHeadId: item.cashHeadId || item.CashHeadId || null,
+        // Use requestorUserId as the primary creator identifier
+        requestorUserId: item.requestorUserId || item.RequestorUserId || null,
+        createdBy: item.createdBy || item.CreatedBy || null,
       }));
 
       setData(processedData);
+
+      // Debug log to check creator IDs
+      console.log(
+        "📋 Processed Data Sample:",
+        processedData.slice(0, 2).map((d) => ({
+          id: d.cashFundRequestId,
+          requestorUserId: d.requestorUserId,
+          createdBy: d.createdBy,
+          status: d.approvalStatus,
+          requestedTo: d.requestedTo,
+        })),
+      );
+
       toast({
         title: "Success",
         description: `Loaded ${processedData.length} fund request(s)`,
@@ -375,7 +576,9 @@ export default function InternalFundRequestPage({
           : [],
         totalRequestedAmount: Number(item.totalRequestedAmount) || 0,
         totalApprovedAmount: Number(item.totalApprovedAmount) || 0,
-        cashHeadId: item.cashHeadId || null,
+        cashHeadId: item.cashHeadId || item.CashHeadId || null,
+        requestorUserId: item.requestorUserId || item.RequestorUserId || null,
+        createdBy: item.createdBy || item.CreatedBy || null,
       }));
       setData(processed);
     }
@@ -494,6 +697,15 @@ export default function InternalFundRequestPage({
 
   const handleDelete = useCallback(
     async (item: CashFundRequest) => {
+      if (!canDeleteRequest(item)) {
+        toast({
+          variant: "destructive",
+          title: "Access Denied",
+          description: "You don't have permission to delete this request.",
+        });
+        return;
+      }
+
       const count = item.internalCashFundsRequests?.length || 0;
       if (
         !confirm(
@@ -534,7 +746,7 @@ export default function InternalFundRequestPage({
         });
       }
     },
-    [toast],
+    [toast, canDeleteRequest],
   );
 
   const handleViewDetails = useCallback(
@@ -570,6 +782,15 @@ export default function InternalFundRequestPage({
 
   const handleApproveClick = useCallback(
     async (request: CashFundRequest) => {
+      if (!canApproveRequest(request)) {
+        toast({
+          variant: "destructive",
+          title: "Access Denied",
+          description: "You don't have permission to approve this request.",
+        });
+        return;
+      }
+
       setIsLoading(true);
       const full = await fetchRequestDetails(request.cashFundRequestId);
       setIsLoading(false);
@@ -585,11 +806,25 @@ export default function InternalFundRequestPage({
         });
       }
     },
-    [fetchRequestDetails, toast],
+    [fetchRequestDetails, toast, canApproveRequest],
   );
 
   const handleEditClick = useCallback(
     async (request: CashFundRequest) => {
+      if (!canEditRequest(request)) {
+        toast({
+          variant: "destructive",
+          title: "Access Denied",
+          description:
+            request.approvalStatus !== pendingStatus
+              ? `Cannot edit ${request.approvalStatus} requests. Please contact an administrator.`
+              : request.requestorUserId !== userId
+                ? "You can only edit requests that you created."
+                : "You don't have permission to edit this request.",
+        });
+        return;
+      }
+
       setIsLoading(true);
       const full = await fetchRequestDetails(request.cashFundRequestId);
       setIsLoading(false);
@@ -605,7 +840,7 @@ export default function InternalFundRequestPage({
         });
       }
     },
-    [fetchRequestDetails, toast],
+    [fetchRequestDetails, toast, canEditRequest, pendingStatus, userId],
   );
 
   // ── Exports ─────────────────────────────────────────────────────────────────
@@ -786,79 +1021,147 @@ export default function InternalFundRequestPage({
       {
         id: "actions",
         header: "Actions",
-        cell: ({ row }) => (
-          <div className='flex gap-1.5'>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    className='p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors'
-                    onClick={() => handleViewDetails(row.original)}
-                    aria-label='View details'
-                  >
-                    <FiEye size={14} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className='text-xs'>View Details</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+        cell: ({ row }) => {
+          const request = row.original;
 
-            {row.original.approvalStatus === pendingStatus && (
+          // Debug log for each request
+          if (row.index === 0) {
+            console.log("📊 First request data:", {
+              id: request.cashFundRequestId,
+              requestorUserId: request.requestorUserId,
+              requestedTo: request.requestedTo,
+              approvalStatus: request.approvalStatus,
+              currentUserId: userId,
+              canApprove: canApproveRequest(request),
+              canEdit: canEditRequest(request),
+            });
+          }
+
+          const showApproveButton = canApproveRequest(request);
+          const showEditButton = canEditRequest(request);
+          const showDeleteButton = canDeleteRequest(request);
+
+          return (
+            <div className='flex gap-1.5'>
+              {/* View - Always available */}
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      className='p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-md transition-colors'
-                      onClick={() => handleApproveClick(row.original)}
-                      aria-label='Approve or reject'
+                      className='p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors'
+                      onClick={() => handleViewDetails(request)}
+                      aria-label='View details'
                     >
-                      <FiCheckCircle size={14} />
+                      <FiEye size={14} />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p className='text-xs'>Approve / Reject</p>
+                    <p className='text-xs'>View Details</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            )}
 
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    className='p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors'
-                    onClick={() => handleEditClick(row.original)}
-                    aria-label='Edit request'
-                  >
-                    <FiEdit size={14} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className='text-xs'>Edit Request</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+              {/* Approve - Only for authorized approvers of pending requests */}
+              {showApproveButton ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className='p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-md transition-colors'
+                        onClick={() => handleApproveClick(request)}
+                        aria-label='Approve or reject'
+                      >
+                        <FiCheckCircle size={14} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className='text-xs'>Approve / Reject</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : request.approvalStatus === pendingStatus &&
+                request.requestedTo === userId ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className='p-1.5 text-gray-400 cursor-not-allowed'
+                        disabled
+                        aria-label='Approval locked'
+                      >
+                        <FiLock size={14} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className='text-xs'>
+                        You don't have approval permission
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : null}
 
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    className='p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors'
-                    onClick={() => handleDelete(row.original)}
-                    aria-label='Delete request'
-                  >
-                    <FiTrash2 size={14} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className='text-xs'>Delete Request</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        ),
+              {/* Edit - Only for authorized users */}
+              {showEditButton ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className='p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors'
+                        onClick={() => handleEditClick(request)}
+                        aria-label='Edit request'
+                      >
+                        <FiEdit size={14} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className='text-xs'>Edit Request</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : request.approvalStatus !== pendingStatus && !isAdmin ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className='p-1.5 text-gray-400 cursor-not-allowed'
+                        disabled
+                        aria-label='Edit locked'
+                      >
+                        <FiLock size={14} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className='text-xs'>
+                        Cannot edit {request.approvalStatus} requests
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : null}
+
+              {/* Delete - Only for authorized users */}
+              {showDeleteButton && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className='p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors'
+                        onClick={() => handleDelete(request)}
+                        aria-label='Delete request'
+                      >
+                        <FiTrash2 size={14} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className='text-xs'>Delete Request</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
+          );
+        },
       },
       {
         accessorKey: "row",
@@ -877,16 +1180,67 @@ export default function InternalFundRequestPage({
         ),
       },
       {
-        accessorKey: "cashHeadName",
-        header: "Cash Account",
-        cell: ({ row }) => (
-          <div
-            className='text-sm text-gray-700 max-w-[160px] truncate'
-            title={row.original.cashHeadName || "-"}
-          >
-            {row.original.cashHeadName || "-"}
-          </div>
-        ),
+        accessorKey: "requestorUserId",
+        header: "Created By",
+        cell: ({ row }) => {
+          const creatorId = row.original.requestorUserId;
+
+          // Normalize user data (handle both camelCase and PascalCase)
+          const normalizedUsers = users.map((u) => ({
+            userId: u.userId || (u as any).UserId,
+            fullName: u.fullName || (u as any).FullName,
+            username: u.username || (u as any).Username,
+          }));
+
+          const creator = normalizedUsers.find((u) => u.userId === creatorId);
+
+          console.log(`🔍 Looking for creator ID ${creatorId}:`, creator);
+
+          return (
+            <div
+              className='text-xs text-gray-600'
+              title={`User ID: ${creatorId}`}
+            >
+              {creator?.fullName ||
+                creator?.username ||
+                (creatorId ? `User #${creatorId}` : "—")}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "requestedTo",
+        header: "Requested To",
+        cell: ({ row }) => {
+          const requestedToId = row.original.requestedTo;
+
+          // Normalize user data (handle both camelCase and PascalCase)
+          const normalizedUsers = users.map((u) => ({
+            userId: u.userId || (u as any).UserId,
+            fullName: u.fullName || (u as any).FullName,
+            username: u.username || (u as any).Username,
+          }));
+
+          const requestedTo = normalizedUsers.find(
+            (u) => u.userId === requestedToId,
+          );
+
+          console.log(
+            `🔍 Looking for requestedTo ID ${requestedToId}:`,
+            requestedTo,
+          );
+
+          return (
+            <div
+              className='text-xs text-gray-600'
+              title={`User ID: ${requestedToId}`}
+            >
+              {requestedTo?.fullName ||
+                requestedTo?.username ||
+                (requestedToId ? `User #${requestedToId}` : "—")}
+            </div>
+          );
+        },
       },
       {
         id: "lineItems",
@@ -969,6 +1323,12 @@ export default function InternalFundRequestPage({
       pendingStatus,
       approvedStatus,
       rejectedStatus,
+      userId,
+      isAdmin,
+      users, // Add this
+      canApproveRequest,
+      canEditRequest,
+      canDeleteRequest,
       handleViewDetails,
       handleApproveClick,
       handleEditClick,

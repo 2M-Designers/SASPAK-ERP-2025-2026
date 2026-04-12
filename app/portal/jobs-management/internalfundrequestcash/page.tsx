@@ -16,7 +16,7 @@ export default async function HomePage() {
 
   const requestBody: GetListRequest = {
     select:
-      "cashFundRequestId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,version,cashHeadId",
+      "cashFundRequestId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,CreatedBy,RequestorUserId,version,CashHeadId",
     where: "",
     sortOn: "cashFundRequestId DESC",
     page: "1",
@@ -38,19 +38,31 @@ export default async function HomePage() {
 
     const initialData = await response.json();
 
+    // Debug log to check the data structure
+    console.log(
+      "📦 Server-side fetched data sample:",
+      initialData.slice(0, 2).map((item: any) => ({
+        cashFundRequestId: item.cashFundRequestId,
+        requestorUserId: item.requestorUserId || item.RequestorUserId,
+        createdBy: item.createdBy || item.CreatedBy,
+        requestedTo: item.requestedTo || item.RequestedTo,
+        approvalStatus: item.approvalStatus || item.ApprovalStatus,
+      })),
+    );
+
     return (
-      //<Suspense fallback={<AppLoader />}>
-      <ClientComponent initialData={initialData} />
-      //</Suspense>
+      <Suspense fallback={<AppLoader />}>
+        <ClientComponent initialData={initialData} />
+      </Suspense>
     );
   } catch (error) {
     console.error("Failed to fetch internal funds request cash data:", error);
 
     // Return empty data to prevent client component from crashing
     return (
-      //<Suspense fallback={<AppLoader />}>
-      <ClientComponent initialData={[]} />
-      //</Suspense>
+      <Suspense fallback={<AppLoader />}>
+        <ClientComponent initialData={[]} />
+      </Suspense>
     );
   }
 }
