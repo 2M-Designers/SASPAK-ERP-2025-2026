@@ -73,6 +73,33 @@ type Bank = {
 
 type StatusOption = { key: string; label: string };
 
+// ─── API Helpers ──────────────────────────────────────────────────────────────
+
+function getAuthHeaders(): HeadersInit {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("access_token") ||
+    sessionStorage.getItem("token") ||
+    sessionStorage.getItem("authToken");
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
+function getBaseUrl(): string {
+  const base = process.env.NEXT_PUBLIC_BASE_URL || "";
+  return base.endsWith("/") ? base : `${base}/`;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function InternalBankFundRequestApprovalForm({
@@ -116,64 +143,99 @@ export default function InternalBankFundRequestApprovalForm({
   useEffect(() => {
     const fetchStatuses = async () => {
       try {
-        const base = process.env.NEXT_PUBLIC_BASE_URL;
         const res = await fetch(
-          `${base}General/GetTypeValues?typeName=FundRequest_Detail_Status`,
-          { method: "GET", headers: { "Content-Type": "application/json" } },
+          `${getBaseUrl()}General/GetTypeValues?typeName=FundRequest_Detail_Status`,
+          {
+            method: "GET",
+            headers: getAuthHeaders(), // ✅ auth headers
+          },
         );
-        if (res.ok) {
-          const raw: Record<string, string> = await res.json();
-          const opts: StatusOption[] = Object.entries(raw).map(
-            ([key, label]) => ({ key, label }),
-          );
-          const p = opts.find((o) => o.key.toLowerCase() === "pending");
-          const a = opts.find((o) => o.key.toLowerCase() === "approved");
-          const r = opts.find((o) => o.key.toLowerCase() === "rejected");
-          if (p) setPendingStatus(p.key);
-          if (a) setApprovedStatus(a.key);
-          if (r) setRejectedStatus(r.key);
+
+        if (res.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Please log in again.",
+          });
+          return;
         }
+
+        if (!res.ok) {
+          console.error(`Status fetch failed: ${res.status} ${res.statusText}`);
+          return;
+        }
+
+        const raw: Record<string, string> = await res.json();
+        const opts: StatusOption[] = Object.entries(raw).map(
+          ([key, label]) => ({ key, label }),
+        );
+        const p = opts.find((o) => o.key.toLowerCase() === "pending");
+        const a = opts.find((o) => o.key.toLowerCase() === "approved");
+        const r = opts.find((o) => o.key.toLowerCase() === "rejected");
+        if (p) setPendingStatus(p.key);
+        if (a) setApprovedStatus(a.key);
+        if (r) setRejectedStatus(r.key);
       } catch (e) {
-        console.error("Status fetch:", e);
+        console.error("Status fetch error:", e);
       }
     };
     fetchStatuses();
-  }, []);
+  }, [toast]);
 
   // ── Fetch Banks ───────────────────────────────────────────────────────────
   useEffect(() => {
     const fetchBanks = async () => {
       setIsLoadingBanks(true);
       try {
-        const base = process.env.NEXT_PUBLIC_BASE_URL;
-        const res = await fetch(`${base}Banks/GetList`, {
+        const res = await fetch(`${getBaseUrl()}Banks/GetList`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(), // ✅ auth headers
           body: JSON.stringify({
             select: "BankId, BankCode, BankName",
             where: "",
+            search: "", // ✅ required field
             sortOn: "BankName ASC",
             page: "1",
             pageSize: "200",
           }),
         });
-        if (res.ok) {
-          const d = await res.json();
-          // Normalize data
-          const normalized = d.map((b: any) => ({
-            bankId: b.bankId || b.BankId,
-            bankCode: b.bankCode || b.BankCode,
-            bankName: b.bankName || b.BankName,
-          }));
-          setBanks(normalized);
-          setFilteredBanks(normalized);
+
+        if (res.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Please log in again.",
+          });
+          return;
         }
+
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`Banks fetch failed: ${res.status}`, errText);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: `Failed to load banks (${res.status})`,
+          });
+          return;
+        }
+
+        const d = await res.json();
+        // Handle both plain array and wrapped { data: [...] } responses
+        const rawList = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+        const normalized: Bank[] = rawList.map((b: any) => ({
+          bankId: b.bankId ?? b.BankId,
+          bankCode: b.bankCode ?? b.BankCode,
+          bankName: b.bankName ?? b.BankName,
+        }));
+        setBanks(normalized);
+        setFilteredBanks(normalized);
       } catch (e) {
         console.error("Banks fetch error:", e);
         toast({
           variant: "destructive",
-          title: "Error",
-          description: "Failed to load banks",
+          title: "Network Error",
+          description: "Could not reach the server. Check your connection.",
         });
       } finally {
         setIsLoadingBanks(false);
@@ -182,7 +244,7 @@ export default function InternalBankFundRequestApprovalForm({
     fetchBanks();
   }, [toast]);
 
-  // ── Filter banks based on search ──────────────────────────────────────────
+  // ── Filter banks on search ────────────────────────────────────────────────
   useEffect(() => {
     if (bankSearch.trim() === "") {
       setFilteredBanks(banks);
@@ -345,7 +407,7 @@ export default function InternalBankFundRequestApprovalForm({
     return pendingStatus;
   })();
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── Validation & Save ─────────────────────────────────────────────────────
   const handleSave = async () => {
     const invalidAmount = lineItems.some(
       (item) =>
@@ -360,11 +422,9 @@ export default function InternalBankFundRequestApprovalForm({
       return;
     }
 
-    // Validate bank selection for approved lines
     const missingBank = lineItems.some(
       (item) => item.subRequestStatus === approvedStatus && !item.bankId,
     );
-
     if (missingBank) {
       toast({
         variant: "destructive",
@@ -391,13 +451,12 @@ export default function InternalBankFundRequestApprovalForm({
     setIsSubmitting(true);
 
     try {
-      const base = process.env.NEXT_PUBLIC_BASE_URL;
       const isApproving = derivedMasterStatus === approvedStatus;
 
       const payload = {
         BankFundRequestId:
           requestData.bankFundRequestId || requestData.BankFundRequestId,
-        BankId: null, // Bank is at detail level
+        BankId: null,
         TotalRequestedAmount: totals.totalRequested,
         TotalApprovedAmount: totals.totalApproved,
         ApprovalStatus: derivedMasterStatus,
@@ -430,7 +489,7 @@ export default function InternalBankFundRequestApprovalForm({
           OnAccountOfId: item.onAccountOfId || null,
           SubRequestStatus: item.subRequestStatus,
           Remarks: item.remarks || "",
-          BankId: item.bankId, // Bank at detail level
+          BankId: item.bankId,
           Version: item.version ?? 0,
         })),
       };
@@ -440,14 +499,20 @@ export default function InternalBankFundRequestApprovalForm({
         JSON.stringify(payload, null, 2),
       );
 
-      const response = await fetch(`${base}InternalBankFundsRequest`, {
+      const response = await fetch(`${getBaseUrl()}InternalBankFundsRequest`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers: getAuthHeaders(), // ✅ auth headers
         body: JSON.stringify(payload),
       });
+
+      if (response.status === 401) {
+        toast({
+          variant: "destructive",
+          title: "Session Expired",
+          description: "Your session has expired. Please log in again.",
+        });
+        return;
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -459,6 +524,7 @@ export default function InternalBankFundRequestApprovalForm({
           else if (parsed.errors)
             userMessage = Object.values(parsed.errors).flat().join(", ");
           else if (parsed.title) userMessage = parsed.title;
+          else if (parsed.message) userMessage = parsed.message;
           else if (typeof parsed === "string") userMessage = parsed;
         } catch {
           userMessage = errorText || userMessage;
@@ -502,7 +568,7 @@ export default function InternalBankFundRequestApprovalForm({
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className='space-y-4 max-w-full'>
-      {/* ── Header Card ──────────────────────────────────────────────────── */}
+      {/* Header Card */}
       <Card>
         <CardHeader className='py-3 px-4 bg-gradient-to-r from-purple-50 to-blue-50'>
           <div className='flex items-center justify-between'>
@@ -538,7 +604,7 @@ export default function InternalBankFundRequestApprovalForm({
         </CardHeader>
       </Card>
 
-      {/* ── Bulk Actions Bar ──────────────────────────────────────────────── */}
+      {/* Bulk Actions Bar */}
       <div className='bg-white rounded-lg border p-3 flex items-center justify-between'>
         <div className='flex items-center gap-2'>
           <Info className='h-4 w-4 text-blue-600' />
@@ -591,7 +657,7 @@ export default function InternalBankFundRequestApprovalForm({
         </div>
       </div>
 
-      {/* ── Line Item Cards ───────────────────────────────────────────────── */}
+      {/* Line Item Cards */}
       <div className='space-y-3 max-h-[calc(100vh-350px)] overflow-y-auto pr-2'>
         {lineItems.map((item, index) => {
           const isApproved = item.subRequestStatus === approvedStatus;
@@ -808,7 +874,7 @@ export default function InternalBankFundRequestApprovalForm({
                     )}
                   </div>
 
-                  {/* Remarks (read-only) & Actions */}
+                  {/* Actions */}
                   <div className='col-span-1'>
                     <div className='flex items-center gap-1 justify-end'>
                       <Button
@@ -881,7 +947,7 @@ export default function InternalBankFundRequestApprovalForm({
         })}
       </div>
 
-      {/* ── Summary Footer ────────────────────────────────────────────────── */}
+      {/* Summary Footer */}
       <div className='bg-gradient-to-r from-purple-50 to-blue-50 border rounded-lg p-4'>
         <div className='grid grid-cols-3 gap-4 mb-4'>
           <div className='text-center'>
@@ -956,7 +1022,7 @@ export default function InternalBankFundRequestApprovalForm({
         )}
       </div>
 
-      {/* ── Action Buttons ────────────────────────────────────────────────── */}
+      {/* Action Buttons */}
       <div className='flex justify-end gap-3'>
         <Button
           type='button'

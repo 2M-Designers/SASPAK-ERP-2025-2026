@@ -7,7 +7,6 @@ import {
   KeyboardEvent,
   useCallback,
   useMemo,
-  useDeferredValue,
 } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -128,21 +127,6 @@ type User = {
   isAllowedRequestApproval?: boolean;
 };
 
-type CashFundRequest = {
-  cashFundRequestId?: number;
-  totalRequestedAmount: number;
-  totalApprovedAmount: number;
-  approvalStatus: string;
-  approvedBy: number | null;
-  approvedOn: string | null;
-  requestedTo: number;
-  requestorUserId: number;
-  createdBy: number;
-  createdOn: string;
-  version: number;
-  internalCashFundsRequests?: any[];
-};
-
 type StatusOption = { key: string; label: string };
 
 type LoadingState = {
@@ -154,6 +138,33 @@ type LoadingState = {
   jobDetail: Record<number, boolean>;
   partyCharges: Record<number, boolean>;
 };
+
+// ─── API Helpers ──────────────────────────────────────────────────────────────
+
+function getAuthHeaders(): HeadersInit {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("access_token") ||
+    sessionStorage.getItem("token") ||
+    sessionStorage.getItem("authToken");
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
+function getBaseUrl(): string {
+  const base = process.env.NEXT_PUBLIC_BASE_URL || "";
+  return base.endsWith("/") ? base : `${base}/`;
+}
 
 // ─── UUID Generator ───────────────────────────────────────────────────────────
 
@@ -176,7 +187,6 @@ const deriveMasterStatus = (
   if (items.length === 0) return pendingValue;
   const validStatuses = items.map((i) => i.subRequestStatus).filter(Boolean);
   if (validStatuses.length === 0) return pendingValue;
-
   const first = validStatuses[0];
   if (validStatuses.every((s) => s === first)) return first;
   return pendingValue;
@@ -224,16 +234,14 @@ const extractLinkedParty = (
 
 const useDebounce = <T,>(value: T, delay: number): T => {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedValue(value), delay);
     return () => clearTimeout(handler);
   }, [value, delay]);
-
   return debouncedValue;
 };
 
-// ─── Line Item Component (Memoized for Performance) ──────────────────────────
+// ─── Line Item Row Component (Memoized) ───────────────────────────────────────
 
 const LineItemRow = ({
   item,
@@ -285,6 +293,7 @@ const LineItemRow = ({
 
   return (
     <TableRow className={`group ${getRowBg(item.subRequestStatus)}`}>
+      {/* # */}
       <TableCell className='font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 border-r text-center text-xs'>
         {index + 1}
       </TableCell>
@@ -709,7 +718,6 @@ export default function InternalFundRequestForm({
   const [chargeSearch, setChargeSearch] = useState("");
   const [beneficiarySearch, setBeneficiarySearch] = useState("");
 
-  // Debounced search terms for performance
   const debouncedJobSearch = useDebounce(jobSearch, 300);
   const debouncedChargeSearch = useDebounce(chargeSearch, 300);
   const debouncedBeneficiarySearch = useDebounce(beneficiarySearch, 300);
@@ -744,7 +752,7 @@ export default function InternalFundRequestForm({
   const canChangeStatus = isRequestedToUser && !isCreator;
   const isSelfApproval = !canChangeStatus;
 
-  // ── Abort controller management ───────────────────────────────────────────
+  // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
@@ -773,45 +781,55 @@ export default function InternalFundRequestForm({
     const fetchStatuses = async () => {
       setLoadingState((prev) => ({ ...prev, statuses: true }));
       try {
-        const base = process.env.NEXT_PUBLIC_BASE_URL;
         const res = await fetch(
-          `${base}General/GetTypeValues?typeName=FundRequest_Detail_Status`,
+          `${getBaseUrl()}General/GetTypeValues?typeName=FundRequest_Detail_Status`,
           {
             method: "GET",
-            headers: { "Content-Type": "application/json" },
+            headers: getAuthHeaders(), // ✅ auth headers
           },
         );
-        if (res.ok) {
-          const data: Record<string, string> = await res.json();
-          const opts: StatusOption[] = Object.entries(data).map(
-            ([key, label]) => ({ key, label }),
-          );
-          setStatusOptions(opts);
 
-          const pendingOpt = opts.find(
-            (o) => o.key.toLowerCase() === "pending",
-          );
-          const approvedOpt = opts.find(
-            (o) => o.key.toLowerCase() === "approved",
-          );
-          const rejectedOpt = opts.find(
-            (o) => o.key.toLowerCase() === "rejected",
-          );
+        if (res.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Please log in again.",
+          });
+          return;
+        }
 
-          if (pendingOpt) setPendingStatus(pendingOpt.key);
-          if (approvedOpt) setApprovedStatus(approvedOpt.key);
-          if (rejectedOpt) setRejectedStatus(rejectedOpt.key);
+        if (!res.ok) {
+          console.error(`Status fetch failed: ${res.status} ${res.statusText}`);
+          return;
+        }
 
-          if (pendingOpt) {
-            setLineItems((prev) =>
-              prev.map((li) =>
-                li.subRequestStatus === "Pending" ||
-                li.subRequestStatus === "PENDING"
-                  ? { ...li, subRequestStatus: pendingOpt.key }
-                  : li,
-              ),
-            );
-          }
+        const data: Record<string, string> = await res.json();
+        const opts: StatusOption[] = Object.entries(data).map(
+          ([key, label]) => ({ key, label }),
+        );
+        setStatusOptions(opts);
+
+        const pendingOpt = opts.find((o) => o.key.toLowerCase() === "pending");
+        const approvedOpt = opts.find(
+          (o) => o.key.toLowerCase() === "approved",
+        );
+        const rejectedOpt = opts.find(
+          (o) => o.key.toLowerCase() === "rejected",
+        );
+
+        if (pendingOpt) setPendingStatus(pendingOpt.key);
+        if (approvedOpt) setApprovedStatus(approvedOpt.key);
+        if (rejectedOpt) setRejectedStatus(rejectedOpt.key);
+
+        if (pendingOpt) {
+          setLineItems((prev) =>
+            prev.map((li) =>
+              li.subRequestStatus === "Pending" ||
+              li.subRequestStatus === "PENDING"
+                ? { ...li, subRequestStatus: pendingOpt.key }
+                : li,
+            ),
+          );
         }
       } catch (e) {
         console.error("Status options fetch error:", e);
@@ -827,33 +845,53 @@ export default function InternalFundRequestForm({
     fetchStatuses();
   }, [toast]);
 
-  // ── Fetch reference data ──────────────────────────────────────────────────
+  // ── Fetch all reference data ──────────────────────────────────────────────
   useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_BASE_URL;
-
     const fetchJobs = async () => {
       setLoadingState((prev) => ({ ...prev, jobs: true }));
       try {
-        const res = await fetch(`${base}Job/GetList`, {
+        const res = await fetch(`${getBaseUrl()}Job/GetList`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(), // ✅ auth headers
           body: JSON.stringify({
             select: "JobId, JobNumber, OperationType, Status",
             where: "",
+            search: "", // ✅ required field
             sortOn: "JobId DESC",
             page: "1",
             pageSize: "500",
           }),
         });
-        if (res.ok) {
-          const d = await res.json();
-          setJobs(d);
-          setFilteredJobs(d);
+
+        if (res.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Please log in again.",
+          });
+          return;
         }
+
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`Jobs fetch failed: ${res.status}`, errText);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: `Failed to load jobs (${res.status})`,
+          });
+          return;
+        }
+
+        const d = await res.json();
+        const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+        setJobs(list);
+        setFilteredJobs(list);
       } catch (e) {
+        console.error("Jobs fetch error:", e);
         toast({
           variant: "destructive",
-          title: "Error",
+          title: "Network Error",
           description: "Failed to load jobs",
         });
       } finally {
@@ -864,39 +902,60 @@ export default function InternalFundRequestForm({
     const fetchChargesMasters = async () => {
       setLoadingState((prev) => ({ ...prev, charges: true }));
       try {
-        const res = await fetch(`${base}ChargesMaster/GetList`, {
+        const res = await fetch(`${getBaseUrl()}ChargesMaster/GetList`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(), // ✅ auth headers
           body: JSON.stringify({
             select: "ChargeId, ChargeCode, ChargeName, ChargesNature",
             where: "IsActive == true",
+            search: "", // ✅ required field
             sortOn: "ChargeCode ASC",
             page: "1",
             pageSize: "500",
           }),
         });
-        if (res.ok) {
-          const d = await res.json();
-          const normalised: ChargesMaster[] = d
-            .map((c: any) => ({
-              chargeId: c.chargeId ?? c.ChargeId ?? 0,
-              chargeCode: c.chargeCode ?? c.ChargeCode ?? "",
-              chargeName: c.chargeName ?? c.ChargeName ?? "",
-              chargesNature: c.chargesNature ?? c.ChargesNature ?? "",
-            }))
-            .filter((c: ChargesMaster) => c.chargeId > 0);
 
-          setChargesMasters(normalised);
-          const nonOp = normalised.filter(
-            (c) => c.chargesNature.toLowerCase() === "non-operational",
-          );
-          setFilteredCharges(nonOp.length > 0 ? nonOp : normalised);
+        if (res.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Please log in again.",
+          });
+          return;
         }
+
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`Charges fetch failed: ${res.status}`, errText);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: `Failed to load charges (${res.status})`,
+          });
+          return;
+        }
+
+        const d = await res.json();
+        const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+        const normalised: ChargesMaster[] = list
+          .map((c: any) => ({
+            chargeId: c.chargeId ?? c.ChargeId ?? 0,
+            chargeCode: c.chargeCode ?? c.ChargeCode ?? "",
+            chargeName: c.chargeName ?? c.ChargeName ?? "",
+            chargesNature: c.chargesNature ?? c.ChargesNature ?? "",
+          }))
+          .filter((c: ChargesMaster) => c.chargeId > 0);
+
+        setChargesMasters(normalised);
+        const nonOp = normalised.filter(
+          (c) => c.chargesNature.toLowerCase() === "non-operational",
+        );
+        setFilteredCharges(nonOp.length > 0 ? nonOp : normalised);
       } catch (e) {
-        console.error("ChargesMaster:", e);
+        console.error("Charges fetch error:", e);
         toast({
           variant: "destructive",
-          title: "Error",
+          title: "Network Error",
           description: "Failed to load charges",
         });
       } finally {
@@ -907,27 +966,48 @@ export default function InternalFundRequestForm({
     const fetchParties = async () => {
       setLoadingState((prev) => ({ ...prev, parties: true }));
       try {
-        const res = await fetch(`${base}Party/GetList`, {
+        const res = await fetch(`${getBaseUrl()}Party/GetList`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(), // ✅ auth headers
           body: JSON.stringify({
             select: "PartyId, PartyCode, PartyName, BenificiaryNameOfPO",
             where: "",
+            search: "", // ✅ required field
             sortOn: "PartyName ASC",
             page: "1",
             pageSize: "500",
           }),
         });
-        if (res.ok) {
-          const d = await res.json();
-          setParties(d);
-          setFilteredBeneficiaries(d);
+
+        if (res.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Please log in again.",
+          });
+          return;
         }
+
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`Parties fetch failed: ${res.status}`, errText);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: `Failed to load parties (${res.status})`,
+          });
+          return;
+        }
+
+        const d = await res.json();
+        const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+        setParties(list);
+        setFilteredBeneficiaries(list);
       } catch (e) {
-        console.error("Parties:", e);
+        console.error("Parties fetch error:", e);
         toast({
           variant: "destructive",
-          title: "Error",
+          title: "Network Error",
           description: "Failed to load parties",
         });
       } finally {
@@ -938,26 +1018,48 @@ export default function InternalFundRequestForm({
     const fetchUsers = async () => {
       setLoadingState((prev) => ({ ...prev, users: true }));
       try {
-        const res = await fetch(`${base}User/GetList`, {
+        const res = await fetch(`${getBaseUrl()}User/GetList`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(), // ✅ auth headers
           body: JSON.stringify({
             select:
               "UserId, Username, FullName, Email, Designation, DepartmentId, IsAllowedRequestApproval",
             where: "IsAllowedRequestApproval == true",
+            search: "", // ✅ required field
             sortOn: "FullName ASC",
             page: "1",
             pageSize: "500",
           }),
         });
-        if (res.ok) {
-          setUsers(await res.json());
+
+        if (res.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Please log in again.",
+          });
+          return;
         }
+
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`Users fetch failed: ${res.status}`, errText);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: `Failed to load users (${res.status})`,
+          });
+          return;
+        }
+
+        const d = await res.json();
+        const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+        setUsers(list);
       } catch (e) {
-        console.error("Users:", e);
+        console.error("Users fetch error:", e);
         toast({
           variant: "destructive",
-          title: "Error",
+          title: "Network Error",
           description: "Failed to load users",
         });
       } finally {
@@ -971,7 +1073,7 @@ export default function InternalFundRequestForm({
     fetchUsers();
   }, [toast]);
 
-  // ── Fetch party charges with abort control ─────────────────────────────────
+  // ── Fetch party charges ────────────────────────────────────────────────────
   const fetchPartyCharges = useCallback(
     async (partyId: number): Promise<Set<number>> => {
       if (partyChargesCache[partyId]) return partyChargesCache[partyId];
@@ -982,11 +1084,19 @@ export default function InternalFundRequestForm({
       }));
 
       try {
-        const base = process.env.NEXT_PUBLIC_BASE_URL;
-        const res = await fetch(`${base}Party/${partyId}`, {
+        const res = await fetch(`${getBaseUrl()}Party/${partyId}`, {
           method: "GET",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(), // ✅ auth headers
         });
+
+        if (res.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Please log in again.",
+          });
+          return new Set<number>();
+        }
 
         if (res.ok) {
           const data = await res.json();
@@ -999,11 +1109,11 @@ export default function InternalFundRequestForm({
           return ids;
         }
       } catch (e) {
-        console.error("Party charges fetch:", e);
+        console.error("Party charges fetch error:", e);
         toast({
           variant: "destructive",
           title: "Error",
-          description: `Failed to load charges for party`,
+          description: "Failed to load charges for party",
         });
       } finally {
         setLoadingState((prev) => ({
@@ -1016,7 +1126,7 @@ export default function InternalFundRequestForm({
     [partyChargesCache, toast],
   );
 
-  // ── Fetch job detail with request tracking ─────────────────────────────────
+  // ── Fetch job detail ──────────────────────────────────────────────────────
   const fetchJobDetail = useCallback(
     async (jobId: number, requestId?: string): Promise<JobDetail | null> => {
       if (jobDetailsCache[jobId]) return jobDetailsCache[jobId];
@@ -1027,11 +1137,19 @@ export default function InternalFundRequestForm({
       }));
 
       try {
-        const base = process.env.NEXT_PUBLIC_BASE_URL;
-        const res = await fetch(`${base}Job/${jobId}`, {
+        const res = await fetch(`${getBaseUrl()}Job/${jobId}`, {
           method: "GET",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(), // ✅ auth headers
         });
+
+        if (res.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Please log in again.",
+          });
+          return null;
+        }
 
         if (res.ok) {
           const detail: JobDetail = await res.json();
@@ -1039,11 +1157,11 @@ export default function InternalFundRequestForm({
           return detail;
         }
       } catch (e) {
-        console.error("Job detail fetch:", e);
+        console.error("Job detail fetch error:", e);
         toast({
           variant: "destructive",
           title: "Error",
-          description: `Failed to load job details`,
+          description: "Failed to load job details",
         });
       } finally {
         setLoadingState((prev) => ({
@@ -1056,7 +1174,7 @@ export default function InternalFundRequestForm({
     [jobDetailsCache, toast],
   );
 
-  // ── Search filters with debouncing ────────────────────────────────────────
+  // ── Search filters ────────────────────────────────────────────────────────
   useEffect(() => {
     const q = debouncedJobSearch.toLowerCase();
     setFilteredJobs(
@@ -1073,7 +1191,6 @@ export default function InternalFundRequestForm({
   useEffect(() => {
     const q = debouncedChargeSearch.toLowerCase();
     if (!q) {
-      // Reset to base filtered charges when search is empty
       const nonOp = chargesMasters.filter(
         (c) => c.chargesNature?.toLowerCase() === "non-operational",
       );
@@ -1149,7 +1266,6 @@ export default function InternalFundRequestForm({
             : item,
         ),
       );
-
       const nonOp = chargesMasters.filter(
         (c) => c.chargesNature?.toLowerCase() === "non-operational",
       );
@@ -1286,19 +1402,6 @@ export default function InternalFundRequestForm({
     [isSelfApproval, updateLineItem],
   );
 
-  const approveLineItem = useCallback(
-    (id: string) => setLineStatus(id, approvedStatus),
-    [setLineStatus, approvedStatus],
-  );
-  const rejectLineItem = useCallback(
-    (id: string) => setLineStatus(id, rejectedStatus),
-    [setLineStatus, rejectedStatus],
-  );
-  const pendingLineItem = useCallback(
-    (id: string) => setLineStatus(id, pendingStatus),
-    [setLineStatus, pendingStatus],
-  );
-
   const approveAllLines = useCallback(() => {
     if (isSelfApproval) return;
     setLineItems((prev) =>
@@ -1426,7 +1529,6 @@ export default function InternalFundRequestForm({
 
       setLineItems(mapped);
 
-      // Fetch job details and resolve head of account names
       mapped.forEach(async (m) => {
         if (m.jobId) {
           await fetchJobDetail(m.jobId);
@@ -1513,7 +1615,7 @@ export default function InternalFundRequestForm({
       if (!validateForm()) return;
 
       setIsSubmitting(true);
-      const base = process.env.NEXT_PUBLIC_BASE_URL;
+
       const total = lineItems.reduce((s, i) => s + (i.requestedAmount || 0), 0);
       const computedStatus = masterApprovalStatus;
 
@@ -1605,7 +1707,7 @@ export default function InternalFundRequestForm({
         }
 
         const method = type === "edit" ? "PUT" : "POST";
-        const endpoint = `${base}InternalCashFundsRequest`;
+        const endpoint = `${getBaseUrl()}InternalCashFundsRequest`;
 
         console.log(
           `📡 ${method} ${endpoint}`,
@@ -1614,15 +1716,23 @@ export default function InternalFundRequestForm({
 
         const response = await fetch(endpoint, {
           method,
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(), // ✅ auth headers
           body: JSON.stringify(finalPayload),
         });
+
+        if (response.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Your session has expired. Please log in again.",
+          });
+          return;
+        }
 
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`❌ ${method} FAILED`, response.status, errorText);
           let userMessage = `Request failed (${response.status})`;
-
           try {
             const parsed = JSON.parse(errorText);
             if (Array.isArray(parsed)) {
@@ -1631,6 +1741,8 @@ export default function InternalFundRequestForm({
               userMessage = Object.values(parsed.errors).flat().join(", ");
             } else if (parsed.title) {
               userMessage = parsed.title;
+            } else if (parsed.message) {
+              userMessage = parsed.message;
             } else if (typeof parsed === "string") {
               userMessage = parsed;
             }
@@ -1810,7 +1922,7 @@ export default function InternalFundRequestForm({
                 selected job • Head of Account is selected from Parties •
                 "Requested To" shows only users allowed to approve • All ✓ →
                 Master {approvedStatus} · All ✗ → {rejectedStatus} · Mixed →{" "}
-                {pendingStatus}•{" "}
+                {pendingStatus} •{" "}
                 <kbd className='px-1 bg-gray-100 border rounded'>
                   Ctrl+Enter
                 </kbd>{" "}

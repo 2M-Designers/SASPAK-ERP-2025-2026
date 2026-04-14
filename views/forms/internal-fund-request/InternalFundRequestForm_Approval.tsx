@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,6 +72,35 @@ type GlAccount = {
 
 type StatusOption = { key: string; label: string };
 
+// ─── Helper: build headers with auth token ───────────────────────────────────
+
+function getAuthHeaders(): HeadersInit {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("access_token") ||
+    sessionStorage.getItem("token") ||
+    sessionStorage.getItem("authToken");
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
+// ─── Helper: normalize base URL ──────────────────────────────────────────────
+
+function getBaseUrl(): string {
+  const base = process.env.NEXT_PUBLIC_BASE_URL || "";
+  return base.endsWith("/") ? base : `${base}/`;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function InternalFundRequestApprovalForm({
@@ -84,13 +113,11 @@ export default function InternalFundRequestApprovalForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [userId, setUserId] = useState<number | null>(null);
 
-  // GL Accounts for Cash Head dropdown
   const [glAccounts, setGlAccounts] = useState<GlAccount[]>([]);
   const [filteredGlAccounts, setFilteredGlAccounts] = useState<GlAccount[]>([]);
   const [isLoadingGlAccounts, setIsLoadingGlAccounts] = useState(false);
   const [glAccountSearch, setGlAccountSearch] = useState("");
 
-  // Status values from API
   const [pendingStatus, setPendingStatus] = useState("Pending");
   const [approvedStatus, setApprovedStatus] = useState("Approved");
   const [rejectedStatus, setRejectedStatus] = useState("Rejected");
@@ -115,74 +142,122 @@ export default function InternalFundRequestApprovalForm({
   useEffect(() => {
     const fetchStatuses = async () => {
       try {
-        const base = process.env.NEXT_PUBLIC_BASE_URL;
+        const base = getBaseUrl();
         const res = await fetch(
           `${base}General/GetTypeValues?typeName=FundRequest_Detail_Status`,
-          { method: "GET", headers: { "Content-Type": "application/json" } },
+          {
+            method: "GET",
+            headers: getAuthHeaders(),
+          },
         );
-        if (res.ok) {
-          const raw: Record<string, string> = await res.json();
-          const opts: StatusOption[] = Object.entries(raw).map(
-            ([key, label]) => ({ key, label }),
-          );
-          const p = opts.find((o) => o.key.toLowerCase() === "pending");
-          const a = opts.find((o) => o.key.toLowerCase() === "approved");
-          const r = opts.find((o) => o.key.toLowerCase() === "rejected");
-          if (p) setPendingStatus(p.key);
-          if (a) setApprovedStatus(a.key);
-          if (r) setRejectedStatus(r.key);
+
+        if (res.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Please log in again.",
+          });
+          return;
         }
+
+        if (!res.ok) {
+          console.error(`Status fetch failed: ${res.status} ${res.statusText}`);
+          return;
+        }
+
+        const raw: Record<string, string> = await res.json();
+        const opts: StatusOption[] = Object.entries(raw).map(
+          ([key, label]) => ({
+            key,
+            label,
+          }),
+        );
+
+        const p = opts.find((o) => o.key.toLowerCase() === "pending");
+        const a = opts.find((o) => o.key.toLowerCase() === "approved");
+        const r = opts.find((o) => o.key.toLowerCase() === "rejected");
+
+        if (p) setPendingStatus(p.key);
+        if (a) setApprovedStatus(a.key);
+        if (r) setRejectedStatus(r.key);
       } catch (e) {
-        console.error("Status fetch:", e);
+        console.error("Status fetch error:", e);
+        // Non-critical — fallback values already set in state
       }
     };
-    fetchStatuses();
-  }, []);
 
-  // ── Fetch GL Accounts for Cash Head ───────────────────────────────────────
+    fetchStatuses();
+  }, [toast]);
+
+  // ── Fetch GL Accounts ─────────────────────────────────────────────────────
   useEffect(() => {
     const fetchGlAccounts = async () => {
       setIsLoadingGlAccounts(true);
       try {
-        const base = process.env.NEXT_PUBLIC_BASE_URL;
+        const base = getBaseUrl();
         const res = await fetch(`${base}GlAccount/GetList`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             select: "AccountId,AccountCode,AccountName",
             where:
               "IsHeader==true && ParentAccountId != null && IsActive == true",
             sortOn: "AccountCode",
-            page: "1",
-            pageSize: "500",
+            search: "", // ✅ required field — empty string returns all
+            page: "1", // ✅ must be string, not integer
+            pageSize: "500", // ✅ must be string, not integer
           }),
         });
-        if (res.ok) {
-          const d = await res.json();
-          // Normalize the data
-          const normalizedData = d.map((item: any) => ({
-            accountId: item.accountId || item.AccountId,
-            accountCode: item.accountCode || item.AccountCode,
-            accountName: item.accountName || item.AccountName,
-          }));
-          setGlAccounts(normalizedData);
-          setFilteredGlAccounts(normalizedData);
+
+        if (res.status === 401) {
+          toast({
+            variant: "destructive",
+            title: "Session Expired",
+            description: "Please log in again.",
+          });
+          return;
         }
+
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`GL Accounts fetch failed: ${res.status}`, errText);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: `Failed to load cash accounts (${res.status})`,
+          });
+          return;
+        }
+
+        const d = await res.json();
+
+        // Handle both array and wrapped { data: [...] } responses
+        const rawList = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+
+        const normalizedData: GlAccount[] = rawList.map((item: any) => ({
+          accountId: item.accountId ?? item.AccountId,
+          accountCode: item.accountCode ?? item.AccountCode,
+          accountName: item.accountName ?? item.AccountName,
+        }));
+
+        setGlAccounts(normalizedData);
+        setFilteredGlAccounts(normalizedData);
       } catch (e) {
-        console.error("GL accounts:", e);
+        console.error("GL accounts fetch error:", e);
         toast({
           variant: "destructive",
-          title: "Error",
-          description: "Failed to load cash accounts",
+          title: "Network Error",
+          description: "Could not reach the server. Check your connection.",
         });
       } finally {
         setIsLoadingGlAccounts(false);
       }
     };
+
     fetchGlAccounts();
   }, [toast]);
 
-  // ── Filter GL accounts based on search ────────────────────────────────────
+  // ── Filter GL accounts ────────────────────────────────────────────────────
   useEffect(() => {
     if (glAccountSearch.trim() === "") {
       setFilteredGlAccounts(glAccounts);
@@ -198,7 +273,7 @@ export default function InternalFundRequestApprovalForm({
     }
   }, [glAccountSearch, glAccounts]);
 
-  // ── Initialize line items from request data ───────────────────────────────
+  // ── Initialize line items ─────────────────────────────────────────────────
   useEffect(() => {
     if (!requestData?.internalCashFundsRequests) return;
 
@@ -224,7 +299,6 @@ export default function InternalFundRequestApprovalForm({
           detail.CashHeadName ||
           "";
 
-        // Also check glAccount if available
         const glAccountObj = detail.glAccount || detail.GlAccount;
         const glAccountName =
           glAccountObj?.accountName || glAccountObj?.AccountName || "";
@@ -299,7 +373,6 @@ export default function InternalFundRequestApprovalForm({
     setLineItems((prev) => {
       const updated = [...prev];
       updated[index].subRequestStatus = status;
-      // Reset approved amount to 0 if rejected
       if (status === rejectedStatus) {
         updated[index].approvedAmount = 0;
       }
@@ -355,8 +428,8 @@ export default function InternalFundRequestApprovalForm({
     return pendingStatus;
   })();
 
+  // ── Validation ────────────────────────────────────────────────────────────
   const handleSave = async () => {
-    // Validate amounts
     const invalidAmount = lineItems.some(
       (item) =>
         item.approvedAmount < 0 || item.approvedAmount > item.requestedAmount,
@@ -370,11 +443,9 @@ export default function InternalFundRequestApprovalForm({
       return;
     }
 
-    // Validate cash head for approved lines
     const missingCashHead = lineItems.some(
       (item) => item.subRequestStatus === approvedStatus && !item.cashHeadId,
     );
-
     if (missingCashHead) {
       toast({
         variant: "destructive",
@@ -388,6 +459,7 @@ export default function InternalFundRequestApprovalForm({
     await submitApproval();
   };
 
+  // ── Submit ────────────────────────────────────────────────────────────────
   const submitApproval = async () => {
     if (!userId) {
       toast({
@@ -401,9 +473,8 @@ export default function InternalFundRequestApprovalForm({
     setIsSubmitting(true);
 
     try {
-      const base = process.env.NEXT_PUBLIC_BASE_URL;
+      const base = getBaseUrl();
 
-      // Build payload according to schema
       const payload = {
         CashFundRequestId:
           requestData.cashFundRequestId || requestData.CashFundRequestId,
@@ -421,7 +492,7 @@ export default function InternalFundRequestApprovalForm({
           requestData.createdOn ||
           requestData.CreatedOn ||
           new Date().toISOString(),
-        CashHeadId: null, // Removed from master
+        CashHeadId: null,
         RequestorUserId:
           requestData.requestorUserId || requestData.RequestorUserId,
         Remarks: masterRemarks,
@@ -452,16 +523,21 @@ export default function InternalFundRequestApprovalForm({
       };
 
       console.log("📦 PAYLOAD:", JSON.stringify(payload, null, 2));
-      console.log("📋 Request ID being sent:", payload.CashFundRequestId);
 
       const response = await fetch(`${base}InternalCashFundsRequest`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers: getAuthHeaders(), // ✅ auth headers included
         body: JSON.stringify(payload),
       });
+
+      if (response.status === 401) {
+        toast({
+          variant: "destructive",
+          title: "Session Expired",
+          description: "Your session has expired. Please log in again.",
+        });
+        return;
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -474,6 +550,8 @@ export default function InternalFundRequestApprovalForm({
             errorMessage = Object.values(errorJson.errors).flat().join(", ");
           } else if (errorJson.title) {
             errorMessage = errorJson.title;
+          } else if (errorJson.message) {
+            errorMessage = errorJson.message;
           }
         } catch {
           errorMessage = errorText || errorMessage;
@@ -501,7 +579,8 @@ export default function InternalFundRequestApprovalForm({
       setIsSubmitting(false);
     }
   };
-  // ── Status badge styling ──────────────────────────────────────────────────
+
+  // ── Status badge ──────────────────────────────────────────────────────────
   const getStatusBadge = (status: string) => {
     const s = (status || "").toLowerCase();
     if (s === "approved") return "bg-green-100 text-green-800 border-green-300";
@@ -603,7 +682,7 @@ export default function InternalFundRequestApprovalForm({
         </div>
       </div>
 
-      {/* Line Items - Compact Cards */}
+      {/* Line Items */}
       <div className='space-y-3 max-h-[calc(100vh-350px)] overflow-y-auto pr-2'>
         {lineItems.map((item, index) => {
           const isApproved = item.subRequestStatus === approvedStatus;
@@ -623,7 +702,6 @@ export default function InternalFundRequestApprovalForm({
             >
               <CardContent className='p-4'>
                 <div className='grid grid-cols-12 gap-3 items-start'>
-                  {/* Line Number & Status */}
                   <div className='col-span-1'>
                     <Badge
                       variant='outline'
@@ -633,7 +711,6 @@ export default function InternalFundRequestApprovalForm({
                     </Badge>
                   </div>
 
-                  {/* Job & Customer */}
                   <div className='col-span-2'>
                     <div className='space-y-1'>
                       <div className='flex items-center gap-1'>
@@ -657,7 +734,6 @@ export default function InternalFundRequestApprovalForm({
                     </div>
                   </div>
 
-                  {/* Account Details */}
                   <div className='col-span-3'>
                     <div className='space-y-1'>
                       <div className='flex items-start gap-1'>
@@ -681,7 +757,6 @@ export default function InternalFundRequestApprovalForm({
                     </div>
                   </div>
 
-                  {/* Requested Amount */}
                   <div className='col-span-1'>
                     <p className='text-xs text-gray-500'>Requested</p>
                     <p className='text-base font-semibold text-gray-900'>
@@ -693,7 +768,6 @@ export default function InternalFundRequestApprovalForm({
                     </p>
                   </div>
 
-                  {/* Approved Amount */}
                   <div className='col-span-2'>
                     <Label className='text-xs text-gray-600 mb-1 block'>
                       Approved Amount
@@ -739,7 +813,6 @@ export default function InternalFundRequestApprovalForm({
                     )}
                   </div>
 
-                  {/* Cash Account (GL Account) Selection */}
                   <div className='col-span-2'>
                     <Label className='text-xs text-gray-600 mb-1 block'>
                       Cash Account{" "}
@@ -824,7 +897,6 @@ export default function InternalFundRequestApprovalForm({
                     )}
                   </div>
 
-                  {/* Approval Actions & Remarks */}
                   <div className='col-span-1'>
                     <div className='flex items-center gap-1 justify-end'>
                       <Button
@@ -907,7 +979,6 @@ export default function InternalFundRequestApprovalForm({
           </div>
         </div>
 
-        {/* Master Remarks */}
         <div>
           <Label
             htmlFor='master-remarks'
