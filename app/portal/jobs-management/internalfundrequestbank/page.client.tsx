@@ -415,7 +415,7 @@ export default function InternalBankFundRequestPage({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             select:
-              "BankFundRequestId,BankId,TotalRequestedAmount,TotalApprovedAmount,ApprovalStatus,ApprovedBy,ApprovedOn,RequestedTo,CreatedOn,RequestorUserId,Remarks,Version",
+              "bankFundRequestId, TotalRequestedAmount, TotalApprovedAmount, ApprovalStatus, ApprovedBy, ApprovedOn, RequestedTo, CreatedOn, CreatedBy, version, requestorUserId, remarks",
             where: "",
             sortOn: "BankFundRequestId DESC",
             page: "1",

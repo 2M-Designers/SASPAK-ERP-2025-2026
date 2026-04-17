@@ -569,7 +569,13 @@ const LineItemRow = ({
                 disabled={isSelfApproval}
               >
                 <SelectTrigger
-                  className={`h-7 text-xs font-semibold border min-w-[72px] px-1.5 rounded ${getStatusStyle(item.subRequestStatus)}`}
+                  className={`h-7 text-xs font-semibold border min-w-[72px] px-1.5 rounded ${
+                    item.subRequestStatus === approvedStatus
+                      ? "bg-green-50 text-green-700 border-green-300"
+                      : item.subRequestStatus === rejectedStatus
+                        ? "bg-red-50 text-red-700 border-red-300"
+                        : "bg-yellow-50 text-yellow-700 border-yellow-300"
+                  }`}
                   aria-label='Select status'
                 >
                   <SelectValue>{item.subRequestStatus}</SelectValue>
@@ -782,12 +788,8 @@ export default function InternalBankFundRequestForm({
       try {
         const res = await fetch(
           `${getBaseUrl()}General/GetTypeValues?typeName=FundRequest_Detail_Status`,
-          {
-            method: "GET",
-            headers: getAuthHeaders(), // ✅ auth headers
-          },
+          { method: "GET", headers: getAuthHeaders() },
         );
-
         if (res.status === 401) {
           toast({
             variant: "destructive",
@@ -796,11 +798,7 @@ export default function InternalBankFundRequestForm({
           });
           return;
         }
-
-        if (!res.ok) {
-          console.error(`Status fetch failed: ${res.status} ${res.statusText}`);
-          return;
-        }
+        if (!res.ok) return;
 
         const raw: Record<string, string> = await res.json();
         const opts: StatusOption[] = Object.entries(raw).map(
@@ -826,11 +824,6 @@ export default function InternalBankFundRequestForm({
         }
       } catch (e) {
         console.error("Status fetch error:", e);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to load status options",
-        });
       } finally {
         setLoadingState((prev) => ({ ...prev, statuses: false }));
       }
@@ -845,48 +838,23 @@ export default function InternalBankFundRequestForm({
       try {
         const res = await fetch(`${getBaseUrl()}Banks/GetList`, {
           method: "POST",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             select: "BankId, BankCode, BankName",
             where: "",
-            search: "", // ✅ required field
+            search: "",
             sortOn: "BankName ASC",
             page: "1",
             pageSize: "200",
           }),
         });
-
-        if (res.status === 401) {
-          toast({
-            variant: "destructive",
-            title: "Session Expired",
-            description: "Please log in again.",
-          });
-          return;
-        }
-
-        if (!res.ok) {
-          const errText = await res.text();
-          console.error(`Banks fetch failed: ${res.status}`, errText);
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: `Failed to load banks (${res.status})`,
-          });
-          return;
-        }
-
+        if (!res.ok) return;
         const d = await res.json();
         const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
         setBanks(list);
         setFilteredBanks(list);
       } catch (e) {
         console.error("Banks fetch error:", e);
-        toast({
-          variant: "destructive",
-          title: "Network Error",
-          description: "Failed to load banks",
-        });
       } finally {
         setLoadingState((prev) => ({ ...prev, banks: false }));
       }
@@ -897,48 +865,23 @@ export default function InternalBankFundRequestForm({
       try {
         const res = await fetch(`${getBaseUrl()}Job/GetList`, {
           method: "POST",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             select: "JobId, JobNumber, OperationType, Status",
             where: "",
-            search: "", // ✅ required field
+            search: "",
             sortOn: "JobId DESC",
             page: "1",
             pageSize: "500",
           }),
         });
-
-        if (res.status === 401) {
-          toast({
-            variant: "destructive",
-            title: "Session Expired",
-            description: "Please log in again.",
-          });
-          return;
-        }
-
-        if (!res.ok) {
-          const errText = await res.text();
-          console.error(`Jobs fetch failed: ${res.status}`, errText);
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: `Failed to load jobs (${res.status})`,
-          });
-          return;
-        }
-
+        if (!res.ok) return;
         const d = await res.json();
         const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
         setJobs(list);
         setFilteredJobs(list);
       } catch (e) {
         console.error("Jobs fetch error:", e);
-        toast({
-          variant: "destructive",
-          title: "Network Error",
-          description: "Failed to load jobs",
-        });
       } finally {
         setLoadingState((prev) => ({ ...prev, jobs: false }));
       }
@@ -949,37 +892,17 @@ export default function InternalBankFundRequestForm({
       try {
         const res = await fetch(`${getBaseUrl()}ChargesMaster/GetList`, {
           method: "POST",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             select: "ChargeId, ChargeCode, ChargeName, ChargesNature",
             where: "IsActive == true",
-            search: "", // ✅ required field
+            search: "",
             sortOn: "ChargeCode ASC",
             page: "1",
             pageSize: "500",
           }),
         });
-
-        if (res.status === 401) {
-          toast({
-            variant: "destructive",
-            title: "Session Expired",
-            description: "Please log in again.",
-          });
-          return;
-        }
-
-        if (!res.ok) {
-          const errText = await res.text();
-          console.error(`Charges fetch failed: ${res.status}`, errText);
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: `Failed to load charges (${res.status})`,
-          });
-          return;
-        }
-
+        if (!res.ok) return;
         const d = await res.json();
         const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
         const normalised: ChargesMaster[] = list
@@ -990,7 +913,6 @@ export default function InternalBankFundRequestForm({
             chargesNature: c.chargesNature ?? c.ChargesNature ?? "",
           }))
           .filter((c: ChargesMaster) => c.chargeId > 0);
-
         setChargesMasters(normalised);
         const nonOp = normalised.filter(
           (c) => c.chargesNature.toLowerCase() === "non-operational",
@@ -998,11 +920,6 @@ export default function InternalBankFundRequestForm({
         setFilteredCharges(nonOp.length > 0 ? nonOp : normalised);
       } catch (e) {
         console.error("Charges fetch error:", e);
-        toast({
-          variant: "destructive",
-          title: "Network Error",
-          description: "Failed to load charges",
-        });
       } finally {
         setLoadingState((prev) => ({ ...prev, charges: false }));
       }
@@ -1013,48 +930,23 @@ export default function InternalBankFundRequestForm({
       try {
         const res = await fetch(`${getBaseUrl()}Party/GetList`, {
           method: "POST",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             select: "PartyId, PartyCode, PartyName, BenificiaryNameOfPO",
             where: "",
-            search: "", // ✅ required field
+            search: "",
             sortOn: "PartyName ASC",
             page: "1",
             pageSize: "500",
           }),
         });
-
-        if (res.status === 401) {
-          toast({
-            variant: "destructive",
-            title: "Session Expired",
-            description: "Please log in again.",
-          });
-          return;
-        }
-
-        if (!res.ok) {
-          const errText = await res.text();
-          console.error(`Parties fetch failed: ${res.status}`, errText);
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: `Failed to load parties (${res.status})`,
-          });
-          return;
-        }
-
+        if (!res.ok) return;
         const d = await res.json();
         const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
         setParties(list);
         setFilteredBeneficiaries(list);
       } catch (e) {
         console.error("Parties fetch error:", e);
-        toast({
-          variant: "destructive",
-          title: "Network Error",
-          description: "Failed to load parties",
-        });
       } finally {
         setLoadingState((prev) => ({ ...prev, parties: false }));
       }
@@ -1065,48 +957,23 @@ export default function InternalBankFundRequestForm({
       try {
         const res = await fetch(`${getBaseUrl()}User/GetList`, {
           method: "POST",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             select:
               "UserId, Username, FullName, Email, Designation, DepartmentId, IsAllowedRequestApproval",
             where: "IsAllowedRequestApproval == true",
-            search: "", // ✅ required field
+            search: "",
             sortOn: "FullName ASC",
             page: "1",
             pageSize: "500",
           }),
         });
-
-        if (res.status === 401) {
-          toast({
-            variant: "destructive",
-            title: "Session Expired",
-            description: "Please log in again.",
-          });
-          return;
-        }
-
-        if (!res.ok) {
-          const errText = await res.text();
-          console.error(`Users fetch failed: ${res.status}`, errText);
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: `Failed to load users (${res.status})`,
-          });
-          return;
-        }
-
+        if (!res.ok) return;
         const d = await res.json();
         const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
         setUsers(list);
       } catch (e) {
         console.error("Users fetch error:", e);
-        toast({
-          variant: "destructive",
-          title: "Network Error",
-          description: "Failed to load users",
-        });
       } finally {
         setLoadingState((prev) => ({ ...prev, users: false }));
       }
@@ -1123,27 +990,15 @@ export default function InternalBankFundRequestForm({
   const fetchPartyCharges = useCallback(
     async (partyId: number): Promise<Set<number>> => {
       if (partyChargesCache[partyId]) return partyChargesCache[partyId];
-
       setLoadingState((prev) => ({
         ...prev,
         partyCharges: { ...prev.partyCharges, [partyId]: true },
       }));
-
       try {
         const res = await fetch(`${getBaseUrl()}Party/${partyId}`, {
           method: "GET",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
         });
-
-        if (res.status === 401) {
-          toast({
-            variant: "destructive",
-            title: "Session Expired",
-            description: "Please log in again.",
-          });
-          return new Set<number>();
-        }
-
         if (res.ok) {
           const data = await res.json();
           const ids = new Set<number>(
@@ -1156,11 +1011,6 @@ export default function InternalBankFundRequestForm({
         }
       } catch (e) {
         console.error("Party charges fetch error:", e);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to load charges for party",
-        });
       } finally {
         setLoadingState((prev) => ({
           ...prev,
@@ -1169,34 +1019,22 @@ export default function InternalBankFundRequestForm({
       }
       return new Set<number>();
     },
-    [partyChargesCache, toast],
+    [partyChargesCache],
   );
 
   // ── Fetch job detail ──────────────────────────────────────────────────────
   const fetchJobDetail = useCallback(
     async (jobId: number): Promise<JobDetail | null> => {
       if (jobDetailsCache[jobId]) return jobDetailsCache[jobId];
-
       setLoadingState((prev) => ({
         ...prev,
         jobDetail: { ...prev.jobDetail, [jobId]: true },
       }));
-
       try {
         const res = await fetch(`${getBaseUrl()}Job/${jobId}`, {
           method: "GET",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
         });
-
-        if (res.status === 401) {
-          toast({
-            variant: "destructive",
-            title: "Session Expired",
-            description: "Please log in again.",
-          });
-          return null;
-        }
-
         if (res.ok) {
           const detail: JobDetail = await res.json();
           setJobDetailsCache((prev) => ({ ...prev, [jobId]: detail }));
@@ -1204,11 +1042,6 @@ export default function InternalBankFundRequestForm({
         }
       } catch (e) {
         console.error("Job detail fetch error:", e);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to load job details",
-        });
       } finally {
         setLoadingState((prev) => ({
           ...prev,
@@ -1217,7 +1050,7 @@ export default function InternalBankFundRequestForm({
       }
       return null;
     },
-    [jobDetailsCache, toast],
+    [jobDetailsCache],
   );
 
   // ── Search filters ────────────────────────────────────────────────────────
@@ -1536,10 +1369,6 @@ export default function InternalBankFundRequestForm({
         e.preventDefault();
         amountInputRefs.current[index - 1]?.focus();
       }
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        handleSubmit(e as any);
-      }
     },
     [lineItems.length, addLineItem],
   );
@@ -1562,16 +1391,17 @@ export default function InternalBankFundRequestForm({
   useEffect(() => {
     if (type !== "edit" || !defaultState) return;
 
-    const bankId = defaultState.bankId ?? defaultState.BankId;
+    const bankId = defaultState.bankId ?? defaultState.BankId ?? null;
     if (bankId) {
       setSelectedBankId(bankId);
       const bank = banks.find((b) => b.bankId === bankId);
       setBankName(bank ? bank.bankName : `Bank #${bankId}`);
     }
 
-    if (defaultState.requestedTo) {
-      setSelectedRequestor(defaultState.requestedTo);
-      const user = users.find((u) => u.userId === defaultState.requestedTo);
+    const reqTo = defaultState.requestedTo ?? defaultState.RequestedTo ?? null;
+    if (reqTo) {
+      setSelectedRequestor(reqTo);
+      const user = users.find((u) => u.userId === reqTo);
       if (user) setRequestorName(user.fullName || user.username);
     }
 
@@ -1587,7 +1417,9 @@ export default function InternalBankFundRequestForm({
         return {
           id: generateUUID(),
           internalFundsRequestBankId:
-            d.internalFundsRequestBankId || d.InternalFundsRequestBankId,
+            d.internalFundsRequestBankId ??
+            d.InternalFundsRequestBankId ??
+            undefined,
           jobId: detailJobId,
           jobNumber: job?.jobNumber || d.jobNumber || d.JobNumber || "",
           jobOperationType: job?.operationType || d.operationType || "",
@@ -1685,114 +1517,132 @@ export default function InternalBankFundRequestForm({
       setIsSubmitting(true);
 
       const total = lineItems.reduce((s, i) => s + (i.requestedAmount || 0), 0);
-      const computedStatus = masterApprovalStatus;
 
       try {
-        const buildDetail = (item: LineItem): any => {
-          const d: any = {
-            jobId: item.jobId ?? null,
-            headCoaId: item.headCoaId,
-            beneficiaryCoaId: item.beneficiaryCoaId,
-            headOfAccount: item.headOfAccount,
-            beneficiary: item.beneficiary,
-            accountNo: "",
-            onAccountOfId: null,
-            requestedAmount: item.requestedAmount,
-            approvedAmount: 0,
-            chargesId: item.headCoaId,
-            customerName: item.customerName || "",
-            requestedTo: item.requestedTo ?? selectedRequestor,
-            subRequestStatus:
-              type === "edit" ? item.subRequestStatus : pendingStatus,
-            remarks: item.remarks || "",
-            version: 0,
-            createdOn: new Date().toISOString(),
-            bankId: item.jobId ? null : (selectedBankId ?? null), // ✅ bank at detail level
-          };
-
-          if (type === "edit" && item.internalFundsRequestBankId) {
-            d.internalFundsRequestBankId = item.internalFundsRequestBankId;
-            d.bankFundRequestMasterId = defaultState?.bankFundRequestId;
-            const orig = defaultState?.internalBankFundsRequests?.find(
-              (x: any) =>
-                (x.internalFundsRequestBankId ||
-                  x.InternalFundsRequestBankId) ===
-                item.internalFundsRequestBankId,
-            );
-            d.createdOn = orig?.createdOn || orig?.CreatedOn || d.createdOn;
-          } else if (type === "edit") {
-            d.bankFundRequestMasterId = defaultState?.bankFundRequestId;
-          }
-
-          return d;
-        };
-
-        const mainPayload: any = {
-          totalRequestedAmount: total,
-          totalApprovedAmount:
-            type === "edit" ? (defaultState?.totalApprovedAmount ?? 0) : 0,
-          approvalStatus: computedStatus,
-          approvedBy:
-            type === "edit" ? (defaultState?.approvedBy ?? null) : null,
-          approvedOn:
-            type === "edit" ? (defaultState?.approvedOn ?? null) : null,
-          requestedTo: selectedRequestor,
-          requestorUserId: userId,
-          // ✅ was missing entirely
-          createdBy:
-            type === "edit" ? (defaultState?.createdBy ?? userId) : userId,
-          createdOn:
+        // ── Build a single detail line ──────────────────────────────────────
+        const buildDetail = (item: LineItem) => {
+          // Find original createdOn for existing records
+          const origDetail =
             type === "edit"
-              ? defaultState?.createdOn
-              : new Date().toISOString(),
-          version: type === "edit" ? (defaultState?.version ?? 0) : 0,
-          internalBankFundsRequests: lineItems.map(buildDetail),
+              ? (
+                  defaultState?.internalBankFundsRequests ||
+                  defaultState?.InternalBankFundsRequests ||
+                  []
+                ).find(
+                  (x: any) =>
+                    (x.internalFundsRequestBankId ??
+                      x.InternalFundsRequestBankId) ===
+                    item.internalFundsRequestBankId,
+                )
+              : null;
+
+          return {
+            // ✅ KEY FIX: always present — 0 = new insert, >0 = update existing
+            InternalFundsRequestBankId: item.internalFundsRequestBankId ?? 0,
+
+            // ── Job & amounts ─────────────────────────────────────────────
+            JobId: item.jobId ?? null, // ✅ nullable FK → null, not 0
+            HeadCoaId: item.headCoaId ?? 0,
+            BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
+            HeadOfAccount: item.headOfAccount || "",
+            Beneficiary: item.beneficiary || "",
+            AccountNo: "",
+            RequestedAmount: item.requestedAmount,
+            ApprovedAmount: 0,
+            ChargesId: item.headCoaId ?? 0,
+            CustomerName: item.customerName || "",
+            OnAccountOfId: null, // ✅ nullable FK → null, not 0
+
+            // ── Routing ───────────────────────────────────────────────────
+            RequestedTo: item.requestedTo ?? selectedRequestor ?? 0,
+            BankFundRequestMasterId:
+              type === "edit"
+                ? (defaultState?.bankFundRequestId ??
+                  defaultState?.BankFundRequestId ??
+                  0)
+                : 0,
+            BankId: selectedBankId ?? null, // ✅ nullable FK → null, not 0
+
+            // ── Status & meta ─────────────────────────────────────────────
+            SubRequestStatus:
+              type === "edit" ? item.subRequestStatus : pendingStatus,
+            Remarks: item.remarks || "",
+            Version: 0,
+            CreatedOn:
+              origDetail?.createdOn ||
+              origDetail?.CreatedOn ||
+              new Date().toISOString(),
+            CreatedBy: userId,
+          };
         };
 
-        if (selectedBankId) {
-          mainPayload.bankId = selectedBankId;
-        }
+        // ── Build master payload matching the schema exactly ───────────────
+        const masterPayload = {
+          // ── IDs ────────────────────────────────────S────────────────────
+          BankFundRequestId:
+            type === "edit"
+              ? (defaultState?.bankFundRequestId ??
+                defaultState?.BankFundRequestId ??
+                0)
+              : 0,
+          BankId: selectedBankId ?? null, // ✅ nullable FK → null, not 0
 
-        if (type === "edit" && defaultState?.bankFundRequestId) {
-          mainPayload.bankFundRequestId = defaultState.bankFundRequestId;
-        }
+          // ── Amounts ────────────────────────────────────────────────────
+          TotalRequestedAmount: total,
+          TotalApprovedAmount:
+            type === "edit"
+              ? (defaultState?.totalApprovedAmount ??
+                defaultState?.TotalApprovedAmount ??
+                0)
+              : 0,
 
-        let finalPayload = mainPayload;
-        if (type === "edit") {
-          finalPayload = {
-            ...mainPayload,
-            requestedToNavigation: null,
-            bank: null,
-            createdAt: "0001-01-01T00:00:00",
-            updatedAt: "0001-01-01T00:00:00",
-            createLog: null,
-            updateLog: null,
-            internalBankFundsRequests:
-              mainPayload.internalBankFundsRequests.map((d: any) => ({
-                ...d,
-                beneficiaryCoa: null,
-                charges: null,
-                headCoa: null,
-                createdAt: "0001-01-01T00:00:00",
-                updatedAt: "0001-01-01T00:00:00",
-                createLog: null,
-                updateLog: null,
-              })),
-          };
-        }
+          // ── Status ─────────────────────────────────────────────────────
+          ApprovalStatus: masterApprovalStatus,
+          ApprovedBy:
+            type === "edit"
+              ? (defaultState?.approvedBy ?? defaultState?.ApprovedBy ?? "")
+              : "",
+          ApprovedOn:
+            type === "edit"
+              ? (defaultState?.approvedOn ??
+                defaultState?.ApprovedOn ??
+                new Date().toISOString())
+              : new Date().toISOString(),
 
-        const wrappedPayload = { dto: finalPayload };
+          // ── Routing ────────────────────────────────────────────────────
+          RequestedTo: selectedRequestor ?? 0,
+          RequestorUserId: userId,
 
-        // Replace the wrappedPayload and fetch block with this:
+          // ── Audit ──────────────────────────────────────────────────────
+          CreatedOn:
+            type === "edit"
+              ? (defaultState?.createdOn ??
+                defaultState?.CreatedOn ??
+                new Date().toISOString())
+              : new Date().toISOString(),
+          CreatedBy:
+            type === "edit"
+              ? (defaultState?.createdBy ?? defaultState?.CreatedBy ?? userId)
+              : userId,
+          Version:
+            type === "edit"
+              ? (defaultState?.version ?? defaultState?.Version ?? 0)
+              : 0,
 
-        const method = type === "edit" ? "PUT" : "POST";
+          // ── Optional master remarks ────────────────────────────────────
+          Remarks: "",
+
+          // ── Navigation nulls (schema requires the key present) ─────────
+          RequestedToNavigation: null,
+
+          // ── Detail lines ───────────────────────────────────────────────
+          InternalBankFundsRequests: lineItems.map(buildDetail),
+        };
+
+        // ── Wrap for PUT, send directly for POST ───────────────────────────
         const endpoint = `${getBaseUrl()}InternalBankFundsRequest`;
-
-        // ✅ PUT needs dto wrapper, POST sends directly
-        const requestBody =
-          type === "edit"
-            ? JSON.stringify({ dto: finalPayload })
-            : JSON.stringify(finalPayload);
+        const method = type === "edit" ? "PUT" : "POST";
+        const requestBody = JSON.stringify(masterPayload);
 
         console.log(`📡 ${method} ${endpoint}`, JSON.parse(requestBody));
 
@@ -1836,12 +1686,9 @@ export default function InternalBankFundRequestForm({
           title: "Success",
           description: `Bank fund request ${type === "edit" ? "updated" : "created"} — ${
             lineItems.length
-          } item(s) | ${computedStatus} | Total: ${new Intl.NumberFormat(
+          } item(s) | ${masterApprovalStatus} | Total: ${new Intl.NumberFormat(
             "en-US",
-            {
-              style: "currency",
-              currency: "PKR",
-            },
+            { style: "currency", currency: "PKR" },
           ).format(total)}`,
         });
 
@@ -1869,6 +1716,7 @@ export default function InternalBankFundRequestForm({
       defaultState,
       selectedBankId,
       selectedRequestor,
+      pendingStatus,
       toast,
       handleAddEdit,
     ],
