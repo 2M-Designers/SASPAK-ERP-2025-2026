@@ -51,10 +51,37 @@ type LineItemApproval = {
   remarks: string;
   createdOn: string;
   version: number;
-  externalbankFundRequestMasterId: number; // ← Int32, never null
+  externalbankFundRequestMasterId: number;
 };
 
 type StatusOption = { key: string; label: string };
+
+// ─── API Helpers ──────────────────────────────────────────────────────────────
+
+function getAuthHeaders(): HeadersInit {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("access_token") ||
+    sessionStorage.getItem("token") ||
+    sessionStorage.getItem("authToken");
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
+function getBaseUrl(): string {
+  const base = process.env.NEXT_PUBLIC_BASE_URL || "";
+  return base.endsWith("/") ? base : `${base}/`;
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -92,10 +119,9 @@ export default function ExternalBankCashFundRequestApprovalForm({
   useEffect(() => {
     const fetchStatuses = async () => {
       try {
-        const base = process.env.NEXT_PUBLIC_BASE_URL;
         const res = await fetch(
-          `${base}General/GetTypeValues?typeName=FundRequest_Detail_Status`,
-          { method: "GET", headers: { "Content-Type": "application/json" } },
+          `${getBaseUrl()}General/GetTypeValues?typeName=FundRequest_Detail_Status`,
+          { method: "GET", headers: getAuthHeaders() },
         );
         if (res.ok) {
           const raw: Record<string, string> = await res.json();
@@ -127,7 +153,6 @@ export default function ExternalBankCashFundRequestApprovalForm({
 
     setMasterRemarks(requestData?.remarks || "");
 
-    // Resolve master ID once — must be a valid Int32
     const masterId: number =
       requestData?.externalBankCashFundRequestId ||
       requestData?.ExternalBankCashFundRequestId ||
@@ -161,7 +186,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
       remarks: d.remarks || d.Remarks || "",
       createdOn: d.createdOn || d.CreatedOn || new Date().toISOString(),
       version: d.version ?? d.Version ?? 0,
-      externalbankFundRequestMasterId: masterId, // ← always Int32
+      externalbankFundRequestMasterId: masterId,
     }));
 
     setLineItems(items);
@@ -272,7 +297,6 @@ export default function ExternalBankCashFundRequestApprovalForm({
 
     setIsSubmitting(true);
     try {
-      const base = process.env.NEXT_PUBLIC_BASE_URL;
       const isApproving = derivedMasterStatus === approvedStatus;
 
       const masterId: number =
@@ -291,8 +315,8 @@ export default function ExternalBankCashFundRequestApprovalForm({
         return;
       }
 
-      // ── dto = master fields only, NO details array inside ─────────────────
-      const masterDto = {
+      // ── Flat payload — no dto wrapper, details nested inside master ────────
+      const payload = {
         ExternalBankCashFundRequestId: masterId,
         JobId: requestData.jobId ?? requestData.JobId ?? null,
         CustomerPartyId:
@@ -313,60 +337,62 @@ export default function ExternalBankCashFundRequestApprovalForm({
         UpdatedAt: "0001-01-01T00:00:00",
         CreateLog: null,
         UpdateLog: null,
-      };
 
-      // ── Details are a ROOT-LEVEL sibling of dto ────────────────────────────
-      const detailsPayload = lineItems.map((item) => ({
-        // ← plural Funds
-        ExternalBankCashFundsRequestDetailsId:
-          item.externalBankCashFundsRequestDetailsId || 0,
-        JobId: requestData.jobId ?? requestData.JobId ?? null,
-        HeadCoaId: item.headCoaId,
-        BeneficiaryCoaId: item.beneficiaryCoaId,
-        HeadOfAccount: item.headOfAccount,
-        Beneficiary: item.beneficiary,
-        AccountNo: item.accountNo || "",
-        RequestToAccountId: item.requestToAccountId ?? null,
-        RequestedAmount: item.requestedAmount,
-        ApprovedAmount:
-          item.subRequestStatus === approvedStatus ? item.approvedAmount : 0,
-        RequestedTo: item.requestedTo,
-        CreatedOn: item.createdOn,
-        ExternalbankFundRequestMasterId: masterId, // ← lowercase b, Int32
-        ChargesId: item.chargesId ?? item.headCoaId,
-        CustomerName: item.customerName || "",
-        OnAccountOfId: item.onAccountOfId ?? null,
-        SubRequestStatus: item.subRequestStatus,
-        Remarks: item.remarks || "",
-        Version: item.version ?? 0,
-        BeneficiaryCoa: null,
-        Charges: null,
-        HeadCoa: null,
-        CreatedAt: "0001-01-01T00:00:00",
-        UpdatedAt: "0001-01-01T00:00:00",
-        CreateLog: null,
-        UpdateLog: null,
-      }));
-
-      // ── Final shape: { dto: {...}, ExternalBankCashFundsRequestDetails: [...] }
-      const wrappedPayload = {
-        dto: masterDto,
-        ExternalBankCashFundsRequestDetails: detailsPayload, // ← plural, sibling
+        // ── Details nested directly — no separate sibling key ──────────────
+        ExternalBankCashFundsRequestDetails: lineItems.map((item) => ({
+          ExternalBankCashFundsRequestDetailsId:
+            item.externalBankCashFundsRequestDetailsId || 0,
+          JobId: requestData.jobId ?? requestData.JobId ?? null,
+          HeadCoaId: item.headCoaId,
+          BeneficiaryCoaId: item.beneficiaryCoaId,
+          HeadOfAccount: item.headOfAccount,
+          Beneficiary: item.beneficiary,
+          AccountNo: item.accountNo || "",
+          RequestToAccountId: item.requestToAccountId ?? null,
+          RequestedAmount: item.requestedAmount,
+          ApprovedAmount:
+            item.subRequestStatus === approvedStatus ? item.approvedAmount : 0,
+          RequestedTo: item.requestedTo,
+          CreatedOn: item.createdOn,
+          ExternalbankFundRequestMasterId: masterId,
+          ChargesId: item.chargesId ?? item.headCoaId,
+          CustomerName: item.customerName || "",
+          OnAccountOfId: item.onAccountOfId ?? null, // ✅ nullable FK → null
+          SubRequestStatus: item.subRequestStatus,
+          Remarks: item.remarks || "",
+          Version: item.version ?? 0,
+          BeneficiaryCoa: null,
+          Charges: null,
+          HeadCoa: null,
+          CreatedAt: "0001-01-01T00:00:00",
+          UpdatedAt: "0001-01-01T00:00:00",
+          CreateLog: null,
+          UpdateLog: null,
+        })),
       };
 
       console.log(
         "📦 EXTERNAL CASH APPROVAL PAYLOAD:",
-        JSON.stringify(wrappedPayload, null, 2),
+        JSON.stringify(payload, null, 2),
       );
 
-      const response = await fetch(`${base}ExternalBankCashFundRequest`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
+      const response = await fetch(
+        `${getBaseUrl()}ExternalBankCashFundRequest`,
+        {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(wrappedPayload),
-      });
+      );
+
+      if (response.status === 401) {
+        toast({
+          variant: "destructive",
+          title: "Session Expired",
+          description: "Your session has expired. Please log in again.",
+        });
+        return;
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
