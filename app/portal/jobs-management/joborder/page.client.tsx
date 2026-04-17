@@ -1,6 +1,8 @@
+// app/job-order/page.tsx (or your main page file)
+
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { AppDataTable } from "@/components/app-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,17 +20,15 @@ import {
   FiSearch,
   FiX,
   FiBox,
-  FiPrinter,
   FiEye,
-  FiCopy,
   FiCheckCircle,
   FiAlertCircle,
   FiClock,
   FiBriefcase,
   FiTruck,
   FiFilePlus as FiFilePlusIcon,
+  FiToggleRight,
 } from "react-icons/fi";
-import { useRouter } from "next/navigation";
 import {
   Tooltip,
   TooltipContent,
@@ -57,6 +57,7 @@ import autoTable from "jspdf-autotable";
 import moment from "moment";
 import { useToast } from "@/hooks/use-toast";
 import JobForm from "@/components/job-order/JobOrderForm";
+import { UpdateJobStatusDialog } from "@/components/job-order/statusupdatedialog/UpdateJobStatusDialog";
 
 type JobMasterPageProps = {
   initialData?: any[];
@@ -135,10 +136,8 @@ type JobMaster = {
   processOwnerId?: number;
 };
 
-type PartyCache = Map<number, string>;
-type LocationCache = Map<number, string>;
+// ─── Cache Manager ────────────────────────────────────────────────────────────
 
-// ✅ Cache manager to prevent duplicate fetches
 class CacheManager {
   private partyCache: Map<number, string> = new Map();
   private locationCache: Map<number, string> = new Map();
@@ -147,44 +146,26 @@ class CacheManager {
 
   async getPartyName(partyId: number | undefined): Promise<string> {
     if (!partyId) return "-";
-
-    // Return from cache if available
-    if (this.partyCache.has(partyId)) {
-      return this.partyCache.get(partyId)!;
-    }
-
-    // Return pending promise if already fetching
-    if (this.pendingPartyFetches.has(partyId)) {
+    if (this.partyCache.has(partyId)) return this.partyCache.get(partyId)!;
+    if (this.pendingPartyFetches.has(partyId))
       return this.pendingPartyFetches.get(partyId)!;
-    }
-
-    // Start new fetch
     const fetchPromise = this.fetchPartyName(partyId);
     this.pendingPartyFetches.set(partyId, fetchPromise);
-
     const result = await fetchPromise;
     this.pendingPartyFetches.delete(partyId);
-
     return result;
   }
 
   async getLocationName(locationId: number | undefined): Promise<string> {
     if (!locationId) return "-";
-
-    if (this.locationCache.has(locationId)) {
+    if (this.locationCache.has(locationId))
       return this.locationCache.get(locationId)!;
-    }
-
-    if (this.pendingLocationFetches.has(locationId)) {
+    if (this.pendingLocationFetches.has(locationId))
       return this.pendingLocationFetches.get(locationId)!;
-    }
-
     const fetchPromise = this.fetchLocationName(locationId);
     this.pendingLocationFetches.set(locationId, fetchPromise);
-
     const result = await fetchPromise;
     this.pendingLocationFetches.delete(locationId);
-
     return result;
   }
 
@@ -220,42 +201,43 @@ class CacheManager {
     return "-";
   }
 
-  // Batch prefetch for View Dialog
-  async prefetchDetails(job: JobMaster): Promise<{
-    shipperName: string;
-    consigneeName: string;
-    originName: string;
-    destinationName: string;
-  }> {
-    const ids = [
-      job.shipperPartyId,
-      job.consigneePartyId,
-      job.originPortId,
-      job.destinationPortId,
-    ].filter(Boolean) as number[];
-
-    await Promise.all(
-      ids.map(async (id) => {
-        if (id < 1000) {
-          // Assuming party IDs
-          await this.getPartyName(id);
-        } else {
-          // Assuming location IDs
-          await this.getLocationName(id);
-        }
-      }),
-    );
-
-    return {
-      shipperName: await this.getPartyName(job.shipperPartyId),
-      consigneeName: await this.getPartyName(job.consigneePartyId),
-      originName: await this.getLocationName(job.originPortId),
-      destinationName: await this.getLocationName(job.destinationPortId),
-    };
+  async prefetchDetails(job: JobMaster) {
+    const [shipperName, consigneeName, originName, destinationName] =
+      await Promise.all([
+        this.getPartyName(job.shipperPartyId),
+        this.getPartyName(job.consigneePartyId),
+        this.getLocationName(job.originPortId),
+        this.getLocationName(job.destinationPortId),
+      ]);
+    return { shipperName, consigneeName, originName, destinationName };
   }
 }
 
 const cacheManager = new CacheManager();
+
+// ─── Auth helpers ─────────────────────────────────────────────────────────────
+
+function getAuthHeaders(): HeadersInit {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("access_token") ||
+    sessionStorage.getItem("token") ||
+    sessionStorage.getItem("authToken");
+  const h: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  if (token) h["Authorization"] = `Bearer ${token}`;
+  return h;
+}
+
+function getBaseUrl() {
+  const b = process.env.NEXT_PUBLIC_BASE_URL || "";
+  return b.endsWith("/") ? b : `${b}/`;
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function JobOrderPage({ initialData }: JobMasterPageProps) {
   const [data, setData] = useState<JobMaster[]>(initialData || []);
@@ -269,7 +251,12 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     useState<JobMaster | null>(null);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [operationTypeFilter, setOperationTypeFilter] = useState("ALL");
-  const router = useRouter();
+
+  // ── Update Status Dialog state ────────────────────────────────────────────
+  const [updateStatusDialogOpen, setUpdateStatusDialogOpen] = useState(false);
+  const [jobForStatusUpdate, setJobForStatusUpdate] =
+    useState<JobMaster | null>(null);
+
   const { toast } = useToast();
 
   const statusOptions = [
@@ -289,28 +276,26 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     { value: "LOCAL", label: "Local" },
   ];
 
-  // ✅ Optimized fetch - only loads essential data
   const fetchJobOrders = useCallback(async () => {
     setIsLoading(true);
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const baseUrl = getBaseUrl();
       const response = await fetch(`${baseUrl}Job/GetList`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           select:
-            "JobId, JobNumber, JobDate, OperationType, OperationMode, JobDocumentType, HouseDocumentNumber, MasterDocumentNumber, isFreightForwarding, isClearance, isTransporter, ShipperPartyId, ConsigneePartyId, OriginPortId, DestinationPortId, VesselName, VoyageNo, GrossWeight, NetWeight, EtdDate, EtaDate, Status, CreatedAt, UpdatedAt, Version",
+            "JobId, JobNumber, JobDate, OperationType, OperationMode, JobDocumentType, HouseDocumentNumber, MasterDocumentNumber, isFreightForwarding, isClearance, isTransporter, ShipperPartyId, ConsigneePartyId, OriginPortId, DestinationPortId, VesselName, VoyageNo, GrossWeight, NetWeight, EtdDate, EtaDate, Status, Remarks, CreatedAt, UpdatedAt, Version",
           where: "",
+          search: "",
           sortOn: "JobId DESC",
           page: "1",
           pageSize: "100",
         }),
       });
-
       if (response.ok) {
         const jobData = await response.json();
         setData(jobData);
-
         toast({
           title: "Success",
           description: `Loaded ${jobData.length} job orders`,
@@ -331,296 +316,213 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
   }, [toast]);
 
   useEffect(() => {
-    if (!initialData) {
-      fetchJobOrders();
-    }
+    if (!initialData) fetchJobOrders();
   }, [initialData, fetchJobOrders]);
 
+  // ── Filter helpers ────────────────────────────────────────────────────────
   const searchInItem = (item: JobMaster, searchTerm: string) => {
     if (!searchTerm) return true;
-    const searchLower = searchTerm.toLowerCase();
-
-    const searchableFields = [
+    const t = searchTerm.toLowerCase();
+    return [
       item.jobNumber,
       item.vesselName,
       item.voyageNo,
       item.houseDocumentNumber,
       item.masterDocumentNumber,
       item.status,
-    ].filter(Boolean) as string[];
-
-    return searchableFields.some((field) =>
-      field.toLowerCase().includes(searchLower),
-    );
-  };
-
-  const filterByStatus = (job: JobMaster) => {
-    if (statusFilter === "ALL") return true;
-    return job.status === statusFilter;
-  };
-
-  const filterByOperationType = (job: JobMaster) => {
-    if (operationTypeFilter === "ALL") return true;
-    return job.operationType === operationTypeFilter;
+    ]
+      .filter(Boolean)
+      .some((f) => f!.toLowerCase().includes(t));
   };
 
   const getCurrentTabData = () => {
     let tabData = data;
-
     switch (activeTab) {
       case "DRAFT":
-        tabData = data.filter((item) => item.status === "DRAFT");
+        tabData = data.filter((i) => i.status === "DRAFT");
         break;
       case "ACTIVE":
-        tabData = data.filter((item) => item.status === "ACTIVE");
+        tabData = data.filter((i) => i.status === "ACTIVE");
         break;
       case "IN_PROGRESS":
-        tabData = data.filter((item) => item.status === "IN_PROGRESS");
+        tabData = data.filter((i) => i.status === "IN_PROGRESS");
         break;
       case "COMPLETED":
-        tabData = data.filter((item) => item.status === "COMPLETED");
+        tabData = data.filter((i) => i.status === "COMPLETED");
         break;
       case "CANCELLED":
-        tabData = data.filter((item) => item.status === "CANCELLED");
+        tabData = data.filter((i) => i.status === "CANCELLED");
         break;
       case "IMPORT":
-        tabData = data.filter((item) => item.operationType === "IMPORT");
+        tabData = data.filter((i) => i.operationType === "IMPORT");
         break;
       case "EXPORT":
-        tabData = data.filter((item) => item.operationType === "EXPORT");
+        tabData = data.filter((i) => i.operationType === "EXPORT");
         break;
       case "LOCAL":
-        tabData = data.filter((item) => item.operationType === "LOCAL");
+        tabData = data.filter((i) => i.operationType === "LOCAL");
         break;
     }
-
-    tabData = tabData.filter((item) => searchInItem(item, searchText));
-
+    tabData = tabData.filter((i) => searchInItem(i, searchText));
     if (activeTab === "ALL_JOBS") {
-      tabData = tabData.filter(filterByStatus).filter(filterByOperationType);
+      if (statusFilter !== "ALL")
+        tabData = tabData.filter((i) => i.status === statusFilter);
+      if (operationTypeFilter !== "ALL")
+        tabData = tabData.filter(
+          (i) => i.operationType === operationTypeFilter,
+        );
     }
-
     return tabData;
   };
 
   const getJobStats = useMemo(() => {
-    const allJobs = data;
     return {
-      totalJobs: allJobs.length,
-      draftJobs: allJobs.filter((item) => item.status === "DRAFT").length,
-      activeJobs: allJobs.filter((item) => item.status === "ACTIVE").length,
-      inProgressJobs: allJobs.filter((item) => item.status === "IN_PROGRESS")
-        .length,
-      completedJobs: allJobs.filter((item) => item.status === "COMPLETED")
-        .length,
-      cancelledJobs: allJobs.filter((item) => item.status === "CANCELLED")
-        .length,
-      importJobs: allJobs.filter((item) => item.operationType === "IMPORT")
-        .length,
-      exportJobs: allJobs.filter((item) => item.operationType === "EXPORT")
-        .length,
-      localJobs: allJobs.filter((item) => item.operationType === "LOCAL")
-        .length,
-      freightForwardingJobs: allJobs.filter((item) => item.isFreightForwarding)
-        .length,
-      clearanceJobs: allJobs.filter((item) => item.isClearance).length,
-      transporterJobs: allJobs.filter((item) => item.isTransporter).length,
+      totalJobs: data.length,
+      draftJobs: data.filter((i) => i.status === "DRAFT").length,
+      activeJobs: data.filter((i) => i.status === "ACTIVE").length,
+      inProgressJobs: data.filter((i) => i.status === "IN_PROGRESS").length,
+      completedJobs: data.filter((i) => i.status === "COMPLETED").length,
+      cancelledJobs: data.filter((i) => i.status === "CANCELLED").length,
+      importJobs: data.filter((i) => i.operationType === "IMPORT").length,
+      exportJobs: data.filter((i) => i.operationType === "EXPORT").length,
+      localJobs: data.filter((i) => i.operationType === "LOCAL").length,
+      freightForwardingJobs: data.filter((i) => i.isFreightForwarding).length,
+      clearanceJobs: data.filter((i) => i.isClearance).length,
+      transporterJobs: data.filter((i) => i.isTransporter).length,
     };
   }, [data]);
 
-  const handleAddEditComplete = (updatedItem: any) => {
+  const handleAddEditComplete = () => {
     setShowForm(false);
     setSelectedJob(null);
     fetchJobOrders();
   };
 
   const handleDelete = async (item: JobMaster) => {
-    if (confirm(`Are you sure you want to delete Job "${item.jobNumber}"?`)) {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        const response = await fetch(`${baseUrl}Job/${item.jobId}`, {
-          method: "DELETE",
-        });
-
-        if (response.ok) {
-          setData((prev) =>
-            prev.filter((record) => record.jobId !== item.jobId),
-          );
-          toast({
-            title: "Success",
-            description: "Job order deleted successfully",
-          });
-        } else {
-          throw new Error("Failed to delete Job order");
-        }
-      } catch (error) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to delete Job order",
-        });
-        console.error("Error deleting Job order:", error);
-      }
+    if (!confirm(`Are you sure you want to delete Job "${item.jobNumber}"?`))
+      return;
+    try {
+      const res = await fetch(`${getBaseUrl()}Job/${item.jobId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        setData((prev) => prev.filter((r) => r.jobId !== item.jobId));
+        toast({ title: "Deleted", description: "Job order deleted." });
+      } else throw new Error();
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete job order",
+      });
     }
   };
 
-  const handleViewDetails = async (job: JobMaster) => {
+  const handleViewDetails = (job: JobMaster) => {
     setSelectedJobDetails(job);
     setViewDialogOpen(true);
   };
 
-  const handleDuplicate = (job: JobMaster) => {
-    const duplicateJob = {
-      ...job,
-      jobId: 0,
-      jobNumber: `${job.jobNumber}-COPY`,
-      status: "DRAFT",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setSelectedJob(duplicateJob);
-    setShowForm(true);
+  // ── Status update success handler ──────────────────────────────────────────
+  const handleStatusUpdateSuccess = (
+    jobId: number,
+    newStatus: string,
+    remarks: string,
+  ) => {
+    setData((prev) =>
+      prev.map((j) =>
+        j.jobId === jobId
+          ? {
+              ...j,
+              status: newStatus,
+              remarks: remarks,
+              updatedAt: new Date().toISOString(),
+            }
+          : j,
+      ),
+    );
+    toast({
+      title: "Status Updated",
+      description: `Job status has been updated to "${newStatus}"`,
+    });
   };
 
+  // ── Export helpers ────────────────────────────────────────────────────────
   const downloadExcelWithData = (
     dataToExport: JobMaster[],
     tabName: string,
   ) => {
-    if (!dataToExport || dataToExport.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "No Data",
-        description: "No data available to export",
-      });
+    if (!dataToExport?.length) {
+      toast({ variant: "destructive", title: "No Data" });
       return;
     }
-
-    try {
-      const workbook = new ExcelJS.Workbook();
-      const worksheet = workbook.addWorksheet(tabName);
-
-      const headers = [
-        "Job Number",
-        "Job Date",
-        "Operation Type",
-        "Vessel",
-        "Voyage",
-        "ETD",
-        "ETA",
-        "Status",
-      ];
-      worksheet.addRow(headers);
-
-      dataToExport.forEach((job) => {
-        const row = [
-          job.jobNumber || "",
-          job.jobDate ? new Date(job.jobDate).toLocaleDateString() : "",
-          job.operationType || "",
-          job.vesselName || "",
-          job.voyageNo || "",
-          job.etdDate ? new Date(job.etdDate).toLocaleDateString() : "",
-          job.etaDate ? new Date(job.etaDate).toLocaleDateString() : "",
-          job.status || "",
-        ];
-        worksheet.addRow(row);
-      });
-
-      worksheet.columns.forEach((column) => {
-        column.width = 15;
-      });
-
-      workbook.xlsx.writeBuffer().then((buffer) => {
-        saveAs(
-          new Blob([buffer]),
-          `${tabName}_JobOrders_${moment().format("YYYY-MM-DD")}.xlsx`,
-        );
-      });
-
-      toast({
-        title: "Success",
-        description: "Excel file downloaded successfully",
-      });
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to generate Excel file",
-      });
-      console.error("Error generating Excel:", error);
-    }
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(tabName);
+    ws.addRow([
+      "Job Number",
+      "Job Date",
+      "Operation Type",
+      "Vessel",
+      "Voyage",
+      "ETD",
+      "ETA",
+      "Status",
+    ]);
+    dataToExport.forEach((job) => {
+      ws.addRow([
+        job.jobNumber || "",
+        job.jobDate ? new Date(job.jobDate).toLocaleDateString() : "",
+        job.operationType || "",
+        job.vesselName || "",
+        job.voyageNo || "",
+        job.etdDate ? new Date(job.etdDate).toLocaleDateString() : "",
+        job.etaDate ? new Date(job.etaDate).toLocaleDateString() : "",
+        job.status || "",
+      ]);
+    });
+    ws.columns.forEach((c) => (c.width = 15));
+    wb.xlsx.writeBuffer().then((buf) => {
+      saveAs(
+        new Blob([buf]),
+        `${tabName}_Jobs_${moment().format("YYYY-MM-DD")}.xlsx`,
+      );
+    });
   };
 
   const downloadPDFWithData = (dataToExport: JobMaster[], tabName: string) => {
-    if (!dataToExport || dataToExport.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "No Data",
-        description: "No data available to export",
-      });
+    if (!dataToExport?.length) {
+      toast({ variant: "destructive", title: "No Data" });
       return;
     }
-
-    try {
-      const doc = new jsPDF("landscape");
-      doc.setFontSize(16);
-      doc.setTextColor(40, 116, 166);
-      doc.text(`${tabName} - Job Orders Report`, 20, 20);
-
-      const tableHeaders = [
-        "Job No",
-        "Job Date",
-        "Type",
-        "Vessel",
-        "ETD",
-        "ETA",
-        "Status",
-      ];
-      const tableData = dataToExport.map((item) => [
-        item.jobNumber?.toString() || "N/A",
+    const doc = new jsPDF("landscape");
+    doc.setFontSize(16);
+    doc.setTextColor(40, 116, 166);
+    doc.text(`${tabName} - Job Orders Report`, 20, 20);
+    autoTable(doc, {
+      head: [["Job No", "Job Date", "Type", "Vessel", "ETD", "ETA", "Status"]],
+      body: dataToExport.map((item) => [
+        item.jobNumber || "N/A",
         item.jobDate ? new Date(item.jobDate).toLocaleDateString() : "N/A",
         item.operationType || "N/A",
         item.vesselName || "N/A",
         item.etdDate ? new Date(item.etdDate).toLocaleDateString() : "N/A",
         item.etaDate ? new Date(item.etaDate).toLocaleDateString() : "N/A",
         item.status || "N/A",
-      ]);
-
-      autoTable(doc, {
-        head: [tableHeaders],
-        body: tableData,
-        startY: 30,
-        theme: "striped",
-        headStyles: {
-          fillColor: [40, 116, 166],
-          textColor: [255, 255, 255],
-          fontStyle: "bold",
-        },
-        styles: { fontSize: 8, cellPadding: 3 },
-      });
-
-      doc.save(`${tabName}_JobOrders_${moment().format("YYYY-MM-DD")}.pdf`);
-      toast({
-        title: "Success",
-        description: "PDF file downloaded successfully",
-      });
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to generate PDF file",
-      });
-      console.error("Error generating PDF:", error);
-    }
-  };
-
-  // Simplified PDF generation (optional for now)
-  const generateJobPDF = async (job: JobMaster) => {
-    toast({
-      title: "Info",
-      description: "Print functionality will be available soon",
+      ]),
+      startY: 30,
+      theme: "striped",
+      headStyles: {
+        fillColor: [40, 116, 166],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+      },
+      styles: { fontSize: 8, cellPadding: 3 },
     });
+    doc.save(`${tabName}_Jobs_${moment().format("YYYY-MM-DD")}.pdf`);
   };
 
+  // ── Badge helpers ─────────────────────────────────────────────────────────
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "DRAFT":
@@ -651,21 +553,22 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     }
   };
 
-  // ✅ Optimized: Simple cells without API calls on render
+  // ── Columns ───────────────────────────────────────────────────────────────
   const columns: ColumnDef<JobMaster>[] = [
     {
       accessorKey: "actions",
       header: "Actions",
       cell: ({ row }) => (
-        <div className='flex gap-1.5'>
+        <div className='flex gap-1'>
+          {/* View */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className='p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors'
+                  className='p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-md transition-colors'
                   onClick={() => handleViewDetails(row.original)}
                 >
-                  <FiEye size={14} />
+                  <FiEye size={13} />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
@@ -673,17 +576,19 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+          {/* Edit */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className='p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors'
+                  className='p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors'
                   onClick={() => {
                     setSelectedJob(row.original);
                     setShowForm(true);
                   }}
                 >
-                  <FiEdit size={14} />
+                  <FiEdit size={13} />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
@@ -691,14 +596,36 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+          {/* Update Status */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className='p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors'
+                  className='p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-md transition-colors'
+                  onClick={() => {
+                    setJobForStatusUpdate(row.original);
+                    setUpdateStatusDialogOpen(true);
+                  }}
+                >
+                  <FiToggleRight size={13} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className='text-xs'>Update Status</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Delete */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className='p-1.5 text-red-500 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors'
                   onClick={() => handleDelete(row.original)}
                 >
-                  <FiTrash2 size={14} />
+                  <FiTrash2 size={13} />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
@@ -738,9 +665,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
         return (
           <div>
             <span
-              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getOperationTypeBadge(
-                operationType,
-              )}`}
+              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getOperationTypeBadge(operationType)}`}
             >
               {operationType}
             </span>
@@ -757,7 +682,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
       accessorKey: "services",
       header: "Services",
       cell: ({ row }) => (
-        <div className='flex gap-1'>
+        <div className='flex gap-1 flex-wrap'>
           {row.original.isFreightForwarding && (
             <span className='inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700'>
               FF
@@ -817,18 +742,13 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
         const status = row.getValue("status") as string;
         return (
           <span
-            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getStatusBadge(
-              status,
-            )}`}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${getStatusBadge(status)}`}
           >
-            {status === "DRAFT" && <FiClock className='mr-1 h-3 w-3' />}
-            {status === "ACTIVE" && <FiCheckCircle className='mr-1 h-3 w-3' />}
-            {status === "COMPLETED" && (
-              <FiCheckCircle className='mr-1 h-3 w-3' />
+            {status === "DRAFT" && <FiClock className='h-3 w-3' />}
+            {(status === "ACTIVE" || status === "COMPLETED") && (
+              <FiCheckCircle className='h-3 w-3' />
             )}
-            {status === "CANCELLED" && (
-              <FiAlertCircle className='mr-1 h-3 w-3' />
-            )}
+            {status === "CANCELLED" && <FiAlertCircle className='h-3 w-3' />}
             {status}
           </span>
         );
@@ -836,7 +756,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     },
   ];
 
-  // ✅ Optimized: Simplified View Job Dialog
+  // ── View Dialog ───────────────────────────────────────────────────────────
   const ViewJobDialog = () => {
     const [detailsLoading, setDetailsLoading] = useState(false);
     const [enrichedJob, setEnrichedJob] = useState<any>(null);
@@ -844,12 +764,8 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     useEffect(() => {
       if (selectedJobDetails && viewDialogOpen) {
         setDetailsLoading(true);
-        // Only fetch essential party/location names
         cacheManager.prefetchDetails(selectedJobDetails).then((details) => {
-          setEnrichedJob({
-            ...selectedJobDetails,
-            ...details,
-          });
+          setEnrichedJob({ ...selectedJobDetails, ...details });
           setDetailsLoading(false);
         });
       } else {
@@ -873,7 +789,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
           {detailsLoading ? (
             <div className='flex justify-center items-center py-8'>
               <div className='text-center'>
-                <div className='animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4'></div>
+                <div className='animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4' />
                 <p className='text-sm text-gray-600'>Loading details...</p>
               </div>
             </div>
@@ -889,38 +805,27 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                     </CardHeader>
                     <CardContent className='pt-0 px-4 pb-3'>
                       <div className='space-y-1.5 text-xs'>
-                        <div className='flex justify-between'>
-                          <span className='text-gray-600'>Job Number:</span>
-                          <span className='font-medium'>
-                            {enrichedJob.jobNumber}
-                          </span>
-                        </div>
-                        <div className='flex justify-between'>
-                          <span className='text-gray-600'>Job Date:</span>
-                          <span className='font-medium'>
-                            {enrichedJob.jobDate
+                        {[
+                          ["Job Number", enrichedJob.jobNumber],
+                          [
+                            "Job Date",
+                            enrichedJob.jobDate
                               ? new Date(
                                   enrichedJob.jobDate,
                                 ).toLocaleDateString()
-                              : "-"}
-                          </span>
-                        </div>
-                        <div className='flex justify-between'>
-                          <span className='text-gray-600'>Operation Type:</span>
-                          <span className='font-medium'>
-                            {enrichedJob.operationType}
-                          </span>
-                        </div>
-                        <div className='flex justify-between'>
-                          <span className='text-gray-600'>Status:</span>
-                          <span className='font-medium'>
-                            {enrichedJob.status}
-                          </span>
-                        </div>
+                              : "-",
+                          ],
+                          ["Operation Type", enrichedJob.operationType],
+                          ["Status", enrichedJob.status],
+                        ].map(([label, val]) => (
+                          <div key={label} className='flex justify-between'>
+                            <span className='text-gray-600'>{label}:</span>
+                            <span className='font-medium'>{val}</span>
+                          </div>
+                        ))}
                       </div>
                     </CardContent>
                   </Card>
-
                   <Card>
                     <CardHeader className='py-3 px-4'>
                       <CardTitle className='text-sm font-medium'>
@@ -929,35 +834,21 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                     </CardHeader>
                     <CardContent className='pt-0 px-4 pb-3'>
                       <div className='space-y-1.5 text-xs'>
-                        <div className='flex justify-between'>
-                          <span className='text-gray-600'>Origin:</span>
-                          <span className='font-medium'>
-                            {enrichedJob.originName}
-                          </span>
-                        </div>
-                        <div className='flex justify-between'>
-                          <span className='text-gray-600'>Destination:</span>
-                          <span className='font-medium'>
-                            {enrichedJob.destinationName}
-                          </span>
-                        </div>
-                        <div className='flex justify-between'>
-                          <span className='text-gray-600'>Vessel:</span>
-                          <span className='font-medium'>
-                            {enrichedJob.vesselName || "-"}
-                          </span>
-                        </div>
-                        <div className='flex justify-between'>
-                          <span className='text-gray-600'>Voyage:</span>
-                          <span className='font-medium'>
-                            {enrichedJob.voyageNo || "-"}
-                          </span>
-                        </div>
+                        {[
+                          ["Origin", enrichedJob.originName],
+                          ["Destination", enrichedJob.destinationName],
+                          ["Vessel", enrichedJob.vesselName || "-"],
+                          ["Voyage", enrichedJob.voyageNo || "-"],
+                        ].map(([label, val]) => (
+                          <div key={label} className='flex justify-between'>
+                            <span className='text-gray-600'>{label}:</span>
+                            <span className='font-medium'>{val}</span>
+                          </div>
+                        ))}
                       </div>
                     </CardContent>
                   </Card>
                 </div>
-
                 <Card>
                   <CardHeader className='py-3 px-4'>
                     <CardTitle className='text-sm font-medium'>
@@ -995,9 +886,9 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
     );
   };
 
+  // ── Stats ─────────────────────────────────────────────────────────────────
   const JobStatsPage = () => {
     const stats = getJobStats;
-
     return (
       <div className='space-y-4'>
         <div className='flex justify-between items-center'>
@@ -1009,71 +900,55 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
             size='sm'
             className='flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white'
           >
-            <FiDownload size={14} />
-            Export Report
+            <FiDownload size={14} /> Export Report
           </Button>
         </div>
-
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3'>
-          <Card className='border border-blue-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-blue-700 uppercase tracking-wide'>
-                Total Jobs
-              </CardTitle>
-              <div className='text-2xl font-bold text-blue-900 mt-1'>
-                {stats.totalJobs}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>
-                {stats.activeJobs} active • {stats.draftJobs} draft
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className='border border-green-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-green-700 uppercase tracking-wide'>
-                Completed
-              </CardTitle>
-              <div className='text-2xl font-bold text-green-900 mt-1'>
-                {stats.completedJobs}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>
-                {stats.inProgressJobs} in progress
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className='border border-purple-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-purple-700 uppercase tracking-wide'>
-                Import Jobs
-              </CardTitle>
-              <div className='text-2xl font-bold text-purple-900 mt-1'>
-                {stats.importJobs}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>Inbound shipments</div>
-            </CardContent>
-          </Card>
-
-          <Card className='border border-indigo-200 shadow-sm'>
-            <CardHeader className='pb-2 pt-3 px-4'>
-              <CardTitle className='text-xs font-medium text-indigo-700 uppercase tracking-wide'>
-                Export Jobs
-              </CardTitle>
-              <div className='text-2xl font-bold text-indigo-900 mt-1'>
-                {stats.exportJobs}
-              </div>
-            </CardHeader>
-            <CardContent className='pt-0 pb-3 px-4'>
-              <div className='text-xs text-gray-600'>Outbound shipments</div>
-            </CardContent>
-          </Card>
+          {[
+            {
+              label: "Total Jobs",
+              val: stats.totalJobs,
+              sub: `${stats.activeJobs} active • ${stats.draftJobs} draft`,
+              color: "blue",
+            },
+            {
+              label: "Completed",
+              val: stats.completedJobs,
+              sub: `${stats.inProgressJobs} in progress`,
+              color: "green",
+            },
+            {
+              label: "Import Jobs",
+              val: stats.importJobs,
+              sub: "Inbound shipments",
+              color: "purple",
+            },
+            {
+              label: "Export Jobs",
+              val: stats.exportJobs,
+              sub: "Outbound shipments",
+              color: "indigo",
+            },
+          ].map(({ label, val, sub, color }) => (
+            <Card
+              key={label}
+              className={`border border-${color}-200 shadow-sm`}
+            >
+              <CardHeader className='pb-2 pt-3 px-4'>
+                <CardTitle
+                  className={`text-xs font-medium text-${color}-700 uppercase tracking-wide`}
+                >
+                  {label}
+                </CardTitle>
+                <div className={`text-2xl font-bold text-${color}-900 mt-1`}>
+                  {val}
+                </div>
+              </CardHeader>
+              <CardContent className='pt-0 pb-3 px-4'>
+                <div className='text-xs text-gray-600'>{sub}</div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     );
@@ -1092,8 +967,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
             }}
             className='mb-3 gap-1.5'
           >
-            <FiArrowLeft className='h-3.5 w-3.5' />
-            Back to Job List
+            <FiArrowLeft className='h-3.5 w-3.5' /> Back to Job List
           </Button>
           <div className='bg-white rounded-lg shadow-sm border p-4'>
             <JobForm
@@ -1112,6 +986,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
   return (
     <div className='p-4 bg-gray-50 min-h-screen'>
       <div className='max-w-7xl mx-auto'>
+        {/* Header */}
         <div className='flex items-center justify-between mb-4'>
           <div>
             <h1 className='text-xl font-bold text-gray-900'>
@@ -1142,17 +1017,17 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
               size='sm'
               className='bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5'
             >
-              <FiFilePlus className='h-3.5 w-3.5' />
-              Add New Job
+              <FiFilePlus className='h-3.5 w-3.5' /> Add New Job
             </Button>
           </div>
         </div>
 
+        {/* Search & Filters */}
         <div className='bg-white rounded-lg shadow-sm border p-3 mb-4'>
           <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-3'>
             <div className='flex items-center gap-2 flex-1 w-full md:w-auto'>
               <div className='relative flex-1 max-w-md'>
-                <FiSearch className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
+                <FiSearch className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400' />
                 <Input
                   type='text'
                   placeholder='Search by Job No, Vessel...'
@@ -1163,7 +1038,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                 {searchText && (
                   <button
                     onClick={() => setSearchText("")}
-                    className='absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600'
+                    className='absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'
                   >
                     <FiX className='h-4 w-4' />
                   </button>
@@ -1172,13 +1047,13 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
               {activeTab === "ALL_JOBS" && (
                 <>
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className='w-[160px] h-9 text-sm'>
+                    <SelectTrigger className='w-[150px] h-9 text-sm'>
                       <SelectValue placeholder='Filter by status' />
                     </SelectTrigger>
                     <SelectContent>
-                      {statusOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                      {statusOptions.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1187,13 +1062,13 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                     value={operationTypeFilter}
                     onValueChange={setOperationTypeFilter}
                   >
-                    <SelectTrigger className='w-[160px] h-9 text-sm'>
+                    <SelectTrigger className='w-[150px] h-9 text-sm'>
                       <SelectValue placeholder='Filter by type' />
                     </SelectTrigger>
                     <SelectContent>
-                      {operationTypeOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                      {operationTypeOptions.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1206,24 +1081,23 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
                 onClick={() => downloadPDFWithData(currentTabData, activeTab)}
                 size='sm'
                 className='flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs'
-                disabled={!currentTabData || currentTabData.length === 0}
+                disabled={!currentTabData?.length}
               >
-                <FiFilePlusIcon className='h-3.5 w-3.5' />
-                Export PDF
+                <FiFilePlusIcon className='h-3.5 w-3.5' /> Export PDF
               </Button>
               <Button
                 onClick={() => downloadExcelWithData(currentTabData, activeTab)}
                 size='sm'
                 className='flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs'
-                disabled={!currentTabData || currentTabData.length === 0}
+                disabled={!currentTabData?.length}
               >
-                <FiDownload className='h-3.5 w-3.5' />
-                Export Excel
+                <FiDownload className='h-3.5 w-3.5' /> Export Excel
               </Button>
             </div>
           </div>
         </div>
 
+        {/* Tabs */}
         <Tabs
           defaultValue='ALL_JOBS'
           value={activeTab}
@@ -1231,70 +1105,72 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
           className='space-y-3'
         >
           <div className='bg-white rounded-lg shadow-sm border p-1'>
-            <TabsList className='grid w-full grid-cols-10 gap-1 bg-transparent h-auto p-0'>
-              <TabsTrigger
-                value='ALL_JOBS'
-                className='text-xs py-2 px-3 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiBriefcase className='w-3.5 h-3.5 mr-1.5' />
-                All ({data.length})
-              </TabsTrigger>
-              <TabsTrigger
-                value='DRAFT'
-                className='text-xs py-2 px-3 data-[state=active]:bg-gray-50 data-[state=active]:text-gray-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiClock className='w-3.5 h-3.5 mr-1.5' />
-                Draft ({getJobStats.draftJobs})
-              </TabsTrigger>
-              <TabsTrigger
-                value='ACTIVE'
-                className='text-xs py-2 px-3 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiCheckCircle className='w-3.5 h-3.5 mr-1.5' />
-                Active ({getJobStats.activeJobs})
-              </TabsTrigger>
-              <TabsTrigger
-                value='COMPLETED'
-                className='text-xs py-2 px-3 data-[state=active]:bg-green-50 data-[state=active]:text-green-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiCheckCircle className='w-3.5 h-3.5 mr-1.5' />
-                Completed ({getJobStats.completedJobs})
-              </TabsTrigger>
-              <TabsTrigger
-                value='CANCELLED'
-                className='text-xs py-2 px-3 data-[state=active]:bg-red-50 data-[state=active]:text-red-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiAlertCircle className='w-3.5 h-3.5 mr-1.5' />
-                Cancelled ({getJobStats.cancelledJobs})
-              </TabsTrigger>
-              <TabsTrigger
-                value='IMPORT'
-                className='text-xs py-2 px-3 data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiTruck className='w-3.5 h-3.5 mr-1.5' />
-                Import ({getJobStats.importJobs})
-              </TabsTrigger>
-              <TabsTrigger
-                value='EXPORT'
-                className='text-xs py-2 px-3 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiTruck className='w-3.5 h-3.5 mr-1.5' />
-                Export ({getJobStats.exportJobs})
-              </TabsTrigger>
-              <TabsTrigger
-                value='LOCAL'
-                className='text-xs py-2 px-3 data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiBox className='w-3.5 h-3.5 mr-1.5' />
-                Local ({getJobStats.localJobs})
-              </TabsTrigger>
-              <TabsTrigger
-                value='STATISTICS'
-                className='text-xs py-2 px-3 data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 data-[state=active]:shadow-none rounded-md'
-              >
-                <FiFilePlusIcon className='w-3.5 h-3.5 mr-1.5' />
-                Statistics
-              </TabsTrigger>
+            <TabsList className='grid w-full grid-cols-9 gap-1 bg-transparent h-auto p-0'>
+              {[
+                {
+                  value: "ALL_JOBS",
+                  label: `All (${data.length})`,
+                  icon: <FiBriefcase className='w-3.5 h-3.5 mr-1' />,
+                  active: "blue",
+                },
+                {
+                  value: "DRAFT",
+                  label: `Draft (${getJobStats.draftJobs})`,
+                  icon: <FiClock className='w-3.5 h-3.5 mr-1' />,
+                  active: "gray",
+                },
+                {
+                  value: "ACTIVE",
+                  label: `Active (${getJobStats.activeJobs})`,
+                  icon: <FiCheckCircle className='w-3.5 h-3.5 mr-1' />,
+                  active: "blue",
+                },
+                {
+                  value: "COMPLETED",
+                  label: `Done (${getJobStats.completedJobs})`,
+                  icon: <FiCheckCircle className='w-3.5 h-3.5 mr-1' />,
+                  active: "green",
+                },
+                {
+                  value: "CANCELLED",
+                  label: `Cancelled (${getJobStats.cancelledJobs})`,
+                  icon: <FiAlertCircle className='w-3.5 h-3.5 mr-1' />,
+                  active: "red",
+                },
+                {
+                  value: "IMPORT",
+                  label: `Import (${getJobStats.importJobs})`,
+                  icon: <FiTruck className='w-3.5 h-3.5 mr-1' />,
+                  active: "purple",
+                },
+                {
+                  value: "EXPORT",
+                  label: `Export (${getJobStats.exportJobs})`,
+                  icon: <FiTruck className='w-3.5 h-3.5 mr-1' />,
+                  active: "indigo",
+                },
+                {
+                  value: "LOCAL",
+                  label: `Local (${getJobStats.localJobs})`,
+                  icon: <FiBox className='w-3.5 h-3.5 mr-1' />,
+                  active: "teal",
+                },
+                {
+                  value: "STATISTICS",
+                  label: "Stats",
+                  icon: <FiFilePlusIcon className='w-3.5 h-3.5 mr-1' />,
+                  active: "orange",
+                },
+              ].map(({ value, label, icon, active }) => (
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  className={`text-xs py-2 px-2 data-[state=active]:bg-${active}-50 data-[state=active]:text-${active}-700 data-[state=active]:shadow-none rounded-md`}
+                >
+                  {icon}
+                  {label}
+                </TabsTrigger>
+              ))}
             </TabsList>
           </div>
 
@@ -1312,19 +1188,17 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
               <div className='bg-white rounded-lg shadow-sm border'>
                 {currentTabData.length === 0 ? (
                   <div className='flex flex-col items-center justify-center py-16'>
-                    <div className='text-center'>
-                      <FiBriefcase className='mx-auto h-12 w-12 text-gray-400 mb-3' />
-                      <h3 className='text-base font-medium text-gray-900'>
-                        No job orders found
-                      </h3>
-                      <p className='mt-1 text-sm text-gray-500'>
-                        {searchText ||
-                        statusFilter !== "ALL" ||
-                        operationTypeFilter !== "ALL"
-                          ? "Try adjusting your search or filter terms"
-                          : "Add your first job order using the button above"}
-                      </p>
-                    </div>
+                    <FiBriefcase className='mx-auto h-12 w-12 text-gray-400 mb-3' />
+                    <h3 className='text-base font-medium text-gray-900'>
+                      No job orders found
+                    </h3>
+                    <p className='mt-1 text-sm text-gray-500'>
+                      {searchText ||
+                      statusFilter !== "ALL" ||
+                      operationTypeFilter !== "ALL"
+                        ? "Try adjusting your search or filter terms"
+                        : "Add your first job order using the button above"}
+                    </p>
                   </div>
                 ) : (
                   <AppDataTable
@@ -1349,7 +1223,21 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
       </div>
 
       {isLoading && <AppLoader />}
+
+      {/* Dialogs */}
       <ViewJobDialog />
+
+      {/* Update Status Dialog */}
+      <UpdateJobStatusDialog
+        open={updateStatusDialogOpen}
+        job={jobForStatusUpdate}
+        onClose={() => {
+          setUpdateStatusDialogOpen(false);
+          setJobForStatusUpdate(null);
+        }}
+        onSuccess={handleStatusUpdateSuccess}
+        apiBaseUrl={process.env.NEXT_PUBLIC_BASE_URL}
+      />
     </div>
   );
 }
