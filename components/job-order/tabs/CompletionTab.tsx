@@ -1,46 +1,149 @@
 "use client";
 
 import { TabsContent } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   FormField,
   FormItem,
-  FormLabel,
   FormControl,
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Calendar, AlertCircle, Info, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import { Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import ReactSelect, { StylesConfig, GroupBase } from "react-select";
+import { compactSelectStyles } from "../utils/styles";
 import { fetchGdClearedUnderSection } from "../api/jobOrderApi";
 
-// RMS Channel Options with colors
+// ─── Shared compact design primitives ────────────────────────────────────────
+
+/** Format YYYY-MM-DD or ISO string → dd/mm/yyyy, timezone-safe */
+const fmtDate = (val: string | null | undefined): string => {
+  if (!val) return "—";
+  const datePart = val.split("T")[0];
+  const parts = datePart.split("-");
+  if (parts.length === 3 && parts[0].length === 4)
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return val;
+};
+
+function Field({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col gap-0.5 ${className}`}>
+      <span className='text-[11px] font-semibold uppercase tracking-wide text-gray-500 leading-none'>
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function SectionBar({
+  title,
+  aside,
+}: {
+  title: string;
+  aside?: React.ReactNode;
+}) {
+  return (
+    <div className='flex items-center gap-2 mt-4 mb-2 first:mt-0'>
+      <span className='text-[11px] font-bold uppercase tracking-widest text-blue-700 whitespace-nowrap'>
+        {title}
+      </span>
+      <div className='flex-1 border-t border-blue-200' />
+      {aside}
+    </div>
+  );
+}
+
+const tinyInputClass =
+  "h-[30px] text-[13px] px-2 py-0 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
+
+// react-select compact styles — same tokens as all other tabs
+const tinySelectStyles: StylesConfig<any, false, GroupBase<any>> = {
+  ...compactSelectStyles,
+  control: (base, state) => ({
+    ...base,
+    minHeight: "30px",
+    height: "30px",
+    fontSize: "13px",
+    borderColor: state.isFocused ? "#3b82f6" : "#d1d5db",
+    boxShadow: state.isFocused ? "0 0 0 1px #3b82f6" : "none",
+    "&:hover": { borderColor: "#3b82f6" },
+  }),
+  valueContainer: (base) => ({ ...base, padding: "0 6px" }),
+  input: (base) => ({ ...base, margin: 0, padding: 0, fontSize: "13px" }),
+  indicatorsContainer: (base) => ({ ...base, height: "30px" }),
+  indicatorSeparator: () => ({ display: "none" }),
+  dropdownIndicator: (base) => ({ ...base, padding: "0 4px" }),
+  menu: (base) => ({ ...base, fontSize: "13px", zIndex: 9999 }),
+  option: (base, state) => ({
+    ...base,
+    padding: "5px 10px",
+    backgroundColor: state.isSelected
+      ? "#3b82f6"
+      : state.isFocused
+        ? "#eff6ff"
+        : "white",
+    color: state.isSelected ? "white" : "#111",
+  }),
+};
+
+// ─── CheckPill — inline checkbox + label (same as JobMainTab) ────────────────
+function CheckPill({
+  form,
+  name,
+  label,
+}: {
+  form: any;
+  name: string;
+  label: string;
+}) {
+  return (
+    <FormField
+      control={form.control}
+      name={name}
+      render={({ field }) => (
+        <FormItem className='flex items-center gap-1.5 space-y-0'>
+          <FormControl>
+            <Checkbox
+              checked={field.value}
+              onCheckedChange={field.onChange}
+              className='h-3.5 w-3.5 rounded border-gray-400'
+            />
+          </FormControl>
+          <span className='text-[13px] text-gray-700 cursor-pointer select-none leading-none'>
+            {label}
+          </span>
+        </FormItem>
+      )}
+    />
+  );
+}
+
+// ─── RMS options with inline colours (used in formatOptionLabel) ─────────────
 const RMS_CHANNEL_OPTIONS = [
-  { value: "GREEN", label: "Green", color: "bg-green-500 text-white" },
+  { value: "GREEN", label: "Green", hex: "#22c55e", textHex: "#fff" },
   {
     value: "YELLOW_YELLOW",
     label: "Yellow-Yellow",
-    color: "bg-yellow-400 text-black",
+    hex: "#facc15",
+    textHex: "#000",
   },
-  {
-    value: "YELLOW_RED",
-    label: "Yellow-Red",
-    color: "bg-orange-500 text-white",
-  },
-  { value: "RED", label: "Red", color: "bg-red-500 text-white" },
+  { value: "YELLOW_RED", label: "Yellow-Red", hex: "#f97316", textHex: "#fff" },
+  { value: "RED", label: "Red", hex: "#ef4444", textHex: "#fff" },
 ];
 
+// ─── Types ───────────────────────────────────────────────────────────────────
 interface GdClearedOption {
   value: number;
   label: string;
@@ -49,889 +152,504 @@ interface GdClearedOption {
   isSecurityRequired: boolean;
 }
 
+const FALLBACK_GD_OPTIONS: GdClearedOption[] = [
+  {
+    value: 80,
+    label: "80 - Section 80",
+    sectionCode: "80",
+    sectionName: "Section 80",
+    isSecurityRequired: false,
+  },
+  {
+    value: 81,
+    label: "81 - Section 81",
+    sectionCode: "81",
+    sectionName: "Section 81",
+    isSecurityRequired: false,
+  },
+  {
+    value: 82,
+    label: "82 - Section 82",
+    sectionCode: "82",
+    sectionName: "Section 82",
+    isSecurityRequired: false,
+  },
+  {
+    value: 83,
+    label: "83 - Section 83",
+    sectionCode: "83",
+    sectionName: "Section 83",
+    isSecurityRequired: false,
+  },
+];
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
 export default function CompletionTab({ form, shippingType, toast }: any) {
   const [gdClearedOptions, setGdClearedOptions] = useState<GdClearedOption[]>(
     [],
   );
-  const [loadingGdOptions, setLoadingGdOptions] = useState<boolean>(false);
+  const [loadingGdOptions, setLoadingGdOptions] = useState(false);
 
   // Fetch GD Cleared U/S options from API
   useEffect(() => {
-    const loadGdClearedOptions = async () => {
+    const load = async () => {
       try {
         const options = await fetchGdClearedUnderSection(setLoadingGdOptions);
-
-        if (options && options.length > 0) {
-          setGdClearedOptions(options);
-          console.log("GD Cleared U/S options loaded:", options);
-
-          if (toast) {
-            toast({
-              title: "GD Cleared U/S Loaded",
-              description: `${options.length} option(s) available`,
-            });
-          }
-        } else {
-          const fallbackOptions: GdClearedOption[] = [
-            {
-              value: 80,
-              label: "80 - Section 80",
-              sectionCode: "80",
-              sectionName: "Section 80",
-              isSecurityRequired: false,
-            },
-            {
-              value: 81,
-              label: "81 - Section 81",
-              sectionCode: "81",
-              sectionName: "Section 81",
-              isSecurityRequired: false,
-            },
-            {
-              value: 82,
-              label: "82 - Section 82",
-              sectionCode: "82",
-              sectionName: "Section 82",
-              isSecurityRequired: false,
-            },
-            {
-              value: 83,
-              label: "83 - Section 83",
-              sectionCode: "83",
-              sectionName: "Section 83",
-              isSecurityRequired: false,
-            },
-          ];
-          setGdClearedOptions(fallbackOptions);
-        }
-      } catch (error: any) {
-        console.error("Error loading GD Cleared U/S options:", error);
-        const fallbackOptions: GdClearedOption[] = [
-          {
-            value: 80,
-            label: "80 - Section 80",
-            sectionCode: "80",
-            sectionName: "Section 80",
-            isSecurityRequired: false,
-          },
-          {
-            value: 81,
-            label: "81 - Section 81",
-            sectionCode: "81",
-            sectionName: "Section 81",
-            isSecurityRequired: false,
-          },
-          {
-            value: 82,
-            label: "82 - Section 82",
-            sectionCode: "82",
-            sectionName: "Section 82",
-            isSecurityRequired: false,
-          },
-          {
-            value: 83,
-            label: "83 - Section 83",
-            sectionCode: "83",
-            sectionName: "Section 83",
-            isSecurityRequired: false,
-          },
-        ];
-        setGdClearedOptions(fallbackOptions);
+        setGdClearedOptions(options?.length ? options : FALLBACK_GD_OPTIONS);
+      } catch {
+        setGdClearedOptions(FALLBACK_GD_OPTIONS);
       }
     };
+    load();
+  }, []);
 
-    loadGdClearedOptions();
-  }, [toast]);
-
-  // ✅ FIXED: Calculate Clearance Delay - WITH INFINITE LOOP PREVENTION
+  // Auto-calculate Clearance delay (gdassignToGateOut − gddate)
   useEffect(() => {
     const subscription = form.watch((formValues: any, { name }: any) => {
-      // ✅ PREVENT INFINITE LOOP: Skip if the delay field itself changed
-      if (name === "delayInClearance") {
-        console.log("⏭️ Skipping clearance calculation (delay field changed)");
-        return;
-      }
-
-      const gdAssignToGateOut = formValues.gdassignToGateOut;
-      const gdDate = formValues.gddate;
-
-      if (gdAssignToGateOut && gdDate) {
-        try {
-          const assignToGateOut = new Date(gdAssignToGateOut);
-          const gd = new Date(gdDate);
-
-          if (isNaN(assignToGateOut.getTime()) || isNaN(gd.getTime())) {
-            return;
-          }
-
-          const diffTime = assignToGateOut.getTime() - gd.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          const calculatedDelay = Math.max(0, diffDays);
-
-          // Only update if the value actually changed
-          const currentDelay = formValues.delayInClearance;
-          if (currentDelay !== calculatedDelay.toString()) {
-            console.log(
-              "✅ Clearance delay calculated:",
-              calculatedDelay,
-              "days",
-            );
-            form.setValue("delayInClearance", calculatedDelay.toString(), {
-              shouldValidate: false,
-              shouldDirty: false,
-            });
-          }
-        } catch (error) {
-          console.error("Error calculating clearance delay:", error);
-        }
+      if (name === "delayInClearance") return;
+      const { gdassignToGateOut, gddate } = formValues;
+      if (!gdassignToGateOut || !gddate) return;
+      try {
+        const diff =
+          new Date(gdassignToGateOut).getTime() - new Date(gddate).getTime();
+        const days = Math.max(0, Math.ceil(diff / 86400000)).toString();
+        if (formValues.delayInClearance !== days)
+          form.setValue("delayInClearance", days, {
+            shouldValidate: false,
+            shouldDirty: false,
+          });
+      } catch {
+        /* ignore */
       }
     });
-
     return () => subscription.unsubscribe();
   }, [form]);
 
-  // ✅ FIXED: Calculate Dispatch Delay - WITH INFINITE LOOP PREVENTION
+  // Auto-calculate Dispatch delay (earliest dispatchDate − etaDate)
   useEffect(() => {
     const subscription = form.watch((formValues: any, { name }: any) => {
-      // ✅ PREVENT INFINITE LOOP: Skip if the delay field itself changed
-      if (name === "delayInDispatch") {
-        console.log("⏭️ Skipping dispatch calculation (delay field changed)");
-        return;
-      }
-
-      const dispatchRecords = formValues.dispatchRecords || [];
-      const etaDate = formValues.etaDate;
-
-      if (dispatchRecords.length > 0 && etaDate) {
-        try {
-          const dispatchDates = dispatchRecords
-            .map((r: any) => r.dispatchDate)
-            .filter(Boolean)
-            .map((d: string) => new Date(d));
-
-          if (dispatchDates.length > 0) {
-            const earliestDispatch = new Date(
-              Math.min(...dispatchDates.map((d: Date) => d.getTime())),
-            );
-            const expectedArrival = new Date(etaDate);
-
-            if (
-              isNaN(earliestDispatch.getTime()) ||
-              isNaN(expectedArrival.getTime())
-            ) {
-              return;
-            }
-
-            const diffTime =
-              earliestDispatch.getTime() - expectedArrival.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            const calculatedDelay = Math.max(0, diffDays);
-
-            // Only update if the value actually changed
-            const currentDelay = formValues.delayInDispatch;
-            if (currentDelay !== calculatedDelay.toString()) {
-              console.log(
-                "✅ Dispatch delay calculated:",
-                calculatedDelay,
-                "days",
-              );
-              form.setValue("delayInDispatch", calculatedDelay.toString(), {
-                shouldValidate: false,
-                shouldDirty: false,
-              });
-            }
-          }
-        } catch (error) {
-          console.error("Error calculating dispatch delay:", error);
-        }
+      if (name === "delayInDispatch") return;
+      const { dispatchRecords = [], etaDate } = formValues;
+      if (!etaDate || !dispatchRecords.length) return;
+      try {
+        const dates = dispatchRecords
+          .map((r: any) => r.dispatchDate)
+          .filter(Boolean)
+          .map((d: string) => new Date(d).getTime());
+        if (!dates.length) return;
+        const diff = Math.min(...dates) - new Date(etaDate).getTime();
+        const days = Math.max(0, Math.ceil(diff / 86400000)).toString();
+        if (formValues.delayInDispatch !== days)
+          form.setValue("delayInDispatch", days, {
+            shouldValidate: false,
+            shouldDirty: false,
+          });
+      } catch {
+        /* ignore */
       }
     });
-
     return () => subscription.unsubscribe();
   }, [form]);
 
-  // Get selected RMS channel for color badge
-  const selectedRmsChannel = form.watch("rmschannel");
-  const rmsChannelOption = RMS_CHANNEL_OPTIONS.find(
-    (opt) => opt.value === selectedRmsChannel,
+  // Watched values for derived display
+  const selectedRmsValue = form.watch("rmschannel");
+  const selectedRmsOption = RMS_CHANNEL_OPTIONS.find(
+    (o) => o.value === selectedRmsValue,
   );
-
-  // Get selected GD Cleared U/S for display
-  const selectedGdCleared = form.watch("gdclearedUs");
-  const selectedGdOption = gdClearedOptions.find(
-    (opt) => opt.value === selectedGdCleared,
-  );
-
-  // Watch clearance flags
-  const isClearanceGrounding = form.watch("isClearanceGrounding");
-  const isClearanceExamination = form.watch("isClearanceExamination");
-  const isClearanceGroup = form.watch("isClearanceGroup");
-  const isClearanceNoc = form.watch("isClearanceNoc");
-
-  // Watch dispatch flags
-  const isDispatchFi = form.watch("isDispatchFi");
-  const isDispatchObl = form.watch("isDispatchObl");
-  const isDispatchClearance = form.watch("isDispatchClearance");
-
-  // Check if shipping type is LCL
   const isLCL = shippingType === "LCL" || shippingType === "AIR";
 
+  // Build GD cleared react-select options
+  const gdSelectOptions = gdClearedOptions.map((o) => ({
+    value: o.value,
+    label: `${o.sectionCode} — ${o.sectionName}`,
+    isSecurityRequired: o.isSecurityRequired,
+  }));
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <TabsContent value='completion' className='space-y-4'>
-      <Card>
-        <CardContent className='pt-6'>
-          <div className='space-y-6'>
-            {/* Header */}
-            <div className='flex items-center justify-between'>
-              <h3 className='text-lg font-semibold text-gray-900'>
-                Completion Details
-              </h3>
-              <Badge variant='outline' className='text-xs'>
-                Job Completion Status
-              </Badge>
-            </div>
-
-            {/* GD Cleared U/S Section */}
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200'>
-              <FormField
-                control={form.control}
-                name='gdclearedUs'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      GD Cleared U/S{" "}
-                      <span className='text-xs text-gray-500'>(Section)</span>
-                    </FormLabel>
-                    <Select
-                      value={field.value?.toString() || ""}
-                      onValueChange={(value) => {
-                        console.log("GD Cleared U/S selected:", value);
-                        field.onChange(value);
-                      }}
-                      disabled={loadingGdOptions}
+    <TabsContent value='completion'>
+      <div className='bg-white border border-gray-200 rounded-md p-4'>
+        {/* ── GD CLEARANCE INFO ── */}
+        <SectionBar title='GD Clearance' />
+        <div className='flex flex-wrap gap-x-3 gap-y-3 items-end'>
+          {/* GD Cleared U/S */}
+          <FormField
+            control={form.control}
+            name='gdclearedUs'
+            render={({ field }) => (
+              <FormItem className='min-w-[220px] flex-1'>
+                <Field
+                  label={
+                    loadingGdOptions
+                      ? "GD Cleared U/S (loading…)"
+                      : "GD Cleared U/S"
+                  }
+                >
+                  {loadingGdOptions ? (
+                    <div
+                      className={`${tinyInputClass} flex items-center gap-2 bg-gray-50`}
                     >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              loadingGdOptions ? "Loading..." : "Select section"
-                            }
-                          >
-                            {loadingGdOptions ? (
-                              <span className='flex items-center gap-2'>
-                                <Loader2 className='h-4 w-4 animate-spin' />
-                                Loading...
+                      <Loader2 className='h-3.5 w-3.5 animate-spin text-gray-400' />
+                      <span className='text-[12px] text-gray-400'>
+                        Loading sections…
+                      </span>
+                    </div>
+                  ) : (
+                    <FormControl>
+                      <ReactSelect
+                        options={gdSelectOptions}
+                        value={
+                          gdSelectOptions.find(
+                            (o) =>
+                              o.value.toString() === field.value?.toString(),
+                          ) || null
+                        }
+                        onChange={(val) =>
+                          field.onChange(val?.value?.toString() ?? "")
+                        }
+                        styles={tinySelectStyles}
+                        isClearable
+                        placeholder='Select section…'
+                        formatOptionLabel={(opt: any) => (
+                          <div className='flex items-center justify-between gap-2'>
+                            <span>{opt.label}</span>
+                            {opt.isSecurityRequired && (
+                              <span className='text-[10px] border border-gray-300 rounded px-1 text-gray-500'>
+                                Security req.
                               </span>
-                            ) : field.value?.toString() ? (
-                              selectedGdOption ? (
-                                `${selectedGdOption.sectionCode} - ${selectedGdOption.sectionName}`
-                              ) : (
-                                `Section ${field.value?.toString()}`
-                              )
-                            ) : (
-                              "Select section"
                             )}
-                          </SelectValue>
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent position='popper' sideOffset={5}>
-                        {gdClearedOptions.length === 0 && !loadingGdOptions ? (
-                          <SelectItem value='none'>
-                            No options available
-                          </SelectItem>
-                        ) : (
-                          gdClearedOptions.map((option) => (
-                            <SelectItem
-                              key={option.value}
-                              value={option.value.toString()}
-                            >
-                              <div className='flex items-center justify-between w-full gap-2'>
-                                <span>
-                                  {option.sectionCode} - {option.sectionName}
-                                </span>
-                                {option.isSecurityRequired && (
-                                  <Badge
-                                    variant='outline'
-                                    className='text-xs ml-2'
-                                  >
-                                    Security Required
-                                  </Badge>
-                                )}
-                              </div>
-                            </SelectItem>
-                          ))
+                          </div>
                         )}
-                      </SelectContent>
-                    </Select>
-                    {field.value && selectedGdOption && (
-                      <p className='text-xs text-green-600'>
-                        ✅ Selected: {selectedGdOption.sectionCode} -{" "}
-                        {selectedGdOption.sectionName}
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='gdsecurityValue'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Value</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder='Enter security value'
-                        {...field}
-                        value={field.value || ""}
-                        onChange={(e) => {
-                          field.onChange(e);
-                          console.log(
-                            "Security value changed:",
-                            e.target.value,
-                          );
-                        }}
                       />
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='gdsecurityExpiryDate'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Expiry Date</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='date'
-                        {...field}
-                        value={field.value || ""}
-                        onChange={(e) => {
-                          field.onChange(e);
-                          console.log("Expiry date changed:", e.target.value);
-                        }}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* RMS Channel */}
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              <FormField
-                control={form.control}
-                name='rmschannel'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className='flex items-center gap-2'>
-                      RMS Channel
-                      {rmsChannelOption && (
-                        <Badge className={`${rmsChannelOption.color} ml-2`}>
-                          {rmsChannelOption.label}
-                        </Badge>
-                      )}
-                    </FormLabel>
-                    <Select
-                      value={field.value || ""}
-                      onValueChange={(value) => {
-                        console.log("RMS Channel selected:", value);
-                        field.onChange(value);
-                      }}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder='Select RMS channel' />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent position='popper' sideOffset={5}>
-                        {RMS_CHANNEL_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            <div className='flex items-center gap-2'>
-                              <div
-                                className={`w-3 h-3 rounded-full ${option.color}`}
-                              ></div>
-                              <span>{option.label}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {field.value && (
-                      <p className='text-xs text-green-600'>
-                        ✅ Selected: {rmsChannelOption?.label}
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Destuffing On - Only for LCL */}
-              <FormField
-                control={form.control}
-                name='destuffingOn'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className='flex items-center gap-2'>
-                      Destuffing On
-                      <Badge variant='secondary' className='text-xs'>
-                        Only for LCL
-                      </Badge>
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type='date'
-                        {...field}
-                        value={field.value || ""}
-                        disabled={!isLCL}
-                        className={!isLCL ? "bg-gray-100" : ""}
-                        onChange={(e) => {
-                          field.onChange(e);
-                          console.log(
-                            "Destuffing date changed:",
-                            e.target.value,
-                          );
-                        }}
-                      />
-                    </FormControl>
-                    {!isLCL && (
-                      <p className='text-xs text-gray-500 flex items-center gap-1'>
-                        <Info className='h-3 w-3' />
-                        Available only for LCL/Air shipments
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* GD Assign to Gate Out Date & PSQCA */}
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              <FormField
-                control={form.control}
-                name='gdassignToGateOut'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>GD Assign to Gate Out Date</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='date'
-                        {...field}
-                        value={field.value || ""}
-                        onChange={(e) => {
-                          field.onChange(e);
-                          console.log(
-                            "GD Assign to Gate Out Date changed:",
-                            e.target.value,
-                          );
-                        }}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='psqcasamples'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>PSQCA Samples</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder='Enter PSQCA sample details'
-                        {...field}
-                        value={field.value || ""}
-                        onChange={(e) => {
-                          field.onChange(e);
-                          console.log("PSQCA samples changed:", e.target.value);
-                        }}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* Clearance Flags Section */}
-            <div className='space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200'>
-              <div className='flex items-center gap-2'>
-                <Info className='h-5 w-5 text-blue-600' />
-                <h4 className='font-semibold text-gray-900'>
-                  Clearance Status Flags
-                </h4>
-              </div>
-
-              <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
-                <FormField
-                  control={form.control}
-                  name='isClearanceGrounding'
-                  render={({ field }) => (
-                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className='space-y-1 leading-none'>
-                        <FormLabel className='cursor-pointer'>
-                          Grounding
-                        </FormLabel>
-                        <p className='text-xs text-gray-500'>
-                          Clearance involves grounding
-                        </p>
-                      </div>
-                    </FormItem>
                   )}
-                />
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
 
-                <FormField
-                  control={form.control}
-                  name='isClearanceExamination'
-                  render={({ field }) => (
-                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className='space-y-1 leading-none'>
-                        <FormLabel className='cursor-pointer'>
-                          Examination
-                        </FormLabel>
-                        <p className='text-xs text-gray-500'>
-                          Customs examination required
-                        </p>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='isClearanceGroup'
-                  render={({ field }) => (
-                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className='space-y-1 leading-none'>
-                        <FormLabel className='cursor-pointer'>
-                          Group Clearance
-                        </FormLabel>
-                        <p className='text-xs text-gray-500'>
-                          Part of group clearance
-                        </p>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='isClearanceNoc'
-                  render={({ field }) => (
-                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className='space-y-1 leading-none'>
-                        <FormLabel className='cursor-pointer'>
-                          NOC Required
-                        </FormLabel>
-                        <p className='text-xs text-gray-500'>
-                          No Objection Certificate
-                        </p>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              {(isClearanceGrounding ||
-                isClearanceExamination ||
-                isClearanceGroup ||
-                isClearanceNoc) && (
-                <div className='flex flex-wrap gap-2 mt-2'>
-                  {isClearanceGrounding && (
-                    <Badge variant='secondary'>Grounding</Badge>
-                  )}
-                  {isClearanceExamination && (
-                    <Badge variant='secondary'>Examination</Badge>
-                  )}
-                  {isClearanceGroup && (
-                    <Badge variant='secondary'>Group Clearance</Badge>
-                  )}
-                  {isClearanceNoc && <Badge variant='secondary'>NOC</Badge>}
-                </div>
-              )}
-            </div>
-
-            {/* Delay in Clearance Section */}
-            <div className='space-y-4 p-4 bg-orange-50 rounded-lg border border-orange-200'>
-              <div className='flex items-center gap-2'>
-                <AlertCircle className='h-5 w-5 text-orange-600' />
-                <h4 className='font-semibold text-gray-900'>
-                  Delay in Clearance
-                </h4>
-              </div>
-
-              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-                <FormField
-                  control={form.control}
-                  name='delayInClearance'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Days{" "}
-                        <span className='text-xs text-gray-500'>
-                          (GD Assign to Gate Out - GD Date)
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          value={field.value || "0"}
-                          readOnly
-                          className='bg-gray-100'
-                        />
-                      </FormControl>
-                      <p className='text-xs text-gray-500'>
-                        Auto-calculated from GD Info Tab
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='reasonOfDelayInClearance'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Reason of Delay</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='Enter reason'
-                          {...field}
-                          value={field.value || ""}
-                          onChange={(e) => {
-                            field.onChange(e);
-                            console.log(
-                              "Clearance delay reason changed:",
-                              e.target.value,
-                            );
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </div>
-
-            {/* Dispatch Status Flags Section */}
-            <div className='space-y-4 p-4 bg-green-50 rounded-lg border border-green-200'>
-              <div className='flex items-center gap-2'>
-                <Info className='h-5 w-5 text-green-600' />
-                <h4 className='font-semibold text-gray-900'>
-                  Document Dispatch Status
-                </h4>
-              </div>
-
-              <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-                <FormField
-                  control={form.control}
-                  name='isDispatchFi'
-                  render={({ field }) => (
-                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className='space-y-1 leading-none'>
-                        <FormLabel className='cursor-pointer'>
-                          Form I Dispatched
-                        </FormLabel>
-                        <p className='text-xs text-gray-500'>
-                          FI documents sent
-                        </p>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='isDispatchObl'
-                  render={({ field }) => (
-                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className='space-y-1 leading-none'>
-                        <FormLabel className='cursor-pointer'>
-                          OBL Dispatched
-                        </FormLabel>
-                        <p className='text-xs text-gray-500'>
-                          Original Bill of Lading sent
-                        </p>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='isDispatchClearance'
-                  render={({ field }) => (
-                    <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-white'>
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className='space-y-1 leading-none'>
-                        <FormLabel className='cursor-pointer'>
-                          Clearance Docs Dispatched
-                        </FormLabel>
-                        <p className='text-xs text-gray-500'>
-                          Clearance documents sent
-                        </p>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              {(isDispatchFi || isDispatchObl || isDispatchClearance) && (
-                <div className='flex flex-wrap gap-2 mt-2'>
-                  {isDispatchFi && <Badge variant='secondary'>Form I</Badge>}
-                  {isDispatchObl && <Badge variant='secondary'>OBL</Badge>}
-                  {isDispatchClearance && (
-                    <Badge variant='secondary'>Clearance Docs</Badge>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Delay in Dispatch Section */}
-            <div className='space-y-4 p-4 bg-red-50 rounded-lg border border-red-200'>
-              <div className='flex items-center gap-2'>
-                <AlertCircle className='h-5 w-5 text-red-600' />
-                <h4 className='font-semibold text-gray-900'>
-                  Delay in Dispatch
-                </h4>
-              </div>
-
-              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-                <FormField
-                  control={form.control}
-                  name='delayInDispatch'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Days{" "}
-                        <span className='text-xs text-gray-500'>
-                          (Dispatch Date - Expected Arrival)
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          value={field.value || "0"}
-                          readOnly
-                          className='bg-gray-100'
-                        />
-                      </FormControl>
-                      <p className='text-xs text-gray-500'>
-                        Auto-calculated from Dispatch & Shipping Tabs
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='reasonOfDelayInDispatch'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Reason of Delay</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='Enter reason'
-                          {...field}
-                          value={field.value || ""}
-                          onChange={(e) => {
-                            field.onChange(e);
-                            console.log(
-                              "Dispatch delay reason changed:",
-                              e.target.value,
-                            );
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </div>
-
-            {/* Remarks */}
-            <FormField
-              control={form.control}
-              name='remarks'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Remarks</FormLabel>
+          {/* Security Value */}
+          <FormField
+            control={form.control}
+            name='gdsecurityValue'
+            render={({ field }) => (
+              <FormItem className='w-[160px]'>
+                <Field label='Security Value'>
                   <FormControl>
-                    <Textarea
-                      placeholder='Enter any completion remarks or notes...'
-                      className='min-h-[100px]'
+                    <Input
+                      className={tinyInputClass}
+                      placeholder='Enter value'
                       {...field}
                       value={field.value || ""}
-                      onChange={(e) => {
-                        field.onChange(e);
-                        console.log(
-                          "Completion remarks changed:",
-                          e.target.value,
-                        );
-                      }}
                     />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </CardContent>
-      </Card>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+
+          {/* Security Expiry Date */}
+          <FormField
+            control={form.control}
+            name='gdsecurityExpiryDate'
+            render={({ field }) => (
+              <FormItem className='w-[155px]'>
+                <Field label='Security Expiry Date'>
+                  <FormControl>
+                    <Input
+                      type='date'
+                      className={tinyInputClass}
+                      {...field}
+                      value={field.value || ""}
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {/* ── RMS CHANNEL & DESTUFFING ── */}
+        <SectionBar title='Inspection & Channel' />
+        <div className='flex flex-wrap gap-x-3 gap-y-3 items-end'>
+          {/* RMS Channel */}
+          <FormField
+            control={form.control}
+            name='rmschannel'
+            render={({ field }) => (
+              <FormItem className='w-[220px]'>
+                <Field
+                  label={
+                    selectedRmsOption
+                      ? `RMS Channel — ${selectedRmsOption.label}`
+                      : "RMS Channel"
+                  }
+                >
+                  <FormControl>
+                    <ReactSelect
+                      options={RMS_CHANNEL_OPTIONS}
+                      value={
+                        RMS_CHANNEL_OPTIONS.find(
+                          (o) => o.value === field.value,
+                        ) || null
+                      }
+                      onChange={(val) => field.onChange(val?.value ?? "")}
+                      styles={{
+                        ...tinySelectStyles,
+                        // Colour the single-value background to match the channel
+                        singleValue: (base) => ({
+                          ...base,
+                          color: selectedRmsOption?.textHex ?? "#111",
+                          fontWeight: 600,
+                        }),
+                        control: (base, state) => ({
+                          ...(tinySelectStyles.control as any)(base, state),
+                          backgroundColor: selectedRmsOption?.hex ?? "white",
+                          borderColor:
+                            selectedRmsOption?.hex ??
+                            (state.isFocused ? "#3b82f6" : "#d1d5db"),
+                        }),
+                      }}
+                      isClearable
+                      isSearchable={false}
+                      placeholder='Select channel…'
+                      formatOptionLabel={(opt: any) => (
+                        <div className='flex items-center gap-2'>
+                          <span
+                            style={{
+                              background: opt.hex,
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              display: "inline-block",
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span>{opt.label}</span>
+                        </div>
+                      )}
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+
+          {/* Destuffing On — LCL/AIR only */}
+          <FormField
+            control={form.control}
+            name='destuffingOn'
+            render={({ field }) => (
+              <FormItem className='w-[165px]'>
+                <Field
+                  label={isLCL ? "Destuffing On" : "Destuffing On (LCL only)"}
+                >
+                  <FormControl>
+                    <Input
+                      type='date'
+                      className={`${tinyInputClass} ${!isLCL ? "bg-gray-100 border-gray-200 cursor-not-allowed opacity-60" : ""}`}
+                      {...field}
+                      value={field.value || ""}
+                      disabled={!isLCL}
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+
+          {/* GD Assign to Gate Out */}
+          <FormField
+            control={form.control}
+            name='gdassignToGateOut'
+            render={({ field }) => (
+              <FormItem className='w-[170px]'>
+                <Field label='GD Assign to Gate-Out'>
+                  <FormControl>
+                    <Input
+                      type='date'
+                      className={tinyInputClass}
+                      {...field}
+                      value={field.value || ""}
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+
+          {/* PSQCA Samples */}
+          <FormField
+            control={form.control}
+            name='psqcasamples'
+            render={({ field }) => (
+              <FormItem className='min-w-[180px] flex-1'>
+                <Field label='PSQCA Samples'>
+                  <FormControl>
+                    <Input
+                      className={tinyInputClass}
+                      placeholder='Sample details…'
+                      {...field}
+                      value={field.value || ""}
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {/* ── CLEARANCE FLAGS ── */}
+        <SectionBar title='Clearance Status' />
+        <div className='flex flex-wrap gap-x-6 gap-y-2 py-0.5'>
+          <CheckPill
+            form={form}
+            name='isClearanceGrounding'
+            label='Grounding'
+          />
+          <CheckPill
+            form={form}
+            name='isClearanceExamination'
+            label='Examination'
+          />
+          <CheckPill
+            form={form}
+            name='isClearanceGroup'
+            label='Group Clearance'
+          />
+          <CheckPill form={form} name='isClearanceNoc' label='NOC Required' />
+        </div>
+
+        {/* ── DELAY IN CLEARANCE ── */}
+        <SectionBar title='Delay in Clearance' />
+        <div className='flex flex-wrap gap-x-3 gap-y-3 items-end'>
+          <FormField
+            control={form.control}
+            name='delayInClearance'
+            render={({ field }) => (
+              <FormItem className='w-[120px]'>
+                <Field label='Days ↺ (Gate-Out − GD Date)'>
+                  <FormControl>
+                    <Input
+                      className={`${tinyInputClass} bg-amber-50 border-amber-300 cursor-not-allowed font-semibold text-center`}
+                      {...field}
+                      value={field.value || "0"}
+                      readOnly
+                    />
+                  </FormControl>
+                </Field>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='reasonOfDelayInClearance'
+            render={({ field }) => (
+              <FormItem className='min-w-[240px] flex-1'>
+                <Field label='Reason of Delay'>
+                  <FormControl>
+                    <Input
+                      className={tinyInputClass}
+                      placeholder='Enter reason…'
+                      {...field}
+                      value={field.value || ""}
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {/* ── DISPATCH FLAGS ── */}
+        <SectionBar title='Document Dispatch Status' />
+        <div className='flex flex-wrap gap-x-6 gap-y-2 py-0.5'>
+          <CheckPill
+            form={form}
+            name='isDispatchFi'
+            label='Form I Dispatched'
+          />
+          <CheckPill form={form} name='isDispatchObl' label='OBL Dispatched' />
+          <CheckPill
+            form={form}
+            name='isDispatchClearance'
+            label='Clearance Docs Dispatched'
+          />
+        </div>
+
+        {/* ── DELAY IN DISPATCH ── */}
+        <SectionBar title='Delay in Dispatch' />
+        <div className='flex flex-wrap gap-x-3 gap-y-3 items-end'>
+          <FormField
+            control={form.control}
+            name='delayInDispatch'
+            render={({ field }) => (
+              <FormItem className='w-[120px]'>
+                <Field label='Days ↺ (Dispatch − ETA)'>
+                  <FormControl>
+                    <Input
+                      className={`${tinyInputClass} bg-amber-50 border-amber-300 cursor-not-allowed font-semibold text-center`}
+                      {...field}
+                      value={field.value || "0"}
+                      readOnly
+                    />
+                  </FormControl>
+                </Field>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='reasonOfDelayInDispatch'
+            render={({ field }) => (
+              <FormItem className='min-w-[240px] flex-1'>
+                <Field label='Reason of Delay'>
+                  <FormControl>
+                    <Input
+                      className={tinyInputClass}
+                      placeholder='Enter reason…'
+                      {...field}
+                      value={field.value || ""}
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {/* ── REMARKS ── */}
+        <SectionBar title='Remarks' />
+        <FormField
+          control={form.control}
+          name='remarks'
+          render={({ field }) => (
+            <FormItem>
+              <FormControl>
+                <Textarea
+                  placeholder='Enter any completion remarks or notes…'
+                  className='text-[13px] min-h-[70px] px-2 py-1.5 border border-gray-300 rounded resize-none focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                  {...field}
+                  value={field.value || ""}
+                />
+              </FormControl>
+              <FormMessage className='text-[10px]' />
+            </FormItem>
+          )}
+        />
+      </div>
     </TabsContent>
   );
 }

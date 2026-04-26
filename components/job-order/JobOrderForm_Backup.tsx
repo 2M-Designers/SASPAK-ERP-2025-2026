@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save, X } from "lucide-react";
@@ -8,6 +9,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 
 // Import separate tab components
 import JobMainTab from "./tabs/JobMainTab";
@@ -1803,54 +1805,48 @@ export default function JobOrderForm({
     toast,
   };
 
-  // Number of visible tabs (always 6 base + 1 if FCL detention)
-  const tabCount = showDetentionTab ? 7 : 6;
-  const tabGridClass =
-    `grid w-full mb-2 text-[12px]` +
-    (tabCount === 7 ? " grid-cols-7" : " grid-cols-6");
-
   return (
     <div className='min-h-screen bg-gray-50'>
-      <div className='container mx-auto px-3 py-2 max-w-[1600px]'>
-        {/* ── Top bar: title + job number badge (edit mode) + Close ── */}
-        <div className='flex items-center justify-between mb-2 gap-3'>
-          {/* Left: page title */}
-          <h1 className='text-[14px] font-bold text-gray-800 whitespace-nowrap'>
+      <div className='container mx-auto px-3 py-3 max-w-[1600px]'>
+        {internalType === "edit" && form.watch("jobNumber") && (
+          <div className='mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-center'>
+            <div className='flex flex-col items-center justify-center'>
+              <Badge
+                variant='outline'
+                className='mb-2 bg-blue-100 text-blue-800 border-blue-300'
+              >
+                Job Number
+              </Badge>
+              <h1 className='text-2xl font-bold text-blue-700'>
+                {form.watch("jobNumber")}
+              </h1>
+            </div>
+          </div>
+        )}
+
+        <div className='flex items-center justify-between mb-3'>
+          <h1 className='text-xl font-bold text-gray-900'>
             {internalType === "edit" ? "Edit Job Order" : "New Job Order"}
           </h1>
-
-          {/* Centre: Job Number pill — only visible in edit mode */}
-          {internalType === "edit" && form.watch("jobNumber") && (
-            <div className='flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full'>
-              <span className='text-[11px] font-semibold uppercase tracking-wide text-blue-500'>
-                Job No.
-              </span>
-              <span className='text-[14px] font-bold text-blue-700 font-mono'>
-                {form.watch("jobNumber")}
-              </span>
-            </div>
-          )}
-
-          {/* Right: Close button */}
-          <button
+          <Button
             type='button'
+            variant='ghost'
+            size='sm'
             onClick={() => router.back()}
             disabled={isSubmitting}
-            className='flex items-center gap-1 h-7 px-3 text-[12px] font-medium border border-gray-300 rounded hover:bg-gray-50 text-gray-600 disabled:opacity-50'
           >
-            <X className='h-3.5 w-3.5' />
+            <X className='h-4 w-4 mr-1' />
             Close
-          </button>
+          </Button>
         </div>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleFormSubmit)}>
-            {/* Loading overlay */}
             {isLoadingJobData && (
-              <div className='flex justify-center items-center py-16 bg-white rounded-lg border border-gray-200'>
-                <Loader2 className='h-6 w-6 animate-spin text-blue-600' />
-                <span className='ml-2 text-[13px] font-medium text-gray-600'>
-                  Loading job data…
+              <div className='flex justify-center items-center p-8 bg-white rounded-lg border'>
+                <Loader2 className='h-8 w-8 animate-spin text-blue-600' />
+                <span className='ml-2 text-sm font-medium'>
+                  Loading job data...
                 </span>
               </div>
             )}
@@ -1861,40 +1857,18 @@ export default function JobOrderForm({
                 onValueChange={setActiveTab}
                 className='w-full'
               >
-                {/* ── Tab navigation ── */}
-                <TabsList className={tabGridClass}>
-                  <TabsTrigger value='main' className='text-[12px] py-1.5'>
-                    Job Order
-                  </TabsTrigger>
-                  <TabsTrigger value='shipping' className='text-[12px] py-1.5'>
-                    Shipping
-                  </TabsTrigger>
-                  <TabsTrigger value='invoice' className='text-[12px] py-1.5'>
-                    Invoice
-                  </TabsTrigger>
-                  <TabsTrigger value='gd' className='text-[12px] py-1.5'>
-                    GD Info
-                  </TabsTrigger>
-                  <TabsTrigger value='dispatch' className='text-[12px] py-1.5'>
-                    Dispatch
-                  </TabsTrigger>
+                <TabsList className='grid w-full grid-cols-7 mb-3'>
+                  <TabsTrigger value='main'>Job Order</TabsTrigger>
+                  <TabsTrigger value='shipping'>Shipping</TabsTrigger>
+                  <TabsTrigger value='invoice'>Invoice</TabsTrigger>
+                  <TabsTrigger value='gd'>GD Info</TabsTrigger>
+                  <TabsTrigger value='dispatch'>Dispatch</TabsTrigger>
                   {showDetentionTab && (
-                    <TabsTrigger
-                      value='detention'
-                      className='text-[12px] py-1.5'
-                    >
-                      Detention
-                    </TabsTrigger>
+                    <TabsTrigger value='detention'>Detention</TabsTrigger>
                   )}
-                  <TabsTrigger
-                    value='completion'
-                    className='text-[12px] py-1.5'
-                  >
-                    Completion
-                  </TabsTrigger>
+                  <TabsTrigger value='completion'>Completion</TabsTrigger>
                 </TabsList>
 
-                {/* ── Tab content ── */}
                 <JobMainTab {...sharedProps} />
                 <ShippingTab {...sharedProps} />
                 <InvoiceTab {...sharedProps} />
@@ -1905,34 +1879,33 @@ export default function JobOrderForm({
               </Tabs>
             )}
 
-            {/* ── Save / Cancel footer ── */}
             {!isLoadingJobData && (
-              <div className='flex items-center justify-end gap-2 mt-3 pt-3 border-t border-gray-200'>
-                <button
+              <div className='flex justify-end gap-3 mt-4'>
+                <Button
                   type='button'
+                  variant='outline'
                   onClick={() => router.back()}
                   disabled={isSubmitting}
-                  className='h-8 px-4 text-[13px] font-medium border border-gray-300 rounded hover:bg-gray-50 text-gray-700 disabled:opacity-50'
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type='submit'
                   disabled={isSubmitting}
-                  className='flex items-center gap-1.5 h-8 px-5 text-[13px] font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded min-w-[120px] justify-center'
+                  className='min-w-[120px]'
                 >
                   {isSubmitting ? (
                     <>
-                      <Loader2 className='h-3.5 w-3.5 animate-spin' />
-                      Saving…
+                      <Loader2 className='h-4 w-4 mr-2 animate-spin' />
+                      Saving...
                     </>
                   ) : (
                     <>
-                      <Save className='h-3.5 w-3.5' />
+                      <Save className='h-4 w-4 mr-2' />
                       {internalType === "edit" ? "Update Job" : "Create Job"}
                     </>
                   )}
-                </button>
+                </Button>
               </div>
             )}
           </form>

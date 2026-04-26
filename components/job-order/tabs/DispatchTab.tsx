@@ -1,15 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { TabsContent } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import ReactSelect, { StylesConfig, GroupBase } from "react-select";
 import {
   Table,
   TableBody,
@@ -18,8 +10,106 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Copy, Info } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Copy } from "lucide-react";
+import { compactSelectStyles } from "../utils/styles";
+
+// ─── Shared compact design primitives ────────────────────────────────────────
+
+/** Format YYYY-MM-DD or ISO string → dd/mm/yyyy, timezone-safe */
+const fmtDate = (val: string | null | undefined): string => {
+  if (!val) return "—";
+  const datePart = val.split("T")[0];
+  const parts = datePart.split("-");
+  if (parts.length === 3 && parts[0].length === 4)
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return val;
+};
+
+function Field({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col gap-0.5 ${className}`}>
+      <span className='text-[11px] font-semibold uppercase tracking-wide text-gray-500 leading-none'>
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function SectionBar({
+  title,
+  aside,
+}: {
+  title: string;
+  aside?: React.ReactNode;
+}) {
+  return (
+    <div className='flex items-center gap-2 mt-4 mb-2 first:mt-0'>
+      <span className='text-[11px] font-bold uppercase tracking-widest text-blue-700 whitespace-nowrap'>
+        {title}
+      </span>
+      <div className='flex-1 border-t border-blue-200' />
+      {aside}
+    </div>
+  );
+}
+
+const tinyInputClass =
+  "h-[30px] text-[13px] px-2 py-0 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
+
+// react-select compact styles — identical across all tabs
+const tinySelectStyles: StylesConfig<any, false, GroupBase<any>> = {
+  ...compactSelectStyles,
+  control: (base, state) => ({
+    ...base,
+    minHeight: "30px",
+    height: "30px",
+    fontSize: "13px",
+    borderColor: state.isFocused ? "#3b82f6" : "#d1d5db",
+    boxShadow: state.isFocused ? "0 0 0 1px #3b82f6" : "none",
+    "&:hover": { borderColor: "#3b82f6" },
+  }),
+  valueContainer: (base) => ({ ...base, padding: "0 6px" }),
+  input: (base) => ({ ...base, margin: 0, padding: 0, fontSize: "13px" }),
+  indicatorsContainer: (base) => ({ ...base, height: "30px" }),
+  indicatorSeparator: () => ({ display: "none" }),
+  dropdownIndicator: (base) => ({ ...base, padding: "0 4px" }),
+  menu: (base) => ({ ...base, fontSize: "13px", zIndex: 9999 }),
+  option: (base, state) => ({
+    ...base,
+    padding: "5px 10px",
+    backgroundColor: state.isSelected
+      ? "#3b82f6"
+      : state.isFocused
+        ? "#eff6ff"
+        : "white",
+    color: state.isSelected ? "white" : "#111",
+  }),
+};
+
+// Narrower styles for inside table cells
+const rowSelectStyles: StylesConfig<any, false, GroupBase<any>> = {
+  ...tinySelectStyles,
+  control: (base, state) => ({
+    ...(tinySelectStyles.control as any)(base, state),
+    minHeight: "28px",
+    height: "28px",
+    fontSize: "12px",
+    minWidth: "140px",
+    maxWidth: "200px",
+  }),
+  menu: (base) => ({ ...base, fontSize: "12px", zIndex: 9999 }),
+};
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface DispatchRecord {
   jobEquipmentHandingOverId?: number;
@@ -38,6 +128,8 @@ interface DispatchRecord {
   packageType?: string;
   quantity?: number;
 }
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function DispatchTab({
   form,
@@ -68,22 +160,20 @@ export default function DispatchTab({
     dispatchDate: "",
   });
 
-  // ── FCL: sync containers from Shipping Tab into dispatch records ──────────
+  // ── FCL: sync containers from Shipping Tab ────────────────────────────────
   useEffect(() => {
     if (!isFCL) return;
     if (fclContainers.length === 0) return;
-
     const existingIds = new Set(
       dispatchRecords.map((r: DispatchRecord) => r.containerNumber),
     );
-
     const newRecords = fclContainers
-      .filter((container: any) => !existingIds.has(container.containerNo))
-      .map((container: any) => ({
-        containerNumber: container.containerNo,
-        containerTypeId: container.containerTypeId,
-        containerSizeId: container.containerSizeId,
-        netWeight: container.tareWeight || 0,
+      .filter((c: any) => !existingIds.has(c.containerNo))
+      .map((c: any) => ({
+        containerNumber: c.containerNo,
+        containerTypeId: c.containerTypeId,
+        containerSizeId: c.containerSizeId,
+        netWeight: c.tareWeight || 0,
         transporterPartyId: undefined,
         destinationLocationId: undefined,
         containerReturnTerminalId: undefined,
@@ -91,44 +181,32 @@ export default function DispatchTab({
         topayAmountLc: 0,
         dispatchDate: "",
       }));
-
-    if (newRecords.length > 0) {
+    if (newRecords.length > 0)
       setDispatchRecords([...dispatchRecords, ...newRecords]);
-    }
   }, [fclContainers, shippingType]);
 
-  // ── LCL / AIR: keep row[0] in sync with the three Shipping Tab props ───────
-  // The parent passes these as plain props via form.watch() so they are always
-  // fresh when the parent re-renders — no stale-closure issues.
+  // ── LCL / AIR: keep row[0] in sync with Shipping Tab props ───────────────
   useEffect(() => {
     if (!isLCLorAIR) return;
-
-    // Fallback to getValues() in case the parent hasn't wired the new props yet
     const qty = shippingQtyOfPackages ?? form.getValues("qtyOfPackages") ?? 0;
     const type = shippingPackagesType ?? form.getValues("packagesType") ?? "";
     const weight =
       shippingPackageWeight ?? form.getValues("packageWeight") ?? 0;
-
     setDispatchRecords((prev: DispatchRecord[]) => {
       const existing = prev[0] ?? {};
       const syncedRow: DispatchRecord = {
-        // Keep the stable ID so the row never flickers
         containerNumber: existing.containerNumber || `PKG-${Date.now()}`,
-        // Preserve dispatch-only fields the user may have filled
         transporterPartyId: existing.transporterPartyId,
         destinationLocationId: existing.destinationLocationId,
         containerReturnTerminalId: existing.containerReturnTerminalId,
         buyingAmountLc: existing.buyingAmountLc ?? 0,
         topayAmountLc: existing.topayAmountLc ?? 0,
         dispatchDate: existing.dispatchDate ?? "",
-        // Always mirror the three Shipping Tab fields
         packageType: type,
         quantity: qty,
         netWeight: weight,
       };
-
       if (prev.length === 0) return [syncedRow];
-      // Replace only row[0]; leave any manually-added rows untouched
       return [syncedRow, ...prev.slice(1)];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -140,14 +218,15 @@ export default function DispatchTab({
   ]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
   const updateDispatchRecord = (
     index: number,
     field: keyof DispatchRecord,
     value: any,
   ) => {
-    const updatedRecords = [...dispatchRecords];
-    updatedRecords[index] = { ...updatedRecords[index], [field]: value };
-    setDispatchRecords(updatedRecords);
+    const updated = [...dispatchRecords];
+    updated[index] = { ...updated[index], [field]: value };
+    setDispatchRecords(updated);
   };
 
   const handleApplyToAll = () => {
@@ -159,8 +238,7 @@ export default function DispatchTab({
       });
       return;
     }
-
-    const updatedRecords = dispatchRecords.map((record: DispatchRecord) => ({
+    const updated = dispatchRecords.map((record: DispatchRecord) => ({
       ...record,
       ...(applyToAllValues.transporterPartyId && {
         transporterPartyId: applyToAllValues.transporterPartyId,
@@ -168,7 +246,6 @@ export default function DispatchTab({
       ...(applyToAllValues.destinationLocationId && {
         destinationLocationId: applyToAllValues.destinationLocationId,
       }),
-      // Only apply Empty Return for FCL
       ...(isFCL &&
         applyToAllValues.containerReturnTerminalId && {
           containerReturnTerminalId: applyToAllValues.containerReturnTerminalId,
@@ -183,256 +260,159 @@ export default function DispatchTab({
         dispatchDate: applyToAllValues.dispatchDate,
       }),
     }));
-
-    setDispatchRecords(updatedRecords);
+    setDispatchRecords(updated);
     toast({
       title: "Success",
-      description: `Applied values to ${updatedRecords.length} record(s)`,
+      description: `Applied to ${updated.length} record(s)`,
     });
   };
 
   const handleAddPackageRow = () => {
-    const newRecord: DispatchRecord = {
-      containerNumber: `PKG-${Date.now()}`,
-      packageType: "",
-      quantity: 0,
-      netWeight: 0,
-      transporterPartyId: undefined,
-      destinationLocationId: undefined,
-      containerReturnTerminalId: undefined,
-      buyingAmountLc: 0,
-      topayAmountLc: 0,
-      dispatchDate: "",
-    };
-    setDispatchRecords([...dispatchRecords, newRecord]);
+    setDispatchRecords([
+      ...dispatchRecords,
+      {
+        containerNumber: `PKG-${Date.now()}`,
+        packageType: "",
+        quantity: 0,
+        netWeight: 0,
+        transporterPartyId: undefined,
+        destinationLocationId: undefined,
+        containerReturnTerminalId: undefined,
+        buyingAmountLc: 0,
+        topayAmountLc: 0,
+        dispatchDate: "",
+      },
+    ]);
   };
 
   const handleDeleteRecord = (index: number) => {
-    if (confirm("Are you sure you want to delete this dispatch record?")) {
+    if (confirm("Delete this dispatch record?")) {
       setDispatchRecords(
         dispatchRecords.filter((_: any, i: number) => i !== index),
       );
-      toast({ title: "Deleted", description: "Dispatch record removed" });
+      toast({ title: "Deleted" });
     }
   };
 
-  const getPartyLabel = (partyId: number | undefined) => {
-    if (!partyId) return "";
-    return parties.find((p: any) => p.value === partyId)?.label || "";
-  };
-
-  const getLocationLabel = (locationId: number | undefined) => {
-    if (!locationId) return "";
-    return locations.find((l: any) => l.value === locationId)?.label || "";
-  };
-
-  const getContainerTypeLabel = (typeId: number | undefined) => {
-    if (!typeId) return "";
-    return containerTypes.find((t: any) => t.value === typeId)?.label || "";
-  };
-
-  const getContainerSizeLabel = (sizeId: number | undefined) => {
-    if (!sizeId) return "";
-    return containerSizes.find((s: any) => s.value === sizeId)?.label || "";
-  };
+  const getPartyLabel = (id?: number) =>
+    !id ? "" : parties.find((p: any) => p.value === id)?.label || "";
+  const getLocationLabel = (id?: number) =>
+    !id ? "" : locations.find((l: any) => l.value === id)?.label || "";
+  const getContainerTypeLabel = (id?: number) =>
+    !id ? "" : containerTypes.find((t: any) => t.value === id)?.label || "";
+  const getContainerSizeLabel = (id?: number) =>
+    !id ? "" : containerSizes.find((s: any) => s.value === id)?.label || "";
 
   const totals = {
-    containers: dispatchRecords.length,
-    totalWeight: dispatchRecords.reduce(
-      (sum: number, r: DispatchRecord) => sum + (r.netWeight || 0),
+    count: dispatchRecords.length,
+    weight: dispatchRecords.reduce(
+      (s: number, r: DispatchRecord) => s + (r.netWeight || 0),
       0,
     ),
-    totalBuying: dispatchRecords.reduce(
-      (sum: number, r: DispatchRecord) => sum + (r.buyingAmountLc || 0),
+    buying: dispatchRecords.reduce(
+      (s: number, r: DispatchRecord) => s + (r.buyingAmountLc || 0),
       0,
     ),
-    totalToPay: dispatchRecords.reduce(
-      (sum: number, r: DispatchRecord) => sum + (r.topayAmountLc || 0),
+    toPay: dispatchRecords.reduce(
+      (s: number, r: DispatchRecord) => s + (r.topayAmountLc || 0),
       0,
     ),
   };
+
+  const transporterOptions = transporters.length > 0 ? transporters : parties;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <TabsContent value='dispatch' className='space-y-4'>
-      {/* Info Banner */}
-      <div className='bg-blue-50 p-4 rounded-lg border border-blue-200'>
-        <div className='flex items-start gap-2'>
-          <Info className='h-5 w-5 text-blue-600 mt-0.5' />
-          <div>
-            <h3 className='font-semibold text-blue-900 mb-1'>
-              Dispatch – Handed Over To
-            </h3>
-            <p className='text-sm text-blue-700'>
-              {isFCL
-                ? "Grid shows all containers from Shipping Tab. Fill in dispatch details for each container."
-                : "Add packages and fill in dispatch details. Use 'Apply to All' to set common values."}
-            </p>
-          </div>
-        </div>
-      </div>
+    <TabsContent value='dispatch'>
+      <div className='bg-white border border-gray-200 rounded-md p-4'>
+        {/* ── APPLY COMMON VALUES ── */}
+        <SectionBar
+          title='Apply Common Values to All'
+          aside={
+            <span className='text-[10px] text-gray-400 italic'>
+              optional quick-fill
+            </span>
+          }
+        />
 
-      {/* ── Apply to All ─────────────────────────────────────────────────── */}
-      <div className='bg-white p-6 rounded-lg border'>
-        <div className='flex items-center justify-between mb-4'>
-          <h3 className='text-lg font-semibold'>Apply Common Values to All</h3>
-          <Badge variant='outline' className='text-sm'>
-            Optional Quick Fill
-          </Badge>
-        </div>
-
-        <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-4'>
+        <div className='flex flex-wrap gap-x-3 gap-y-3 items-end'>
           {/* Transporter */}
-          <div className='space-y-2'>
-            <Label>Transporter</Label>
-            <Select
-              key={`transporter-${applyToAllValues.transporterPartyId || "none"}`}
-              defaultValue={applyToAllValues.transporterPartyId?.toString()}
-              onValueChange={(value) =>
+          <Field label='Transporter' className='min-w-[180px] flex-1'>
+            <ReactSelect
+              options={transporterOptions}
+              value={
+                transporterOptions.find(
+                  (p: any) => p.value === applyToAllValues.transporterPartyId,
+                ) || null
+              }
+              onChange={(val) =>
                 setApplyToAllValues({
                   ...applyToAllValues,
-                  transporterPartyId: parseInt(value),
+                  transporterPartyId: val?.value,
                 })
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select Transporter'>
-                  {applyToAllValues.transporterPartyId
-                    ? getPartyLabel(applyToAllValues.transporterPartyId)
-                    : "Select Transporter"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent
-                position='popper'
-                sideOffset={5}
-                className='max-h-[300px] overflow-y-auto'
-              >
-                {(transporters.length > 0 ? transporters : parties)
-                  .filter((p: any) => p?.value)
-                  .map((party: any) => (
-                    <SelectItem
-                      key={party.value}
-                      value={party.value.toString()}
-                    >
-                      {party.label || "Unknown"}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            {applyToAllValues.transporterPartyId && (
-              <p className='text-xs text-green-600'>
-                ✅ Selected:{" "}
-                {getPartyLabel(applyToAllValues.transporterPartyId)}
-              </p>
-            )}
-            <p className='text-xs text-gray-500'>
-              {transporters.length > 0
-                ? `${transporters.length} transporter(s) available`
-                : `Using all parties (${parties.length})`}
-            </p>
-          </div>
+              styles={tinySelectStyles}
+              isClearable
+              placeholder='Select transporter…'
+            />
+          </Field>
 
           {/* Destination */}
-          <div className='space-y-2'>
-            <Label>Destination</Label>
-            <Select
-              key={`destination-${applyToAllValues.destinationLocationId || "none"}`}
-              defaultValue={applyToAllValues.destinationLocationId?.toString()}
-              onValueChange={(value) =>
+          <Field label='Destination' className='min-w-[180px] flex-1'>
+            <ReactSelect
+              options={locations}
+              value={
+                locations.find(
+                  (l: any) =>
+                    l.value === applyToAllValues.destinationLocationId,
+                ) || null
+              }
+              onChange={(val) =>
                 setApplyToAllValues({
                   ...applyToAllValues,
-                  destinationLocationId: parseInt(value),
+                  destinationLocationId: val?.value,
                 })
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select Destination'>
-                  {applyToAllValues.destinationLocationId
-                    ? getLocationLabel(applyToAllValues.destinationLocationId)
-                    : "Select Destination"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent
-                position='popper'
-                sideOffset={5}
-                className='max-h-[300px] overflow-y-auto'
-              >
-                {locations
-                  .filter((l: any) => l?.value)
-                  .map((location: any) => (
-                    <SelectItem
-                      key={location.value}
-                      value={location.value.toString()}
-                    >
-                      {location.label || "Unknown"}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            {applyToAllValues.destinationLocationId && (
-              <p className='text-xs text-green-600'>
-                ✅ Selected:{" "}
-                {getLocationLabel(applyToAllValues.destinationLocationId)}
-              </p>
-            )}
-          </div>
+              styles={tinySelectStyles}
+              isClearable
+              placeholder='Select destination…'
+            />
+          </Field>
 
           {/* Empty Return — FCL only */}
           {isFCL && (
-            <div className='space-y-2'>
-              <Label>Empty Return (Terminal)</Label>
-              <Select
-                key={`return-${applyToAllValues.containerReturnTerminalId || "none"}`}
-                defaultValue={applyToAllValues.containerReturnTerminalId?.toString()}
-                onValueChange={(value) =>
+            <Field
+              label='Empty Return (Terminal)'
+              className='min-w-[180px] flex-1'
+            >
+              <ReactSelect
+                options={locations}
+                value={
+                  locations.find(
+                    (l: any) =>
+                      l.value === applyToAllValues.containerReturnTerminalId,
+                  ) || null
+                }
+                onChange={(val) =>
                   setApplyToAllValues({
                     ...applyToAllValues,
-                    containerReturnTerminalId: parseInt(value),
+                    containerReturnTerminalId: val?.value,
                   })
                 }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder='Select Return Terminal'>
-                    {applyToAllValues.containerReturnTerminalId
-                      ? getLocationLabel(
-                          applyToAllValues.containerReturnTerminalId,
-                        )
-                      : "Select Return Terminal"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent
-                  position='popper'
-                  sideOffset={5}
-                  className='max-h-[300px] overflow-y-auto'
-                >
-                  {locations
-                    .filter((l: any) => l?.value)
-                    .map((location: any) => (
-                      <SelectItem
-                        key={location.value}
-                        value={location.value.toString()}
-                      >
-                        {location.label || "Unknown"}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {applyToAllValues.containerReturnTerminalId && (
-                <p className='text-xs text-green-600'>
-                  ✅ Selected:{" "}
-                  {getLocationLabel(applyToAllValues.containerReturnTerminalId)}
-                </p>
-              )}
-              <p className='text-xs text-gray-500'>Container return location</p>
-            </div>
+                styles={tinySelectStyles}
+                isClearable
+                placeholder='Select terminal…'
+              />
+            </Field>
           )}
 
-          <div className='space-y-2'>
-            <Label>Buying (PKR)</Label>
+          {/* Buying */}
+          <Field label='Buying (PKR)' className='w-[120px]'>
             <Input
               type='number'
               step='0.01'
               placeholder='0.00'
+              className={tinyInputClass}
               value={applyToAllValues.buyingAmountLc || ""}
               onChange={(e) =>
                 setApplyToAllValues({
@@ -441,15 +421,15 @@ export default function DispatchTab({
                 })
               }
             />
-            <p className='text-xs text-gray-500'>If vendor</p>
-          </div>
+          </Field>
 
-          <div className='space-y-2'>
-            <Label>To-Pay (PKR)</Label>
+          {/* To-Pay */}
+          <Field label='To-Pay (PKR)' className='w-[120px]'>
             <Input
               type='number'
               step='0.01'
               placeholder='0.00'
+              className={tinyInputClass}
               value={applyToAllValues.topayAmountLc || ""}
               onChange={(e) =>
                 setApplyToAllValues({
@@ -458,13 +438,13 @@ export default function DispatchTab({
                 })
               }
             />
-            <p className='text-xs text-gray-500'>Recovery</p>
-          </div>
+          </Field>
 
-          <div className='space-y-2'>
-            <Label>Dispatch Date</Label>
+          {/* Dispatch Date */}
+          <Field label='Dispatch Date' className='w-[140px]'>
             <Input
               type='date'
+              className={tinyInputClass}
               value={applyToAllValues.dispatchDate || ""}
               onChange={(e) =>
                 setApplyToAllValues({
@@ -473,480 +453,400 @@ export default function DispatchTab({
                 })
               }
             />
+          </Field>
+
+          {/* Apply button — aligned to bottom */}
+          <div className='flex items-end pb-0.5'>
+            <button
+              type='button'
+              onClick={handleApplyToAll}
+              disabled={dispatchRecords.length === 0}
+              className='flex items-center gap-1.5 h-[30px] px-4 text-xs font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded'
+            >
+              <Copy className='h-3.5 w-3.5' />
+              Apply to All{" "}
+              {dispatchRecords.length > 0 ? `(${dispatchRecords.length})` : ""}
+            </button>
           </div>
         </div>
 
-        <Button
-          type='button'
-          onClick={handleApplyToAll}
-          disabled={dispatchRecords.length === 0}
-          className='w-full'
-        >
-          <Copy className='h-4 w-4 mr-2' />
-          Apply to All {dispatchRecords.length} Record(s)
-        </Button>
-      </div>
-
-      {/* ── Dispatch Records Table ────────────────────────────────────────── */}
-      <div className='bg-white rounded-lg border'>
-        <div className='p-4 border-b flex items-center justify-between'>
-          <h3 className='text-lg font-semibold'>
-            {isFCL ? "Container" : "Package"} Dispatch Details
-          </h3>
-          {/* Add row button — LCL / AIR only (FCL rows come from Shipping Tab) */}
-          {isLCLorAIR && (
-            <Button type='button' onClick={handleAddPackageRow} size='sm'>
-              + Add Package Row
-            </Button>
-          )}
-        </div>
+        {/* ── DISPATCH RECORDS TABLE ── */}
+        <SectionBar
+          title={`${isFCL ? "Container" : "Package"} Dispatch Details${dispatchRecords.length > 0 ? ` (${dispatchRecords.length})` : ""}`}
+          aside={
+            isLCLorAIR && (
+              <button
+                type='button'
+                onClick={handleAddPackageRow}
+                className='flex items-center gap-1 h-6 px-2 text-[11px] font-medium bg-blue-600 hover:bg-blue-700 text-white rounded'
+              >
+                + Add Row
+              </button>
+            )
+          }
+        />
 
         {dispatchRecords.length === 0 ? (
-          <div className='p-8 text-center text-gray-500'>
-            <Info className='h-12 w-12 mx-auto mb-4 text-gray-400' />
-            <p className='text-lg font-medium mb-2'>No Dispatch Records</p>
-            <p className='text-sm'>
-              {isFCL
-                ? "Add containers in Shipping Tab first"
-                : "Fill in package details in the Shipping Tab or click 'Add Package Row'"}
-            </p>
+          <div className='text-center py-8 text-[12px] text-gray-400 border-2 border-dashed border-gray-200 rounded-md'>
+            {isFCL
+              ? "No containers — add containers in the Shipping tab first."
+              : "No package rows — fill in the Shipping tab or click + Add Row."}
           </div>
         ) : (
-          <>
+          <div className='border border-gray-200 rounded overflow-x-auto overflow-y-auto max-h-[500px]'>
             <style jsx>{`
-              .dispatch-table-wrapper::-webkit-scrollbar {
-                width: 14px;
-                height: 14px;
+              div::-webkit-scrollbar {
+                width: 10px;
+                height: 10px;
               }
-              .dispatch-table-wrapper::-webkit-scrollbar-track {
+              div::-webkit-scrollbar-track {
                 background: #f1f1f1;
-                border-radius: 10px;
+                border-radius: 6px;
               }
-              .dispatch-table-wrapper::-webkit-scrollbar-thumb {
+              div::-webkit-scrollbar-thumb {
+                background: #aaa;
+                border-radius: 6px;
+                border: 2px solid #f1f1f1;
+              }
+              div::-webkit-scrollbar-thumb:hover {
                 background: #888;
-                border-radius: 10px;
-                border: 3px solid #f1f1f1;
-              }
-              .dispatch-table-wrapper::-webkit-scrollbar-thumb:hover {
-                background: #555;
-              }
-              .dispatch-table-wrapper::-webkit-scrollbar-corner {
-                background: #f1f1f1;
-              }
-              .dispatch-table-wrapper {
-                scrollbar-width: thick;
-                scrollbar-color: #888 #f1f1f1;
               }
             `}</style>
 
-            <div className='overflow-x-auto dispatch-table-wrapper max-h-[600px]'>
-              <Table>
-                <TableHeader>
-                  <TableRow className='bg-gray-50'>
-                    <TableHead className='w-[50px] sticky left-0 bg-gray-50 z-20'>
-                      #
-                    </TableHead>
+            <Table>
+              <TableHeader>
+                <TableRow className='bg-gray-50 h-8'>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 sticky left-0 bg-gray-50 z-20 w-8'>
+                    #
+                  </TableHead>
 
-                    {/* ── FCL columns ── */}
-                    {isFCL && (
-                      <>
-                        <TableHead className='min-w-[140px]'>
-                          Container No.
-                        </TableHead>
-                        <TableHead className='min-w-[100px]'>Type</TableHead>
-                        <TableHead className='min-w-[80px]'>Size</TableHead>
-                        <TableHead className='min-w-[110px] text-right'>
-                          Weight (kg)
-                        </TableHead>
-                      </>
-                    )}
-
-                    {/* ── LCL / AIR columns ── */}
-                    {isLCLorAIR && (
-                      <>
-                        <TableHead className='min-w-[180px]'>
-                          Package Type
-                        </TableHead>
-                        <TableHead className='min-w-[90px]'>Qty</TableHead>
-                        <TableHead className='min-w-[110px]'>
-                          Weight (kg)
-                        </TableHead>
-                      </>
-                    )}
-
-                    <TableHead className='min-w-[220px]'>Transporter</TableHead>
-                    <TableHead className='min-w-[220px]'>Destination</TableHead>
-
-                    {/* Empty Return — FCL only */}
-                    {isFCL && (
-                      <TableHead className='min-w-[220px]'>
-                        Empty Return
+                  {/* FCL-only columns */}
+                  {isFCL && (
+                    <>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[130px]'>
+                        Container No.
                       </TableHead>
-                    )}
+                      <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[80px]'>
+                        Type
+                      </TableHead>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[60px]'>
+                        Size
+                      </TableHead>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[90px] text-right'>
+                        Wt (kg)
+                      </TableHead>
+                    </>
+                  )}
 
-                    <TableHead className='min-w-[130px]'>
-                      Buying (PKR)
+                  {/* LCL/AIR-only columns */}
+                  {isLCLorAIR && (
+                    <>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[150px]'>
+                        Package Type
+                      </TableHead>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[70px]'>
+                        Qty
+                      </TableHead>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[90px]'>
+                        Wt (kg)
+                      </TableHead>
+                    </>
+                  )}
+
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[180px]'>
+                    Transporter
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[180px]'>
+                    Destination
+                  </TableHead>
+
+                  {isFCL && (
+                    <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[180px]'>
+                      Empty Return
                     </TableHead>
-                    <TableHead className='min-w-[130px]'>
-                      To-Pay (PKR)
-                    </TableHead>
-                    <TableHead className='min-w-[150px]'>
-                      Dispatch Date
-                    </TableHead>
-                    <TableHead className='w-[80px] sticky right-0 bg-gray-50 z-20'>
-                      Actions
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
+                  )}
 
-                <TableBody>
-                  {dispatchRecords.map(
-                    (record: DispatchRecord, index: number) => (
-                      <TableRow key={index} className='hover:bg-gray-50'>
-                        {/* Row number */}
-                        <TableCell className='font-medium sticky left-0 bg-white z-10'>
-                          {index + 1}
-                        </TableCell>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[110px] text-right'>
+                    Buying (PKR)
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[110px] text-right'>
+                    To-Pay (PKR)
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[120px]'>
+                    Dispatch Date
+                  </TableHead>
+                  <TableHead className='text-[11px] py-1 px-1 sticky right-0 bg-gray-50 z-20 w-10'></TableHead>
+                </TableRow>
+              </TableHeader>
 
-                        {/* ── FCL cells ── */}
-                        {isFCL && (
-                          <>
-                            <TableCell className='font-mono text-sm'>
-                              {record.containerNumber}
-                            </TableCell>
-                            <TableCell>
-                              {getContainerTypeLabel(record.containerTypeId)}
-                            </TableCell>
-                            <TableCell>
-                              {getContainerSizeLabel(record.containerSizeId)}
-                            </TableCell>
-                            <TableCell className='text-right'>
-                              {(record.netWeight || 0).toFixed(2)}
-                            </TableCell>
-                          </>
-                        )}
+              <TableBody>
+                {dispatchRecords.map(
+                  (record: DispatchRecord, index: number) => (
+                    <TableRow key={index} className='h-9 hover:bg-gray-50'>
+                      {/* Row number */}
+                      <TableCell className='text-[12px] py-0.5 px-2 sticky left-0 bg-white z-10 font-medium'>
+                        {index + 1}
+                      </TableCell>
 
-                        {/* ── LCL / AIR cells ── */}
-                        {isLCLorAIR && (
-                          <>
-                            {/* Package Type */}
-                            <TableCell>
-                              <Select
-                                key={`pkg-${index}-${record.packageType || "none"}`}
-                                defaultValue={record.packageType}
-                                onValueChange={(value) =>
-                                  updateDispatchRecord(
-                                    index,
-                                    "packageType",
-                                    value,
-                                  )
-                                }
-                              >
-                                <SelectTrigger className='h-9'>
-                                  <SelectValue placeholder='Select'>
-                                    {record.packageType || "Select"}
-                                  </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent
-                                  position='popper'
-                                  sideOffset={5}
-                                  className='max-h-[300px] overflow-y-auto z-50'
-                                >
-                                  {packageTypes
-                                    .filter(
-                                      (pkg: any) => pkg?.value && pkg?.label,
-                                    )
-                                    .map((pkg: any) => (
-                                      <SelectItem
-                                        key={pkg.value}
-                                        value={pkg.label}
-                                      >
-                                        {pkg.label}
-                                      </SelectItem>
-                                    ))}
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
+                      {/* FCL read-only cells */}
+                      {isFCL && (
+                        <>
+                          <TableCell className='text-[12px] py-0.5 px-2 font-mono'>
+                            {record.containerNumber}
+                          </TableCell>
+                          <TableCell className='text-[12px] py-0.5 px-2'>
+                            {getContainerTypeLabel(record.containerTypeId)}
+                          </TableCell>
+                          <TableCell className='text-[12px] py-0.5 px-2'>
+                            {getContainerSizeLabel(record.containerSizeId)}
+                          </TableCell>
+                          <TableCell className='text-[12px] py-0.5 px-2 text-right'>
+                            {(record.netWeight || 0).toFixed(2)}
+                          </TableCell>
+                        </>
+                      )}
 
-                            {/* Qty */}
-                            <TableCell>
-                              <Input
-                                type='number'
-                                className='h-9'
-                                value={record.quantity ?? ""}
-                                onChange={(e) =>
-                                  updateDispatchRecord(
-                                    index,
-                                    "quantity",
-                                    parseInt(e.target.value) || 0,
-                                  )
-                                }
-                              />
-                            </TableCell>
-
-                            {/* Weight */}
-                            <TableCell>
-                              <Input
-                                type='number'
-                                step='0.01'
-                                className='h-9'
-                                value={record.netWeight ?? ""}
-                                onChange={(e) =>
-                                  updateDispatchRecord(
-                                    index,
-                                    "netWeight",
-                                    parseFloat(e.target.value) || 0,
-                                  )
-                                }
-                              />
-                            </TableCell>
-                          </>
-                        )}
-
-                        {/* Transporter */}
-                        <TableCell>
-                          <Select
-                            key={`trans-${index}-${record.transporterPartyId || "none"}`}
-                            defaultValue={record.transporterPartyId?.toString()}
-                            onValueChange={(value) =>
-                              updateDispatchRecord(
-                                index,
-                                "transporterPartyId",
-                                parseInt(value),
-                              )
-                            }
-                          >
-                            <SelectTrigger className='h-9'>
-                              <SelectValue placeholder='Select Transporter'>
-                                {record.transporterPartyId
-                                  ? getPartyLabel(record.transporterPartyId)
-                                  : "Select Transporter"}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent
-                              position='popper'
-                              sideOffset={5}
-                              className='max-h-[300px] overflow-y-auto z-50'
-                            >
-                              {(transporters.length > 0
-                                ? transporters
-                                : parties
-                              )
-                                .filter((p: any) => p?.value)
-                                .map((party: any) => (
-                                  <SelectItem
-                                    key={party.value}
-                                    value={party.value.toString()}
-                                  >
-                                    {party.label || "Unknown"}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-
-                        {/* Destination */}
-                        <TableCell>
-                          <Select
-                            key={`dest-${index}-${record.destinationLocationId || "none"}`}
-                            defaultValue={record.destinationLocationId?.toString()}
-                            onValueChange={(value) =>
-                              updateDispatchRecord(
-                                index,
-                                "destinationLocationId",
-                                parseInt(value),
-                              )
-                            }
-                          >
-                            <SelectTrigger className='h-9'>
-                              <SelectValue placeholder='Select Destination'>
-                                {record.destinationLocationId
-                                  ? getLocationLabel(
-                                      record.destinationLocationId,
-                                    )
-                                  : "Select Destination"}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent
-                              position='popper'
-                              sideOffset={5}
-                              className='max-h-[300px] overflow-y-auto z-50'
-                            >
-                              {locations
-                                .filter((l: any) => l?.value)
-                                .map((location: any) => (
-                                  <SelectItem
-                                    key={location.value}
-                                    value={location.value.toString()}
-                                  >
-                                    {location.label || "Unknown"}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-
-                        {/* Empty Return — FCL only */}
-                        {isFCL && (
-                          <TableCell>
-                            <Select
-                              key={`return-${index}-${record.containerReturnTerminalId || "none"}`}
-                              defaultValue={record.containerReturnTerminalId?.toString()}
-                              onValueChange={(value) =>
+                      {/* LCL/AIR editable cells */}
+                      {isLCLorAIR && (
+                        <>
+                          <TableCell className='py-0.5 px-1'>
+                            <ReactSelect
+                              options={packageTypes.filter(
+                                (p: any) => p?.value && p?.label,
+                              )}
+                              value={
+                                packageTypes.find(
+                                  (p: any) => p.label === record.packageType,
+                                ) || null
+                              }
+                              onChange={(val) =>
                                 updateDispatchRecord(
                                   index,
-                                  "containerReturnTerminalId",
-                                  parseInt(value),
+                                  "packageType",
+                                  val?.label ?? "",
                                 )
                               }
-                            >
-                              <SelectTrigger className='h-9'>
-                                <SelectValue placeholder='Select Return'>
-                                  {record.containerReturnTerminalId
-                                    ? getLocationLabel(
-                                        record.containerReturnTerminalId,
-                                      )
-                                    : "Select Return"}
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectContent
-                                position='popper'
-                                sideOffset={5}
-                                className='max-h-[300px] overflow-y-auto z-50'
-                              >
-                                {locations
-                                  .filter((l: any) => l?.value)
-                                  .map((location: any) => (
-                                    <SelectItem
-                                      key={location.value}
-                                      value={location.value.toString()}
-                                    >
-                                      {location.label || "Unknown"}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
+                              styles={rowSelectStyles}
+                              isClearable
+                              placeholder='Select…'
+                            />
                           </TableCell>
-                        )}
+                          <TableCell className='py-0.5 px-1'>
+                            <Input
+                              type='number'
+                              className={`${tinyInputClass} w-[70px]`}
+                              value={record.quantity ?? ""}
+                              placeholder='0'
+                              onChange={(e) =>
+                                updateDispatchRecord(
+                                  index,
+                                  "quantity",
+                                  parseInt(e.target.value) || 0,
+                                )
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className='py-0.5 px-1'>
+                            <Input
+                              type='number'
+                              step='0.01'
+                              className={`${tinyInputClass} w-[90px]`}
+                              value={record.netWeight ?? ""}
+                              placeholder='0.00'
+                              onChange={(e) =>
+                                updateDispatchRecord(
+                                  index,
+                                  "netWeight",
+                                  parseFloat(e.target.value) || 0,
+                                )
+                              }
+                            />
+                          </TableCell>
+                        </>
+                      )}
 
-                        {/* Buying Amount */}
-                        <TableCell>
-                          <Input
-                            type='number'
-                            step='0.01'
-                            className='h-9'
-                            placeholder='0.00'
-                            value={record.buyingAmountLc || ""}
-                            onChange={(e) =>
+                      {/* Transporter */}
+                      <TableCell className='py-0.5 px-1'>
+                        <ReactSelect
+                          options={transporterOptions}
+                          value={
+                            transporterOptions.find(
+                              (p: any) => p.value === record.transporterPartyId,
+                            ) || null
+                          }
+                          onChange={(val) =>
+                            updateDispatchRecord(
+                              index,
+                              "transporterPartyId",
+                              val?.value ?? undefined,
+                            )
+                          }
+                          styles={rowSelectStyles}
+                          isClearable
+                          placeholder='Transporter…'
+                        />
+                      </TableCell>
+
+                      {/* Destination */}
+                      <TableCell className='py-0.5 px-1'>
+                        <ReactSelect
+                          options={locations}
+                          value={
+                            locations.find(
+                              (l: any) =>
+                                l.value === record.destinationLocationId,
+                            ) || null
+                          }
+                          onChange={(val) =>
+                            updateDispatchRecord(
+                              index,
+                              "destinationLocationId",
+                              val?.value ?? undefined,
+                            )
+                          }
+                          styles={rowSelectStyles}
+                          isClearable
+                          placeholder='Destination…'
+                        />
+                      </TableCell>
+
+                      {/* Empty Return — FCL only */}
+                      {isFCL && (
+                        <TableCell className='py-0.5 px-1'>
+                          <ReactSelect
+                            options={locations}
+                            value={
+                              locations.find(
+                                (l: any) =>
+                                  l.value === record.containerReturnTerminalId,
+                              ) || null
+                            }
+                            onChange={(val) =>
                               updateDispatchRecord(
                                 index,
-                                "buyingAmountLc",
-                                parseFloat(e.target.value) || 0,
+                                "containerReturnTerminalId",
+                                val?.value ?? undefined,
                               )
                             }
+                            styles={rowSelectStyles}
+                            isClearable
+                            placeholder='Return terminal…'
                           />
                         </TableCell>
+                      )}
 
-                        {/* To-Pay Amount */}
-                        <TableCell>
-                          <Input
-                            type='number'
-                            step='0.01'
-                            className='h-9'
-                            placeholder='0.00'
-                            value={record.topayAmountLc || ""}
-                            onChange={(e) =>
-                              updateDispatchRecord(
-                                index,
-                                "topayAmountLc",
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                          />
-                        </TableCell>
+                      {/* Buying */}
+                      <TableCell className='py-0.5 px-1'>
+                        <Input
+                          type='number'
+                          step='0.01'
+                          placeholder='0.00'
+                          className={`${tinyInputClass} w-[100px] text-right`}
+                          value={record.buyingAmountLc || ""}
+                          onChange={(e) =>
+                            updateDispatchRecord(
+                              index,
+                              "buyingAmountLc",
+                              parseFloat(e.target.value) || 0,
+                            )
+                          }
+                        />
+                      </TableCell>
 
-                        {/* Dispatch Date */}
-                        <TableCell>
-                          <Input
-                            type='date'
-                            className='h-9'
-                            value={record.dispatchDate || ""}
-                            onChange={(e) =>
-                              updateDispatchRecord(
-                                index,
-                                "dispatchDate",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </TableCell>
+                      {/* To-Pay */}
+                      <TableCell className='py-0.5 px-1'>
+                        <Input
+                          type='number'
+                          step='0.01'
+                          placeholder='0.00'
+                          className={`${tinyInputClass} w-[100px] text-right`}
+                          value={record.topayAmountLc || ""}
+                          onChange={(e) =>
+                            updateDispatchRecord(
+                              index,
+                              "topayAmountLc",
+                              parseFloat(e.target.value) || 0,
+                            )
+                          }
+                        />
+                      </TableCell>
 
-                        {/* Delete */}
-                        <TableCell className='sticky right-0 bg-white z-10'>
-                          <Button
-                            type='button'
-                            variant='ghost'
-                            size='sm'
-                            onClick={() => handleDeleteRecord(index)}
-                            className='h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50'
-                          >
-                            ×
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ),
-                  )}
-                </TableBody>
-              </Table>
+                      {/* Dispatch Date */}
+                      <TableCell className='py-0.5 px-1'>
+                        <Input
+                          type='date'
+                          className={`${tinyInputClass} w-[130px]`}
+                          value={record.dispatchDate || ""}
+                          onChange={(e) =>
+                            updateDispatchRecord(
+                              index,
+                              "dispatchDate",
+                              e.target.value,
+                            )
+                          }
+                        />
+                      </TableCell>
+
+                      {/* Delete */}
+                      <TableCell className='py-0.5 px-1 sticky right-0 bg-white z-10'>
+                        <button
+                          type='button'
+                          onClick={() => handleDeleteRecord(index)}
+                          className='h-[28px] w-[28px] flex items-center justify-center rounded hover:bg-red-100 text-red-500 text-lg leading-none'
+                        >
+                          ×
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ),
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
+        {/* ── SUMMARY ── */}
+        {dispatchRecords.length > 0 && (
+          <>
+            <SectionBar title='Summary' />
+            <div className='flex flex-wrap gap-x-6 gap-y-1 text-[12px] py-0.5'>
+              <span className='text-gray-500'>
+                {isFCL ? "Containers" : "Packages"}:{" "}
+                <strong className='text-gray-800'>{totals.count}</strong>
+              </span>
+              <span className='text-gray-500'>
+                Total Weight:{" "}
+                <strong className='text-gray-800'>
+                  {totals.weight.toFixed(2)} kg
+                </strong>
+              </span>
+              <span className='text-gray-500'>
+                Total Buying:{" "}
+                <strong className='text-blue-700'>
+                  PKR{" "}
+                  {totals.buying.toLocaleString("en-PK", {
+                    minimumFractionDigits: 2,
+                  })}
+                </strong>
+              </span>
+              <span className='text-gray-500'>
+                Total To-Pay:{" "}
+                <strong className='text-orange-700'>
+                  PKR{" "}
+                  {totals.toPay.toLocaleString("en-PK", {
+                    minimumFractionDigits: 2,
+                  })}
+                </strong>
+              </span>
             </div>
           </>
         )}
 
-        {/* Summary Footer */}
-        {dispatchRecords.length > 0 && (
-          <div className='p-4 border-t bg-gray-50'>
-            <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm'>
-              <div>
-                <span className='text-gray-600'>
-                  Total {isFCL ? "Containers" : "Packages"}:
-                </span>{" "}
-                <span className='font-semibold'>{totals.containers}</span>
-              </div>
-              <div>
-                <span className='text-gray-600'>Total Weight:</span>{" "}
-                <span className='font-semibold'>
-                  {totals.totalWeight.toFixed(2)} kg
-                </span>
-              </div>
-              <div>
-                <span className='text-gray-600'>Total Buying:</span>{" "}
-                <span className='font-semibold'>
-                  PKR{" "}
-                  {totals.totalBuying.toLocaleString("en-PK", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-              <div>
-                <span className='text-gray-600'>Total To-Pay:</span>{" "}
-                <span className='font-semibold'>
-                  PKR{" "}
-                  {totals.totalToPay.toLocaleString("en-PK", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Dispatch Notes */}
-      <div className='bg-white p-6 rounded-lg border'>
-        <h3 className='text-lg font-semibold mb-4'>Dispatch Notes</h3>
+        {/* ── DISPATCH NOTES ── */}
+        <SectionBar title='Dispatch Notes' />
         <textarea
-          className='w-full min-h-[100px] p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
-          placeholder='Enter any additional dispatch notes or instructions...'
+          className='w-full min-h-[70px] text-[13px] px-2 py-1.5 border border-gray-300 rounded resize-none focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+          placeholder='Additional dispatch notes or instructions…'
           value={form.watch("dispatchAddress") || ""}
           onChange={(e) => form.setValue("dispatchAddress", e.target.value)}
         />

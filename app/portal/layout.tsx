@@ -127,22 +127,22 @@ export default function RootLayout({
     pathname === "/portal"
       ? "Dashboard"
       : secondSegment &&
-        (secondSegment === "regulators" || secondSegment === "operators")
-      ? "Stakeholder Management"
-      : secondSegment &&
-        (secondSegment === "blockoperators" ||
-          pathNameMapping[secondSegment] === "Assets Management")
-      ? "System Administration"
-      : pathNameMapping[firstSegment] ||
-        firstSegment?.replace(/-/g, " ").toUpperCase();
+          (secondSegment === "regulators" || secondSegment === "operators")
+        ? "Stakeholder Management"
+        : secondSegment &&
+            (secondSegment === "blockoperators" ||
+              pathNameMapping[secondSegment] === "Assets Management")
+          ? "System Administration"
+          : pathNameMapping[firstSegment] ||
+            firstSegment?.replace(/-/g, " ").toUpperCase();
 
   const second =
     pathname === "/portal"
       ? null
       : secondSegment
-      ? pathNameMapping[secondSegment] ||
-        secondSegment.replace(/-/g, " ").toUpperCase()
-      : null;
+        ? pathNameMapping[secondSegment] ||
+          secondSegment.replace(/-/g, " ").toUpperCase()
+        : null;
 
   // Language Switch
   const handleLanguageChange = (lng: string) => {
@@ -171,12 +171,6 @@ export default function RootLayout({
 
   return (
     <I18nextProvider i18n={i18n}>
-      {/* Google Maps Script */}
-      <Script
-        src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAP_API_KEY}&libraries=places`}
-        strategy='beforeInteractive'
-      />
-
       {/* Background Container */}
       <div className='fixed inset-0 -z-10'>
         {/* Globe Background Image */}

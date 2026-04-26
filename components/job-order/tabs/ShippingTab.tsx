@@ -1,5 +1,4 @@
 import { TabsContent } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   FormControl,
   FormField,
@@ -18,7 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import Select from "react-select";
-import { Plus, Trash2, AlertCircle, Package, Ship, Anchor } from "lucide-react";
+import { Plus, Trash2, AlertCircle } from "lucide-react";
 import { compactSelectStyles } from "../utils/styles";
 import { useState, useEffect } from "react";
 
@@ -85,6 +84,73 @@ interface ShippingTabProps {
   toast: any;
 }
 
+// ─── Tiny reusable wrappers for ultra-compact layout ───────────────────────
+
+/** A labelled field cell — label on top, control below, minimal gap */
+function Field({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col gap-0.5 ${className}`}>
+      <span className='text-[11px] font-semibold uppercase tracking-wide text-gray-500 leading-none'>
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/** Horizontal divider with a section title */
+function SectionBar({ title }: { title: string }) {
+  return (
+    <div className='flex items-center gap-2 mt-4 mb-2 first:mt-0'>
+      <span className='text-[11px] font-bold uppercase tracking-widest text-blue-700 whitespace-nowrap'>
+        {title}
+      </span>
+      <div className='flex-1 border-t border-blue-200' />
+    </div>
+  );
+}
+
+// Tighter select styles tuned for compact rows
+const tinySelectStyles = {
+  ...compactSelectStyles,
+  control: (base: any, state: any) => ({
+    ...base,
+    minHeight: "30px",
+    height: "30px",
+    fontSize: "13px",
+    borderColor: state.isFocused ? "#3b82f6" : "#d1d5db",
+    boxShadow: state.isFocused ? "0 0 0 1px #3b82f6" : "none",
+    "&:hover": { borderColor: "#3b82f6" },
+  }),
+  valueContainer: (base: any) => ({ ...base, padding: "0 6px" }),
+  input: (base: any) => ({ ...base, margin: 0, padding: 0, fontSize: "13px" }),
+  indicatorsContainer: (base: any) => ({ ...base, height: "30px" }),
+  indicatorSeparator: () => ({ display: "none" }),
+  dropdownIndicator: (base: any) => ({ ...base, padding: "0 4px" }),
+  menu: (base: any) => ({ ...base, fontSize: "13px", zIndex: 9999 }),
+  option: (base: any, state: any) => ({
+    ...base,
+    padding: "5px 10px",
+    backgroundColor: state.isSelected
+      ? "#3b82f6"
+      : state.isFocused
+        ? "#eff6ff"
+        : "white",
+    color: state.isSelected ? "white" : "#111",
+  }),
+};
+
+const tinyInputClass =
+  "h-[30px] text-[13px] px-2 py-0 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
+
 export default function ShippingTab(props: ShippingTabProps) {
   const {
     form,
@@ -99,7 +165,6 @@ export default function ShippingTab(props: ShippingTabProps) {
     packageTypes,
     freightTypes,
     blStatuses,
-    loadingParties,
     loadingLocations,
     loadingVessels,
     loadingContainerTypes,
@@ -118,61 +183,37 @@ export default function ShippingTab(props: ShippingTabProps) {
     toast,
   } = props;
 
-  const [showAddMorePrompt, setShowAddMorePrompt] = useState(false);
   const [duplicateContainerNumbers, setDuplicateContainerNumbers] = useState<
     string[]
   >([]);
   const containerNoPattern = /^[A-Z]{4}[-]?\d{6,7}[-]?\d?$/;
 
-  // ✅ AUTO-CALCULATE Last Free Day
+  // Auto-calculate Last Free Day
   useEffect(() => {
     const etaDate = form.watch("etaDate");
     const freeDays = form.watch("freeDays");
-
     if (etaDate && freeDays > 0) {
-      // Parse the ETA date
       const eta = new Date(etaDate);
-
-      // Add free days to ETA (including the arrival date)
       const lastFreeDay = new Date(eta);
       lastFreeDay.setDate(eta.getDate() + freeDays);
-
-      // Format as YYYY-MM-DD for input field
-      const formattedDate = lastFreeDay.toISOString().split("T")[0];
-
-      // Update the form field
-      form.setValue("lastFreeDay", formattedDate);
-    } else if (!etaDate || freeDays === 0) {
-      // Clear last free day if either field is empty
+      form.setValue("lastFreeDay", lastFreeDay.toISOString().split("T")[0]);
+    } else {
       form.setValue("lastFreeDay", "");
     }
   }, [form.watch("etaDate"), form.watch("freeDays")]);
 
-  const checkForDuplicates = (containerNo: string): boolean => {
-    return fclContainers.some(
-      (container) =>
-        container.containerNo.toUpperCase() === containerNo.toUpperCase(),
+  const checkForDuplicates = (containerNo: string) =>
+    fclContainers.some(
+      (c) => c.containerNo.toUpperCase() === containerNo.toUpperCase(),
     );
-  };
-
-  const findDuplicateContainerNumbers = () => {
-    const containerNos = fclContainers.map((c) => c.containerNo.toUpperCase());
-    const duplicates: string[] = [];
-
-    containerNos.forEach((containerNo, index) => {
-      if (
-        containerNos.indexOf(containerNo) !== index &&
-        !duplicates.includes(containerNo)
-      ) {
-        duplicates.push(containerNo);
-      }
-    });
-
-    setDuplicateContainerNumbers(duplicates);
-  };
 
   useEffect(() => {
-    findDuplicateContainerNumbers();
+    const nos = fclContainers.map((c) => c.containerNo.toUpperCase());
+    const dups: string[] = [];
+    nos.forEach((n, i) => {
+      if (nos.indexOf(n) !== i && !dups.includes(n)) dups.push(n);
+    });
+    setDuplicateContainerNumbers(dups);
   }, [fclContainers]);
 
   const handleAddFcl = (data: FclContainer) => {
@@ -180,35 +221,30 @@ export default function ShippingTab(props: ShippingTabProps) {
       toast({
         variant: "destructive",
         title: "Invalid Container Number",
-        description: "Format should be: ABCU-123456-7 or ABCU1234567",
+        description: "Format: ABCU-123456-7 or ABCU1234567",
       });
       return;
     }
-
     if (checkForDuplicates(data.containerNo)) {
       toast({
         variant: "destructive",
-        title: "Duplicate Container Number",
-        description: `Container ${data.containerNo} already exists. Please use a unique container number.`,
+        title: "Duplicate Container",
+        description: `${data.containerNo} already exists.`,
       });
       return;
     }
-
-    const currentContainerSizeId = data.containerSizeId;
-    const currentContainerTypeId = data.containerTypeId;
-
-    const containerData: FclContainer = {
-      ...data,
-      noOfPackages: data.noOfPackages || 0,
-      packageType: data.packageType || "NA",
-    };
-
-    setFclContainers([...fclContainers, containerData]);
-
+    setFclContainers([
+      ...fclContainers,
+      {
+        ...data,
+        noOfPackages: data.noOfPackages || 0,
+        packageType: data.packageType || "NA",
+      },
+    ]);
     fclForm.reset({
       containerNo: "",
-      containerSizeId: currentContainerSizeId,
-      containerTypeId: currentContainerTypeId,
+      containerSizeId: data.containerSizeId,
+      containerTypeId: data.containerTypeId,
       tareWeight: 0,
       sealNo: "",
       gateOutDate: "",
@@ -217,74 +253,133 @@ export default function ShippingTab(props: ShippingTabProps) {
       noOfPackages: 0,
       packageType: "",
     });
-
-    setShowAddMorePrompt(true);
-
-    toast({
-      title: "Success",
-      description: `Container ${data.containerNo} added successfully`,
-    });
-  };
-
-  const handleAddMoreYes = () => {
-    setShowAddMorePrompt(false);
-  };
-
-  const handleAddMoreNo = () => {
-    setShowAddMorePrompt(false);
-    setShowFclForm(false);
+    toast({ title: "Container added", description: data.containerNo });
   };
 
   const handleDeleteFcl = (index: number) => {
-    if (confirm("Are you sure you want to delete this container?")) {
-      setFclContainers(
-        fclContainers.filter((_: FclContainer, i: number) => i !== index),
-      );
-      toast({ title: "Success", description: "Container deleted" });
+    if (confirm("Delete this container?")) {
+      setFclContainers(fclContainers.filter((_, i) => i !== index));
     }
   };
 
-  const isDuplicateContainer = (containerNo: string): boolean => {
-    return duplicateContainerNumbers.includes(containerNo.toUpperCase());
-  };
-
-  const getDuplicateCount = (containerNo: string): number => {
-    return fclContainers.filter(
-      (container) =>
-        container.containerNo.toUpperCase() === containerNo.toUpperCase(),
-    ).length;
-  };
-
   return (
-    <TabsContent value='shipping' className='space-y-4'>
-      {/* Document Information Section */}
-      <Card>
-        <CardHeader className='py-3 px-4 bg-blue-50 border-b'>
-          <div className='flex items-center gap-2'>
-            <Ship className='h-4 w-4 text-blue-600' />
-            <CardTitle className='text-base'>Document Information</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className='p-4 space-y-3'>
-          {/* House Document Row - Conditional */}
+    <TabsContent value='shipping'>
+      {/* ── Single white card, everything inside ── */}
+      <div className='bg-white border border-gray-200 rounded-md p-4 space-y-1'>
+        {/* ── DOCUMENT INFORMATION ── */}
+        <SectionBar title='Document Information' />
+        <div className='grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-x-3 gap-y-3'>
+          {/* Master Doc No — wider */}
+          <FormField
+            control={form.control}
+            name='masterDocumentNumber'
+            render={({ field }) => (
+              <FormItem className='col-span-2'>
+                <Field label='Master Doc No.'>
+                  <FormControl>
+                    <Input
+                      className={tinyInputClass}
+                      {...field}
+                      value={field.value || ""}
+                      placeholder='e.g. MAEU123456789'
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+
+          {/* Master Doc Date */}
+          <FormField
+            control={form.control}
+            name='masterDocumentDate'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Master Doc Date'>
+                  <FormControl>
+                    <Input
+                      type='date'
+                      className={tinyInputClass}
+                      {...field}
+                      value={field.value || ""}
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+
+          {/* Local Agent */}
+          <FormField
+            control={form.control}
+            name='principalId'
+            render={({ field }) => (
+              <FormItem className='col-span-2'>
+                <Field label='Local Agent'>
+                  <FormControl>
+                    <Select
+                      options={localAgents}
+                      value={
+                        localAgents.find((p) => p.value === field.value) || null
+                      }
+                      onChange={(val) => field.onChange(val?.value)}
+                      styles={tinySelectStyles}
+                      isClearable
+                      placeholder='Select…'
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+
+          {/* Carrier */}
+          <FormField
+            control={form.control}
+            name='carrierPartyId'
+            render={({ field }) => (
+              <FormItem className='col-span-2'>
+                <Field label='Carrier'>
+                  <FormControl>
+                    <Select
+                      options={carriers}
+                      value={
+                        carriers.find((p) => p.value === field.value) || null
+                      }
+                      onChange={(val) => field.onChange(val?.value)}
+                      styles={tinySelectStyles}
+                      isClearable
+                      placeholder='Select…'
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+
+          {/* Conditional House fields */}
           {documentType === "House" && (
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+            <>
               <FormField
                 control={form.control}
                 name='houseDocumentNumber'
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className='text-sm font-medium'>
-                      House Document No.
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        value={field.value || ""}
-                        placeholder='Enter house document number'
-                      />
-                    </FormControl>
-                    <FormMessage />
+                  <FormItem className='col-span-2'>
+                    <Field label='House Doc No.'>
+                      <FormControl>
+                        <Input
+                          className={tinyInputClass}
+                          {...field}
+                          value={field.value || ""}
+                          placeholder='House document no.'
+                        />
+                      </FormControl>
+                    </Field>
+                    <FormMessage className='text-[10px]' />
                   </FormItem>
                 )}
               />
@@ -294,13 +389,17 @@ export default function ShippingTab(props: ShippingTabProps) {
                 name='houseDocumentDate'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className='text-sm font-medium'>
-                      House Document Date
-                    </FormLabel>
-                    <FormControl>
-                      <Input type='date' {...field} value={field.value || ""} />
-                    </FormControl>
-                    <FormMessage />
+                    <Field label='House Doc Date'>
+                      <FormControl>
+                        <Input
+                          type='date'
+                          className={tinyInputClass}
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                    </Field>
+                    <FormMessage className='text-[10px]' />
                   </FormItem>
                 )}
               />
@@ -309,908 +408,419 @@ export default function ShippingTab(props: ShippingTabProps) {
                 control={form.control}
                 name='overseasAgentId'
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className='text-sm font-medium'>
-                      Origin Agent
-                    </FormLabel>
-                    <FormControl>
-                      <Select
-                        options={parties}
-                        value={parties.find(
-                          (p: SelectOption) => p.value === field.value,
-                        )}
-                        onChange={(val) => field.onChange(val?.value)}
-                        styles={compactSelectStyles}
-                        isClearable
-                        placeholder='Select Origin Agent'
-                      />
-                    </FormControl>
-                    <FormMessage />
+                  <FormItem className='col-span-2'>
+                    <Field label='Origin Agent'>
+                      <FormControl>
+                        <Select
+                          options={parties}
+                          value={
+                            parties.find((p) => p.value === field.value) || null
+                          }
+                          onChange={(val) => field.onChange(val?.value)}
+                          styles={tinySelectStyles}
+                          isClearable
+                          placeholder='Select…'
+                        />
+                      </FormControl>
+                    </Field>
+                    <FormMessage className='text-[10px]' />
                   </FormItem>
                 )}
               />
-            </div>
+            </>
           )}
+        </div>
 
-          {/* Master Document Row */}
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-            <FormField
-              control={form.control}
-              name='masterDocumentNumber'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Master Document No.
-                  </FormLabel>
+        {/* ── VESSEL & SCHEDULE ── */}
+        <SectionBar title='Vessel & Schedule' />
+        <div className='grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-x-3 gap-y-3'>
+          <FormField
+            control={form.control}
+            name='vesselName'
+            render={({ field }) => (
+              <FormItem className='col-span-2'>
+                <Field label='Vessel / Flight No.'>
+                  <FormControl>
+                    <Select
+                      options={vessels}
+                      value={
+                        vessels.find((v) => v.value === field.value) || null
+                      }
+                      onChange={(val) => field.onChange(val?.value)}
+                      styles={tinySelectStyles}
+                      isLoading={loadingVessels}
+                      isClearable
+                      placeholder='Select vessel…'
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='etaDate'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Arrival Date (ETA)'>
                   <FormControl>
                     <Input
+                      type='date'
+                      className={tinyInputClass}
                       {...field}
                       value={field.value || ""}
-                      placeholder='Enter master document number'
                     />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
 
-            <FormField
-              control={form.control}
-              name='masterDocumentDate'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Master Document Date
-                  </FormLabel>
-                  <FormControl>
-                    <Input type='date' {...field} value={field.value || ""} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='principalId'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Local Agent
-                  </FormLabel>
-                  <FormControl>
-                    <Select
-                      options={localAgents}
-                      value={localAgents.find(
-                        (p: SelectOption) => p.value === field.value,
-                      )}
-                      onChange={(val) => field.onChange(val?.value)}
-                      styles={compactSelectStyles}
-                      isClearable
-                      placeholder='Select Local Agent'
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-
-          {/* Carrier & Free Days */}
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-            <FormField
-              control={form.control}
-              name='carrierPartyId'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>Carrier</FormLabel>
-                  <FormControl>
-                    <Select
-                      options={carriers}
-                      value={carriers.find(
-                        (p: SelectOption) => p.value === field.value,
-                      )}
-                      onChange={(val) => field.onChange(val?.value)}
-                      styles={compactSelectStyles}
-                      isClearable
-                      placeholder='Select Carrier'
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='freeDays'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Free Days
-                  </FormLabel>
+          <FormField
+            control={form.control}
+            name='freeDays'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Free Days'>
                   <FormControl>
                     <Input
                       type='number'
+                      className={tinyInputClass}
                       {...field}
                       value={field.value || 0}
                       onChange={(e) => field.onChange(Number(e.target.value))}
                       placeholder='0'
                     />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
 
-            {/* ✅ AUTO-CALCULATED Last Free Day */}
-            <FormField
-              control={form.control}
-              name='lastFreeDay'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Last Free Day (Auto-calculated)
-                  </FormLabel>
+          {/* Auto-calc Last Free Day */}
+          <FormField
+            control={form.control}
+            name='lastFreeDay'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Last Free Day ↺'>
                   <FormControl>
                     <Input
                       type='date'
+                      className={`${tinyInputClass} bg-amber-50 border-amber-300 cursor-not-allowed`}
                       {...field}
                       value={field.value || ""}
-                      className='bg-gray-100 cursor-not-allowed'
                       readOnly
                       disabled
                     />
                   </FormControl>
-                  <p className='text-xs text-gray-500 mt-1'>
-                    Auto-calculated: Arrival Date + Free Days
-                  </p>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </CardContent>
-      </Card>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
 
-      {/* Weight Information Section */}
-      <Card>
-        <CardHeader className='py-3 px-4 bg-green-50 border-b'>
-          <div className='flex items-center gap-2'>
-            <Package className='h-4 w-4 text-green-600' />
-            <CardTitle className='text-base'>Weight Information</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className='p-4'>
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-            <FormField
-              control={form.control}
-              name='chargeableWeight'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Chargeable Weight (kg)
-                  </FormLabel>
+          <FormField
+            control={form.control}
+            name='igmNumber'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='IGM No.'>
                   <FormControl>
                     <Input
-                      type='number'
-                      step='0.0001'
-                      {...field}
-                      value={field.value || 0.0}
-                      onChange={(e) => {
-                        const value = parseFloat(e.target.value);
-                        field.onChange(isNaN(value) ? 0 : value);
-                      }}
-                      placeholder='0.0000'
-                    />
-                  </FormControl>
-                  <p className='text-xs text-gray-500 mt-1'>
-                    For billing purposes
-                  </p>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='grossWeight'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Gross Weight (kg)
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type='number'
-                      step='0.0001'
-                      {...field}
-                      value={field.value || 0.0}
-                      className='bg-gray-100'
-                      readOnly
-                      placeholder='0.0000'
-                    />
-                  </FormControl>
-                  <p className='text-xs text-gray-500 mt-1'>
-                    Auto-calculated from containers
-                  </p>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='netWeight'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Net Weight (kg)
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type='number'
-                      step='0.0001'
-                      {...field}
-                      value={field.value || 0.0}
-                      onChange={(e) => {
-                        const value = parseFloat(e.target.value);
-                        field.onChange(isNaN(value) ? 0 : value);
-                      }}
-                      placeholder='0.0000'
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Ports & Locations Section */}
-      <Card>
-        <CardHeader className='py-3 px-4 bg-purple-50 border-b'>
-          <div className='flex items-center gap-2'>
-            <Anchor className='h-4 w-4 text-purple-600' />
-            <CardTitle className='text-base'>Ports & Locations</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className='p-4 space-y-3'>
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-            <FormField
-              control={form.control}
-              name='originPortId'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Port of Loading
-                  </FormLabel>
-                  <FormControl>
-                    <Select
-                      options={locations}
-                      value={locations.find(
-                        (l: SelectOption) => l.value === field.value,
-                      )}
-                      onChange={(val) => field.onChange(val?.value)}
-                      styles={compactSelectStyles}
-                      isLoading={loadingLocations}
-                      isClearable
-                      placeholder='Select Port of Loading'
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='destinationPortId'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Port of Discharge
-                  </FormLabel>
-                  <FormControl>
-                    <Select
-                      options={locations}
-                      value={locations.find(
-                        (l: SelectOption) => l.value === field.value,
-                      )}
-                      onChange={(val) => field.onChange(val?.value)}
-                      styles={compactSelectStyles}
-                      isLoading={loadingLocations}
-                      isClearable
-                      placeholder='Select Port of Discharge'
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-            <FormField
-              control={form.control}
-              name='placeOfDeliveryId'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Place of Delivery
-                  </FormLabel>
-                  <FormControl>
-                    <Select
-                      options={locations}
-                      value={locations.find(
-                        (l: SelectOption) => l.value === field.value,
-                      )}
-                      onChange={(val) => field.onChange(val?.value)}
-                      styles={compactSelectStyles}
-                      isLoading={loadingLocations}
-                      isClearable
-                      placeholder='Select Place of Delivery'
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='terminalPartyId'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Terminal
-                  </FormLabel>
-                  <FormControl>
-                    <Select
-                      options={terminals}
-                      value={terminals.find(
-                        (p: SelectOption) => p.value === field.value,
-                      )}
-                      onChange={(val) => field.onChange(val?.value)}
-                      styles={compactSelectStyles}
-                      isClearable
-                      placeholder='Select Terminal'
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Vessel & Schedule Section */}
-      <Card>
-        <CardHeader className='py-3 px-4 bg-orange-50 border-b'>
-          <div className='flex items-center gap-2'>
-            <Ship className='h-4 w-4 text-orange-600' />
-            <CardTitle className='text-base'>Vessel & Schedule</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className='p-4 space-y-3'>
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-            <FormField
-              control={form.control}
-              name='vesselName'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Vessel Name / Flight No.
-                  </FormLabel>
-                  <FormControl>
-                    <Select
-                      options={vessels}
-                      value={vessels.find(
-                        (v: SelectOption) => v.value === field.value,
-                      )}
-                      onChange={(val) => field.onChange(val?.value)}
-                      styles={compactSelectStyles}
-                      isLoading={loadingVessels}
-                      isClearable
-                      placeholder='Select Vessel'
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='etaDate'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Expected Arrival Date
-                  </FormLabel>
-                  <FormControl>
-                    <Input type='date' {...field} value={field.value || ""} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-            <FormField
-              control={form.control}
-              name='igmNumber'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>IGM No.</FormLabel>
-                  <FormControl>
-                    <Input
+                      className={tinyInputClass}
                       {...field}
                       value={field.value || ""}
-                      placeholder='Enter IGM number'
+                      placeholder='IGM number'
                     />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
 
-            <FormField
-              control={form.control}
-              name='indexNo'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Index No.
-                  </FormLabel>
+          <FormField
+            control={form.control}
+            name='indexNo'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Index No.'>
                   <FormControl>
                     <Input
+                      className={tinyInputClass}
                       {...field}
                       value={field.value || ""}
-                      placeholder='Enter index number'
+                      placeholder='Index no.'
                     />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
 
-            <FormField
-              control={form.control}
-              name='freightType'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-sm font-medium'>
-                    Freight Type
-                  </FormLabel>
+          <FormField
+            control={form.control}
+            name='freightType'
+            render={({ field }) => (
+              <FormItem className='col-span-2'>
+                <Field label='Freight Type'>
                   <FormControl>
                     <Select
                       options={freightTypes}
-                      value={freightTypes.find(
-                        (f: SelectOption) => f.value === field.value,
-                      )}
+                      value={
+                        freightTypes.find((f) => f.value === field.value) ||
+                        null
+                      }
                       onChange={(val) => field.onChange(val?.value)}
-                      styles={compactSelectStyles}
+                      styles={tinySelectStyles}
                       isLoading={loadingFreightTypes}
                       isClearable
-                      placeholder='Select Freight Type'
+                      placeholder='Select…'
                     />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
 
           <FormField
             control={form.control}
             name='blstatus'
             render={({ field }) => (
-              <FormItem>
-                <FormLabel className='text-sm font-medium'>
-                  Document Status
-                </FormLabel>
-                <FormControl>
-                  <Select
-                    options={blStatuses}
-                    value={blStatuses.find(
-                      (b: SelectOption) => b.value === field.value,
-                    )}
-                    onChange={(val) => field.onChange(val?.value)}
-                    styles={compactSelectStyles}
-                    isLoading={loadingBLStatuses}
-                    isClearable
-                    placeholder='Select BL Status'
-                  />
-                </FormControl>
-                <FormMessage />
+              <FormItem className='col-span-2'>
+                <Field label='Document Status'>
+                  <FormControl>
+                    <Select
+                      options={blStatuses}
+                      value={
+                        blStatuses.find((b) => b.value === field.value) || null
+                      }
+                      onChange={(val) => field.onChange(val?.value)}
+                      styles={tinySelectStyles}
+                      isLoading={loadingBLStatuses}
+                      isClearable
+                      placeholder='Select…'
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
               </FormItem>
             )}
           />
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* FCL Container Section */}
-      {shippingType === "FCL" && (
-        <Card>
-          <CardHeader className='py-3 px-4 bg-blue-50 border-b'>
-            <div className='flex items-center justify-between'>
-              <div className='flex items-center gap-2'>
-                <Package className='h-4 w-4 text-blue-600' />
-                <CardTitle className='text-base'>Container Details</CardTitle>
-                {fclContainers.length > 0 && (
-                  <span className='text-xs text-gray-600 ml-2'>
-                    ({fclContainers.length} container
-                    {fclContainers.length !== 1 ? "s" : ""})
-                  </span>
-                )}
-              </div>
-              <Button
-                type='button'
-                size='sm'
-                onClick={() => setShowFclForm(!showFclForm)}
-                className='h-8'
-              >
-                <Plus className='h-4 w-4 mr-1' />
-                {showFclForm ? "Hide Form" : "Add Container"}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className='p-4 space-y-3'>
-            {duplicateContainerNumbers.length > 0 && (
-              <div className='p-3 bg-red-50 border border-red-200 rounded-lg'>
-                <div className='flex items-center gap-2 mb-2'>
-                  <AlertCircle className='h-4 w-4 text-red-600' />
-                  <span className='text-sm font-semibold text-red-800'>
-                    Duplicate Container Numbers Found
-                  </span>
-                </div>
-                <div className='text-xs text-red-700'>
-                  The following container numbers appear more than once:{" "}
-                  <span className='font-semibold'>
-                    {duplicateContainerNumbers.join(", ")}
-                  </span>
-                  . Please ensure each container has a unique number.
-                </div>
-              </div>
+        {/* ── PORTS & LOCATIONS ── */}
+        <SectionBar title='Ports & Locations' />
+        <div className='grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-3'>
+          <FormField
+            control={form.control}
+            name='originPortId'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Port of Loading'>
+                  <FormControl>
+                    <Select
+                      options={locations}
+                      value={
+                        locations.find((l) => l.value === field.value) || null
+                      }
+                      onChange={(val) => field.onChange(val?.value)}
+                      styles={tinySelectStyles}
+                      isLoading={loadingLocations}
+                      isClearable
+                      placeholder='Select…'
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
             )}
+          />
 
-            {fclContainers.length > 0 && (
-              <div className='border rounded-lg overflow-hidden'>
-                <div className='overflow-x-auto'>
-                  <Table>
-                    <TableHeader>
-                      <TableRow className='bg-gray-50'>
-                        <TableHead className='font-semibold'>
-                          Container No.
-                        </TableHead>
-                        <TableHead className='font-semibold'>Size</TableHead>
-                        <TableHead className='font-semibold'>Type</TableHead>
-                        <TableHead className='font-semibold text-right'>
-                          Weight (kg)
-                        </TableHead>
-                        <TableHead className='font-semibold text-right'>
-                          Packages
-                        </TableHead>
-                        <TableHead className='font-semibold'>
-                          Package Type
-                        </TableHead>
-                        <TableHead className='font-semibold text-center'>
-                          Actions
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {fclContainers.map(
-                        (container: FclContainer, idx: number) => {
-                          const isDuplicate = isDuplicateContainer(
-                            container.containerNo,
-                          );
-                          const duplicateCount = getDuplicateCount(
-                            container.containerNo,
-                          );
-
-                          return (
-                            <TableRow
-                              key={idx}
-                              className={
-                                isDuplicate
-                                  ? "bg-red-50 hover:bg-red-100"
-                                  : "hover:bg-gray-50"
-                              }
-                            >
-                              <TableCell className='font-mono'>
-                                <div className='flex items-center gap-2'>
-                                  {container.containerNo}
-                                  {isDuplicate && (
-                                    <span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800'>
-                                      Duplicate
-                                    </span>
-                                  )}
-                                </div>
-                                {isDuplicate && duplicateCount > 1 && (
-                                  <div className='text-xs text-red-600 mt-1'>
-                                    Appears {duplicateCount} times
-                                  </div>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {containerSizes.find(
-                                  (s: SelectOption) =>
-                                    s.value === container.containerSizeId,
-                                )?.label || "-"}
-                              </TableCell>
-                              <TableCell>
-                                {containerTypes.find(
-                                  (t: SelectOption) =>
-                                    t.value === container.containerTypeId,
-                                )?.label || "-"}
-                              </TableCell>
-                              <TableCell className='text-right font-medium'>
-                                {container.tareWeight.toFixed(4)}
-                              </TableCell>
-                              <TableCell className='text-right'>
-                                {container.noOfPackages || 0}
-                              </TableCell>
-                              <TableCell>
-                                {container.packageType || "-"}
-                              </TableCell>
-                              <TableCell className='text-center'>
-                                <Button
-                                  type='button'
-                                  variant='ghost'
-                                  size='sm'
-                                  onClick={() => handleDeleteFcl(idx)}
-                                  className='h-8 w-8 p-0 hover:bg-red-50'
-                                >
-                                  <Trash2 className='h-4 w-4 text-red-600' />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        },
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
+          <FormField
+            control={form.control}
+            name='destinationPortId'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Port of Discharge'>
+                  <FormControl>
+                    <Select
+                      options={locations}
+                      value={
+                        locations.find((l) => l.value === field.value) || null
+                      }
+                      onChange={(val) => field.onChange(val?.value)}
+                      styles={tinySelectStyles}
+                      isLoading={loadingLocations}
+                      isClearable
+                      placeholder='Select…'
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
             )}
+          />
 
-            {(showFclForm || fclContainers.length === 0) && (
-              <Card className='border-2 border-blue-200 bg-blue-50'>
-                <CardContent className='p-4 space-y-4'>
-                  <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
-                    <FormField
-                      control={fclForm.control}
-                      name='containerNo'
-                      render={({ field }) => (
-                        <FormItem className='lg:col-span-2'>
-                          <FormLabel className='text-sm font-medium'>
-                            Container No. *
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              value={field.value || ""}
-                              placeholder='ABCU-123456-7'
-                              onChange={(e) => {
-                                const value = e.target.value.toUpperCase();
-                                field.onChange(value);
-                                if (checkForDuplicates(value)) {
-                                  toast({
-                                    variant: "warning",
-                                    title: "Warning",
-                                    description:
-                                      "This container number already exists",
-                                    duration: 2000,
-                                  });
-                                }
-                              }}
-                            />
-                          </FormControl>
-                          <p className='text-xs text-gray-600'>
-                            Format: ABCU-123456-7 or ABCU1234567
-                          </p>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+          <FormField
+            control={form.control}
+            name='placeOfDeliveryId'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Place of Delivery'>
+                  <FormControl>
+                    <Select
+                      options={locations}
+                      value={
+                        locations.find((l) => l.value === field.value) || null
+                      }
+                      onChange={(val) => field.onChange(val?.value)}
+                      styles={tinySelectStyles}
+                      isLoading={loadingLocations}
+                      isClearable
+                      placeholder='Select…'
                     />
-
-                    <FormField
-                      control={fclForm.control}
-                      name='containerSizeId'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className='text-sm font-medium'>
-                            Size *
-                          </FormLabel>
-                          <FormControl>
-                            <Select
-                              options={containerSizes}
-                              value={containerSizes.find(
-                                (s: SelectOption) => s.value === field.value,
-                              )}
-                              onChange={(val) => field.onChange(val?.value)}
-                              styles={compactSelectStyles}
-                              isLoading={loadingContainerSizes}
-                              isClearable
-                              placeholder='Select Size'
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={fclForm.control}
-                      name='containerTypeId'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className='text-sm font-medium'>
-                            Type *
-                          </FormLabel>
-                          <FormControl>
-                            <Select
-                              options={containerTypes}
-                              value={containerTypes.find(
-                                (t: SelectOption) => t.value === field.value,
-                              )}
-                              onChange={(val) => field.onChange(val?.value)}
-                              styles={compactSelectStyles}
-                              isLoading={loadingContainerTypes}
-                              isClearable
-                              placeholder='Select Type'
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={fclForm.control}
-                      name='tareWeight'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className='text-sm font-medium'>
-                            Weight (kg) *
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              type='number'
-                              step='0.0001'
-                              {...field}
-                              value={field.value || 0.0}
-                              onChange={(e) =>
-                                field.onChange(parseFloat(e.target.value) || 0)
-                              }
-                              placeholder='0.0000'
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={fclForm.control}
-                      name='noOfPackages'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className='text-sm font-medium'>
-                            No. of Packages
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              type='number'
-                              {...field}
-                              value={field.value || 0}
-                              onChange={(e) =>
-                                field.onChange(parseInt(e.target.value) || 0)
-                              }
-                              placeholder='0'
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={fclForm.control}
-                      name='packageType'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className='text-sm font-medium'>
-                            Package Type
-                          </FormLabel>
-                          <FormControl>
-                            <Select
-                              options={packageTypes}
-                              value={packageTypes.find(
-                                (p: SelectOption) => p.value === field.value,
-                              )}
-                              onChange={(val) => field.onChange(val?.value)}
-                              styles={compactSelectStyles}
-                              isLoading={loadingPackageTypes}
-                              isClearable
-                              placeholder='Select Type'
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <div className='flex justify-end'>
-                    <Button
-                      type='button'
-                      onClick={(e) => {
-                        e.preventDefault();
-                        fclForm.handleSubmit(handleAddFcl)();
-                      }}
-                      disabled={checkForDuplicates(
-                        fclForm.getValues("containerNo") || "",
-                      )}
-                      className='min-w-[150px]'
-                    >
-                      <Plus className='h-4 w-4 mr-2' />
-                      Add Container
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
             )}
+          />
 
-            {fclContainers.length === 0 && !showFclForm && (
-              <div className='text-center py-8 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed'>
-                <Package className='h-12 w-12 mx-auto mb-3 text-gray-400' />
-                <p className='text-sm font-medium mb-1'>
-                  No containers added yet
-                </p>
-                <p className='text-xs'>
-                  Click "Add Container" to add your first container
-                </p>
-              </div>
+          <FormField
+            control={form.control}
+            name='terminalPartyId'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Terminal'>
+                  <FormControl>
+                    <Select
+                      options={terminals}
+                      value={
+                        terminals.find((p) => p.value === field.value) || null
+                      }
+                      onChange={(val) => field.onChange(val?.value)}
+                      styles={tinySelectStyles}
+                      isClearable
+                      placeholder='Select…'
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
             )}
-          </CardContent>
-        </Card>
-      )}
+          />
+        </div>
 
-      {/* LCL/Air Package Information */}
-      {(shippingType === "LCL" || mode === "AIR") && (
-        <Card>
-          <CardHeader className='py-3 px-4 bg-green-50 border-b'>
-            <div className='flex items-center gap-2'>
-              <Package className='h-4 w-4 text-green-600' />
-              <CardTitle className='text-base'>Package Information</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className='p-4'>
-            <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
+        {/* ── WEIGHT ── */}
+        <SectionBar title='Weight' />
+        <div className='grid grid-cols-3 gap-x-3 gap-y-3 max-w-lg'>
+          <FormField
+            control={form.control}
+            name='chargeableWeight'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Chargeable (kg)'>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      step='0.0001'
+                      className={tinyInputClass}
+                      {...field}
+                      value={field.value || 0}
+                      onChange={(e) =>
+                        field.onChange(parseFloat(e.target.value) || 0)
+                      }
+                      placeholder='0.0000'
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='grossWeight'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Gross (kg) ↺'>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      step='0.0001'
+                      className={`${tinyInputClass} bg-amber-50 border-amber-300 cursor-not-allowed`}
+                      {...field}
+                      value={field.value || 0}
+                      readOnly
+                      placeholder='0.0000'
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='netWeight'
+            render={({ field }) => (
+              <FormItem>
+                <Field label='Net (kg)'>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      step='0.0001'
+                      className={tinyInputClass}
+                      {...field}
+                      value={field.value || 0}
+                      onChange={(e) =>
+                        field.onChange(parseFloat(e.target.value) || 0)
+                      }
+                      placeholder='0.0000'
+                    />
+                  </FormControl>
+                </Field>
+                <FormMessage className='text-[10px]' />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {/* ── LCL / AIR PACKAGES ── */}
+        {(shippingType === "LCL" || mode === "AIR") && (
+          <>
+            <SectionBar title='Package Information' />
+            <div className='grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-3 max-w-2xl'>
               <FormField
                 control={form.control}
                 name='qtyOfPackages'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className='text-sm font-medium'>
-                      No. of Packages (Qty)
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        {...field}
-                        value={field.value || 0}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                        placeholder='0'
-                      />
-                    </FormControl>
-                    <FormMessage />
+                    <Field label='Qty of Packages'>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          className={tinyInputClass}
+                          {...field}
+                          value={field.value || 0}
+                          onChange={(e) =>
+                            field.onChange(Number(e.target.value))
+                          }
+                          placeholder='0'
+                        />
+                      </FormControl>
+                    </Field>
+                    <FormMessage className='text-[10px]' />
                   </FormItem>
                 )}
               />
@@ -1220,23 +830,23 @@ export default function ShippingTab(props: ShippingTabProps) {
                 name='packagesType'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className='text-sm font-medium'>
-                      Package Type
-                    </FormLabel>
-                    <FormControl>
-                      <Select
-                        options={packageTypes}
-                        value={packageTypes.find(
-                          (p: SelectOption) => p.value === field.value,
-                        )}
-                        onChange={(val) => field.onChange(val?.value)}
-                        styles={compactSelectStyles}
-                        isLoading={loadingPackageTypes}
-                        isClearable
-                        placeholder='Select Package Type'
-                      />
-                    </FormControl>
-                    <FormMessage />
+                    <Field label='Package Type'>
+                      <FormControl>
+                        <Select
+                          options={packageTypes}
+                          value={
+                            packageTypes.find((p) => p.value === field.value) ||
+                            null
+                          }
+                          onChange={(val) => field.onChange(val?.value)}
+                          styles={tinySelectStyles}
+                          isLoading={loadingPackageTypes}
+                          isClearable
+                          placeholder='Select…'
+                        />
+                      </FormControl>
+                    </Field>
+                    <FormMessage className='text-[10px]' />
                   </FormItem>
                 )}
               />
@@ -1246,23 +856,22 @@ export default function ShippingTab(props: ShippingTabProps) {
                 name='packageWeight'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className='text-sm font-medium'>
-                      Weight (kg)
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        step='0.01'
-                        {...field}
-                        value={field.value || 0}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value);
-                          field.onChange(isNaN(value) ? 0 : value);
-                        }}
-                        placeholder='0.00'
-                      />
-                    </FormControl>
-                    <FormMessage />
+                    <Field label='Weight (kg)'>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          step='0.01'
+                          className={tinyInputClass}
+                          {...field}
+                          value={field.value || 0}
+                          onChange={(e) =>
+                            field.onChange(parseFloat(e.target.value) || 0)
+                          }
+                          placeholder='0.00'
+                        />
+                      </FormControl>
+                    </Field>
+                    <FormMessage className='text-[10px]' />
                   </FormItem>
                 )}
               />
@@ -1272,30 +881,318 @@ export default function ShippingTab(props: ShippingTabProps) {
                 name='packageVolume'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className='text-sm font-medium'>
-                      Volume (CBM)
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        step='0.001'
-                        {...field}
-                        value={field.value || 0}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value);
-                          field.onChange(isNaN(value) ? 0 : value);
-                        }}
-                        placeholder='0.000'
-                      />
-                    </FormControl>
-                    <FormMessage />
+                    <Field label='Volume (CBM)'>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          step='0.001'
+                          className={tinyInputClass}
+                          {...field}
+                          value={field.value || 0}
+                          onChange={(e) =>
+                            field.onChange(parseFloat(e.target.value) || 0)
+                          }
+                          placeholder='0.000'
+                        />
+                      </FormControl>
+                    </Field>
+                    <FormMessage className='text-[10px]' />
                   </FormItem>
                 )}
               />
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </>
+        )}
+
+        {/* ── FCL CONTAINERS ── */}
+        {shippingType === "FCL" && (
+          <>
+            <SectionBar
+              title={`Container Details${fclContainers.length > 0 ? ` (${fclContainers.length})` : ""}`}
+            />
+
+            {duplicateContainerNumbers.length > 0 && (
+              <div className='flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded text-xs text-red-700 mb-2'>
+                <AlertCircle className='h-3.5 w-3.5 flex-shrink-0' />
+                Duplicate container numbers:{" "}
+                <strong>{duplicateContainerNumbers.join(", ")}</strong>
+              </div>
+            )}
+
+            {/* Container table */}
+            {fclContainers.length > 0 && (
+              <div className='border border-gray-200 rounded overflow-hidden mb-2'>
+                <Table>
+                  <TableHeader>
+                    <TableRow className='bg-gray-50 h-8'>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2'>
+                        Container No.
+                      </TableHead>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2'>
+                        Size
+                      </TableHead>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2'>
+                        Type
+                      </TableHead>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2 text-right'>
+                        Weight (kg)
+                      </TableHead>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2 text-right'>
+                        Pkgs
+                      </TableHead>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2'>
+                        Pkg Type
+                      </TableHead>
+                      <TableHead className='text-[11px] font-semibold py-1 px-2 w-8'></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {fclContainers.map((container, idx) => {
+                      const isDup = duplicateContainerNumbers.includes(
+                        container.containerNo.toUpperCase(),
+                      );
+                      return (
+                        <TableRow
+                          key={idx}
+                          className={`h-8 ${isDup ? "bg-red-50" : "hover:bg-gray-50"}`}
+                        >
+                          <TableCell className='font-mono text-[12px] py-1 px-2'>
+                            {container.containerNo}
+                            {isDup && (
+                              <span className='ml-1 text-[10px] text-red-600 font-bold'>
+                                [DUP]
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className='text-[12px] py-1 px-2'>
+                            {containerSizes.find(
+                              (s) => s.value === container.containerSizeId,
+                            )?.label || "-"}
+                          </TableCell>
+                          <TableCell className='text-[12px] py-1 px-2'>
+                            {containerTypes.find(
+                              (t) => t.value === container.containerTypeId,
+                            )?.label || "-"}
+                          </TableCell>
+                          <TableCell className='text-[12px] py-1 px-2 text-right font-medium'>
+                            {container.tareWeight.toFixed(4)}
+                          </TableCell>
+                          <TableCell className='text-[12px] py-1 px-2 text-right'>
+                            {container.noOfPackages || 0}
+                          </TableCell>
+                          <TableCell className='text-[12px] py-1 px-2'>
+                            {container.packageType || "-"}
+                          </TableCell>
+                          <TableCell className='py-1 px-1'>
+                            <button
+                              type='button'
+                              onClick={() => handleDeleteFcl(idx)}
+                              className='p-1 rounded hover:bg-red-100 text-red-500 hover:text-red-700'
+                            >
+                              <Trash2 className='h-3.5 w-3.5' />
+                            </button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {/* Add container inline form */}
+            {(showFclForm || fclContainers.length === 0) && (
+              <div className='border border-blue-200 bg-blue-50 rounded p-3'>
+                <div className='grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-x-3 gap-y-3 items-end'>
+                  <FormField
+                    control={fclForm.control}
+                    name='containerNo'
+                    render={({ field }) => (
+                      <FormItem className='col-span-2'>
+                        <Field label='Container No. *'>
+                          <FormControl>
+                            <Input
+                              className={tinyInputClass}
+                              {...field}
+                              value={field.value || ""}
+                              placeholder='ABCU-123456-7'
+                              onChange={(e) =>
+                                field.onChange(e.target.value.toUpperCase())
+                              }
+                            />
+                          </FormControl>
+                        </Field>
+                        <FormMessage className='text-[10px]' />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={fclForm.control}
+                    name='containerSizeId'
+                    render={({ field }) => (
+                      <FormItem>
+                        <Field label='Size *'>
+                          <FormControl>
+                            <Select
+                              options={containerSizes}
+                              value={
+                                containerSizes.find(
+                                  (s) => s.value === field.value,
+                                ) || null
+                              }
+                              onChange={(val) => field.onChange(val?.value)}
+                              styles={tinySelectStyles}
+                              isLoading={loadingContainerSizes}
+                              isClearable
+                              placeholder='20 / 40…'
+                            />
+                          </FormControl>
+                        </Field>
+                        <FormMessage className='text-[10px]' />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={fclForm.control}
+                    name='containerTypeId'
+                    render={({ field }) => (
+                      <FormItem>
+                        <Field label='Type *'>
+                          <FormControl>
+                            <Select
+                              options={containerTypes}
+                              value={
+                                containerTypes.find(
+                                  (t) => t.value === field.value,
+                                ) || null
+                              }
+                              onChange={(val) => field.onChange(val?.value)}
+                              styles={tinySelectStyles}
+                              isLoading={loadingContainerTypes}
+                              isClearable
+                              placeholder='GP / HC…'
+                            />
+                          </FormControl>
+                        </Field>
+                        <FormMessage className='text-[10px]' />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={fclForm.control}
+                    name='tareWeight'
+                    render={({ field }) => (
+                      <FormItem>
+                        <Field label='Weight (kg) *'>
+                          <FormControl>
+                            <Input
+                              type='number'
+                              step='0.0001'
+                              className={tinyInputClass}
+                              {...field}
+                              value={field.value || 0}
+                              onChange={(e) =>
+                                field.onChange(parseFloat(e.target.value) || 0)
+                              }
+                              placeholder='0.0000'
+                            />
+                          </FormControl>
+                        </Field>
+                        <FormMessage className='text-[10px]' />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={fclForm.control}
+                    name='noOfPackages'
+                    render={({ field }) => (
+                      <FormItem>
+                        <Field label='Packages'>
+                          <FormControl>
+                            <Input
+                              type='number'
+                              className={tinyInputClass}
+                              {...field}
+                              value={field.value || 0}
+                              onChange={(e) =>
+                                field.onChange(parseInt(e.target.value) || 0)
+                              }
+                              placeholder='0'
+                            />
+                          </FormControl>
+                        </Field>
+                        <FormMessage className='text-[10px]' />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={fclForm.control}
+                    name='packageType'
+                    render={({ field }) => (
+                      <FormItem>
+                        <Field label='Pkg Type'>
+                          <FormControl>
+                            <Select
+                              options={packageTypes}
+                              value={
+                                packageTypes.find(
+                                  (p) => p.value === field.value,
+                                ) || null
+                              }
+                              onChange={(val) => field.onChange(val?.value)}
+                              styles={tinySelectStyles}
+                              isLoading={loadingPackageTypes}
+                              isClearable
+                              placeholder='Select…'
+                            />
+                          </FormControl>
+                        </Field>
+                        <FormMessage className='text-[10px]' />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Add button aligned to bottom */}
+                  <div className='flex items-end pb-0.5'>
+                    <Button
+                      type='button'
+                      size='sm'
+                      className='h-[30px] text-xs px-4 w-full'
+                      disabled={checkForDuplicates(
+                        fclForm.getValues("containerNo") || "",
+                      )}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        fclForm.handleSubmit(handleAddFcl)();
+                      }}
+                    >
+                      <Plus className='h-3.5 w-3.5 mr-1' /> Add
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Toggle show/hide form button */}
+            {fclContainers.length > 0 && (
+              <div className='flex justify-end mt-1'>
+                <button
+                  type='button'
+                  onClick={() => setShowFclForm(!showFclForm)}
+                  className='text-xs text-blue-600 hover:text-blue-800 hover:underline'
+                >
+                  {showFclForm ? "− Hide add form" : "+ Add another container"}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </TabsContent>
   );
 }

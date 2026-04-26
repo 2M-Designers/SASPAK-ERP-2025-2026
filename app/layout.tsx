@@ -31,13 +31,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang='en' suppressHydrationWarning>
-      <head>
-        {/* Load Google Maps API using Next.js Script component */}
-        <Script
-          src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAP_API_KEY}&libraries=places`}
-          strategy='afterInteractive'
-        />
-      </head>
+      <head></head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${poppins.className} antialiased`}
         suppressHydrationWarning

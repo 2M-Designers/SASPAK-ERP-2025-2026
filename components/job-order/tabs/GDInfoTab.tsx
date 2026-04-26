@@ -2,21 +2,7 @@ import React, { useState } from "react";
 import { TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import ReactSelect, { StylesConfig, GroupBase } from "react-select";
 import {
   Table,
   TableBody,
@@ -33,18 +19,126 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Upload,
-  Download,
-  Plus,
-  Pencil,
-  Trash2,
-  FileText,
-  Info,
-} from "lucide-react";
+import { Upload, Download, Plus, Pencil, Trash2, FileText } from "lucide-react";
 import * as ExcelJS from "exceljs";
+import { compactSelectStyles } from "../utils/styles";
 import { parseGDOfficialFormat, type GDItem } from "./gdOfficialFormatParser";
+
+// ─── Shared compact design primitives ────────────────────────────────────────
+
+/** Format YYYY-MM-DD or ISO string → dd/mm/yyyy, timezone-safe */
+const fmtDate = (val: string | null | undefined): string => {
+  if (!val) return "—";
+  const datePart = val.split("T")[0];
+  const parts = datePart.split("-");
+  if (parts.length === 3 && parts[0].length === 4) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return val;
+};
+
+// react-select compact styles — same as ShippingTab / InvoiceTab
+const tinySelectStyles: StylesConfig<any, false, GroupBase<any>> = {
+  ...compactSelectStyles,
+  control: (base, state) => ({
+    ...base,
+    minHeight: "30px",
+    height: "30px",
+    fontSize: "13px",
+    borderColor: state.isFocused ? "#3b82f6" : "#d1d5db",
+    boxShadow: state.isFocused ? "0 0 0 1px #3b82f6" : "none",
+    "&:hover": { borderColor: "#3b82f6" },
+  }),
+  valueContainer: (base) => ({ ...base, padding: "0 6px" }),
+  input: (base) => ({ ...base, margin: 0, padding: 0, fontSize: "13px" }),
+  indicatorsContainer: (base) => ({ ...base, height: "30px" }),
+  indicatorSeparator: () => ({ display: "none" }),
+  dropdownIndicator: (base) => ({ ...base, padding: "0 4px" }),
+  menu: (base) => ({ ...base, fontSize: "13px", zIndex: 9999 }),
+  option: (base, state) => ({
+    ...base,
+    padding: "5px 10px",
+    backgroundColor: state.isSelected
+      ? "#3b82f6"
+      : state.isFocused
+        ? "#eff6ff"
+        : "white",
+    color: state.isSelected ? "white" : "#111",
+  }),
+};
+
+function Field({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col gap-0.5 ${className}`}>
+      <span className='text-[11px] font-semibold uppercase tracking-wide text-gray-500 leading-none'>
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function SectionBar({
+  title,
+  aside,
+}: {
+  title: string;
+  aside?: React.ReactNode;
+}) {
+  return (
+    <div className='flex items-center gap-2 mt-4 mb-2 first:mt-0'>
+      <span className='text-[11px] font-bold uppercase tracking-widest text-blue-700 whitespace-nowrap'>
+        {title}
+      </span>
+      <div className='flex-1 border-t border-blue-200' />
+      {aside}
+    </div>
+  );
+}
+
+const tinyInputClass =
+  "h-[30px] text-[13px] px-2 py-0 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
+
+// Compact dialog input row
+function DField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className='flex flex-col gap-0.5'>
+      <span className='text-[11px] font-semibold uppercase tracking-wide text-gray-500 leading-none'>
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+const GD_TYPE_OPTIONS = [
+  { value: "HC", label: "HC — Home Consumption" },
+  { value: "IB", label: "IB — Import Bond" },
+  { value: "EB", label: "EB — Export Bond" },
+  { value: "TI", label: "TI — Temporary Import" },
+  { value: "SB", label: "SB — Supply Bond" },
+];
+
+const INSURANCE_TYPE_OPTIONS = [
+  { value: "1percent", label: "1% of AV" },
+  { value: "Rs", label: "Rs. (manual)" },
+];
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function GDInfoTab({
   form,
@@ -56,95 +150,49 @@ export default function GDInfoTab({
   const [isGDDialogOpen, setIsGDDialogOpen] = useState(false);
   const [editingGDIndex, setEditingGDIndex] = useState<number | null>(null);
   const [insuranceType, setInsuranceType] = useState<"1percent" | "Rs">("Rs");
-
-  // ✅ NEW: Customizable GD Number prefix (default "KAPS")
   const [gdPrefix, setGdPrefix] = useState<string>("KAPS");
-
-  // ✅ NEW: Separate state for GD serial number (no length limit)
   const [gdSerialNumber, setGdSerialNumber] = useState<string>("1119");
-
-  // ✅ NEW: Controlled state for Type dropdown
   const [selectedType, setSelectedType] = useState<string>("");
-
-  // ✅ NEW: Track if initial data has been loaded (prevents auto-generation on edit)
   const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
 
-  // ✅ Sync selectedType with form value on mount or when form value changes
+  // Sync selectedType with form value on mount
   React.useEffect(() => {
     const currentType = form.watch("gdType");
     if (currentType && currentType !== selectedType) {
       setSelectedType(currentType);
-      console.log("Synced type from form:", currentType);
     }
   }, [form.watch("gdType")]);
 
-  // ✅ NEW: Extract prefix and serial number from existing GD Number on mount (Edit mode)
+  // Extract prefix and serial from existing GD Number (edit mode)
   React.useEffect(() => {
     const existingGDNumber = form.watch("gdnumber");
-
     if (existingGDNumber && existingGDNumber.includes("-")) {
-      // Format: PREFIX-TYPE-SERIAL-DDMMYYYY
       const parts = existingGDNumber.split("-");
-
       if (parts.length === 4) {
-        const prefixFromGD = parts[0]; // Extract prefix (KAPS or custom)
-        const serialFromGD = parts[2]; // Extract serial number
-
-        if (prefixFromGD && prefixFromGD !== gdPrefix) {
-          console.log("Extracted prefix from GD:", prefixFromGD);
-          setGdPrefix(prefixFromGD);
-        }
-
-        if (serialFromGD && serialFromGD !== gdSerialNumber) {
-          console.log("Extracted serial number from GD:", serialFromGD);
-          setGdSerialNumber(serialFromGD);
-        }
+        if (parts[0] && parts[0] !== gdPrefix) setGdPrefix(parts[0]);
+        if (parts[2] && parts[2] !== gdSerialNumber)
+          setGdSerialNumber(parts[2]);
       }
     }
+    setTimeout(() => setIsInitialLoad(false), 500);
+  }, []);
 
-    // Mark initial load as complete after a short delay
-    setTimeout(() => {
-      setIsInitialLoad(false);
-      console.log("Initial load complete");
-    }, 500);
-  }, []); // Run only once on mount
-
-  // ✅ NEW: Extract prefix, type and serial number from GD Number in edit mode
+  // Extract prefix, type and serial from GD Number in edit mode
   React.useEffect(() => {
     const gdNumber = form.watch("gdnumber");
-
     if (gdNumber && gdNumber.includes("-")) {
-      // Parse format: PREFIX-TYPE-SERIAL-DDMMYYYY
       const parts = gdNumber.split("-");
-
       if (parts.length === 4) {
-        const extractedPrefix = parts[0]; // Get the PREFIX part
-        const extractedType = parts[1]; // Get the TYPE part
-        const extractedSerial = parts[2]; // Get the SERIAL part
-
-        console.log("Extracted from GD Number:", {
-          prefix: extractedPrefix,
-          type: extractedType,
-          serial: extractedSerial,
-          fullNumber: gdNumber,
-        });
-
-        // Only update if different to avoid infinite loops
-        if (extractedPrefix && extractedPrefix !== gdPrefix) {
-          setGdPrefix(extractedPrefix);
-        }
-
-        if (extractedSerial && extractedSerial !== gdSerialNumber) {
-          setGdSerialNumber(extractedSerial);
-        }
-
-        if (extractedType && extractedType !== selectedType) {
-          setSelectedType(extractedType);
-          form.setValue("gdType", extractedType);
+        if (parts[0] && parts[0] !== gdPrefix) setGdPrefix(parts[0]);
+        if (parts[2] && parts[2] !== gdSerialNumber)
+          setGdSerialNumber(parts[2]);
+        if (parts[1] && parts[1] !== selectedType) {
+          setSelectedType(parts[1]);
+          form.setValue("gdType", parts[1]);
         }
       }
     }
-  }, []); // Run only on mount to extract from existing GD Number
+  }, []);
 
   const [currentGD, setCurrentGD] = useState<any>({
     JobGoodsDeclarationId: 0,
@@ -177,13 +225,8 @@ export default function GDInfoTab({
     payableIt: 0,
   });
 
-  // ✅ Get current date in YYYY-MM-DD format for max date
-  const getTodayDate = () => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
-  };
+  const getTodayDate = () => new Date().toISOString().split("T")[0];
 
-  // ✅ Format GD Number - PREFIX-TYPE-SERIAL-DDMMYYYY
   const formatGDNumber = (
     prefix: string,
     type: string,
@@ -191,35 +234,18 @@ export default function GDInfoTab({
     date: string,
   ): string => {
     if (!prefix || !type || !serial || !date) return "";
-
-    // Clean prefix (remove spaces, convert to uppercase)
     const cleanPrefix = prefix.trim().toUpperCase();
-
-    // Clean serial (remove non-alphanumeric characters)
     const cleanSerial = serial.trim();
-
-    // Convert date from YYYY-MM-DD to DDMMYYYY
     const dateParts = date.split("-");
     if (dateParts.length !== 3) return "";
-
-    const formattedDate = `${dateParts[2]}${dateParts[1]}${dateParts[0]}`; // DDMMYYYY
-
-    return `${cleanPrefix}-${type}-${cleanSerial}-${formattedDate}`;
+    return `${cleanPrefix}-${type}-${cleanSerial}-${dateParts[2]}${dateParts[1]}${dateParts[0]}`;
   };
 
-  // ✅ Auto-generate GD Number when prefix, type, serial, or date changes
-  // But only AFTER initial load is complete (prevents overwriting in edit mode)
+  // Auto-generate GD Number
   React.useEffect(() => {
-    // Skip auto-generation during initial load
-    if (isInitialLoad) {
-      console.log("Skipping auto-generation: initial load in progress");
-      return;
-    }
-
+    if (isInitialLoad) return;
     const gdDate = form.watch("gddate");
     const existingGDNumber = form.watch("gdnumber");
-
-    // Only auto-generate if we have all required fields
     if (gdPrefix && selectedType && gdSerialNumber && gdDate) {
       const newGDNumber = formatGDNumber(
         gdPrefix,
@@ -227,10 +253,7 @@ export default function GDInfoTab({
         gdSerialNumber,
         gdDate,
       );
-
-      // Only update if different
       if (newGDNumber && newGDNumber !== existingGDNumber) {
-        console.log("Auto-generating GD Number:", newGDNumber);
         form.setValue("gdnumber", newGDNumber);
       }
     }
@@ -242,37 +265,34 @@ export default function GDInfoTab({
     isInitialLoad,
   ]);
 
-  // Calculate total assessed value from all items
-  const calculateTotalAssessedValue = () => {
-    return goodsDeclarations.reduce(
+  const calculateTotalAssessedValue = () =>
+    goodsDeclarations.reduce(
       (sum: number, gd: any) => sum + (gd.totalAssessedValue || 0),
       0,
     );
-  };
 
-  // Auto-calculate insurance when type is "1percent"
+  // Auto-calc insurance
   React.useEffect(() => {
     if (insuranceType === "1percent") {
-      const totalAV = calculateTotalAssessedValue();
-      const insuranceValue = totalAV * 0.01;
-      form.setValue("insurance", insuranceValue.toFixed(2));
+      form.setValue(
+        "insurance",
+        (calculateTotalAssessedValue() * 0.01).toFixed(2),
+      );
     }
   }, [insuranceType, goodsDeclarations, form]);
 
-  // Auto-calculate landing (1% of AV + insurance)
+  // Auto-calc landing
   React.useEffect(() => {
     const totalAV = calculateTotalAssessedValue();
     const insuranceValue = parseFloat(form.watch("insurance") || "0");
-    const landingValue = (totalAV + insuranceValue) * 0.01;
-    form.setValue("landing", landingValue.toFixed(2));
+    form.setValue("landing", ((totalAV + insuranceValue) * 0.01).toFixed(2));
   }, [goodsDeclarations, form.watch("insurance"), form]);
 
-  // Download Excel Template using exceljs
+  // ── Excel template download ──────────────────────────────────────────────────
   const downloadTemplate = async () => {
     try {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet("GD Template");
-
       const headers = [
         "Item No",
         "Unit Type",
@@ -303,9 +323,7 @@ export default function GDInfoTab({
         "Payable AST",
         "Payable IT",
       ];
-
       worksheet.addRow(headers);
-
       const headerRow = worksheet.getRow(1);
       headerRow.font = { bold: true };
       headerRow.fill = {
@@ -314,7 +332,6 @@ export default function GDInfoTab({
         fgColor: { argb: "FFE0E0E0" },
       };
       headerRow.alignment = { vertical: "middle", horizontal: "center" };
-
       worksheet.addRow([
         1,
         "PCS",
@@ -345,7 +362,6 @@ export default function GDInfoTab({
         84872.0,
         113431.0,
       ]);
-
       worksheet.columns = [
         { width: 10 },
         { width: 15 },
@@ -376,7 +392,6 @@ export default function GDInfoTab({
         { width: 15 },
         { width: 15 },
       ];
-
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -387,13 +402,8 @@ export default function GDInfoTab({
       link.download = "GD_Detail_Template.xlsx";
       link.click();
       window.URL.revokeObjectURL(url);
-
-      toast({
-        title: "Template Downloaded",
-        description: "Excel template downloaded successfully",
-      });
+      toast({ title: "Template Downloaded" });
     } catch (error) {
-      console.error("Error generating template:", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -405,15 +415,11 @@ export default function GDInfoTab({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
       const arrayBuffer = await file.arrayBuffer();
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(arrayBuffer);
-
       const worksheet = workbook.worksheets[0];
-      const jsonData: any[] = [];
-
       const headers = [
         "Item No",
         "Unit Type",
@@ -444,18 +450,15 @@ export default function GDInfoTab({
         "Payable AST",
         "Payable IT",
       ];
-
+      const jsonData: any[] = [];
       worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
         if (rowNumber === 1) return;
-
         const rowData: any = {};
         headers.forEach((header, index) => {
-          const cell = row.getCell(index + 1);
-          rowData[header] = cell.value;
+          rowData[header] = row.getCell(index + 1).value;
         });
         jsonData.push(rowData);
       });
-
       const mappedData = jsonData.map((row: any, index: number) => ({
         JobGoodsDeclarationId: -(Math.floor(Date.now() / 1000) + index),
         jobId: 0,
@@ -490,22 +493,18 @@ export default function GDInfoTab({
         payableIt: parseFloat(row["Payable IT"]) || 0,
         version: 0,
       }));
-
       setGoodsDeclarations([...goodsDeclarations, ...mappedData]);
-
       toast({
         title: "Success",
-        description: `${mappedData.length} items imported successfully`,
+        description: `${mappedData.length} items imported`,
       });
     } catch (error) {
-      console.error("Error parsing Excel:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to parse Excel file. Please check the format.",
+        description: "Failed to parse Excel file.",
       });
     }
-
     e.target.value = "";
   };
 
@@ -514,10 +513,8 @@ export default function GDInfoTab({
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
       const gdItems = await parseGDOfficialFormat(file);
-
       const mappedData = gdItems.map((item: GDItem, index: number) => ({
         JobGoodsDeclarationId: -(Math.floor(Date.now() / 1000) + index),
         jobId: 0,
@@ -550,23 +547,18 @@ export default function GDInfoTab({
         payableIt: item.payableIt,
         version: 0,
       }));
-
       setGoodsDeclarations([...goodsDeclarations, ...mappedData]);
-
       toast({
         title: "Success",
-        description: `${mappedData.length} items imported from official GD format`,
+        description: `${mappedData.length} items imported from official GD`,
       });
     } catch (error: any) {
-      console.error("Error parsing official GD:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description:
-          error.message || "Failed to parse GD file. Please check the format.",
+        description: error.message || "Failed to parse GD file.",
       });
     }
-
     e.target.value = "";
   };
 
@@ -621,7 +613,6 @@ export default function GDInfoTab({
         currentGD.totalAssessedValue ||
         currentGD.quantity * currentGD.assessedUnitValue,
     };
-
     if (editingGDIndex !== null) {
       const updated = [...goodsDeclarations];
       updated[editingGDIndex] = updatedGD;
@@ -632,7 +623,6 @@ export default function GDInfoTab({
         { ...updatedGD, id: -Math.floor(Date.now() / 1000), version: 0 },
       ]);
     }
-
     setIsGDDialogOpen(false);
     toast({
       title: "Success",
@@ -641,413 +631,389 @@ export default function GDInfoTab({
   };
 
   const handleDeleteGD = (index: number) => {
-    if (confirm("Are you sure you want to delete this item?")) {
+    if (confirm("Delete this item?")) {
       setGoodsDeclarations(
         goodsDeclarations.filter((_: any, i: number) => i !== index),
       );
-      toast({
-        title: "Success",
-        description: "Item deleted successfully",
-      });
+      toast({ title: "Item deleted" });
     }
   };
 
-  return (
-    <TabsContent value='gd' className='space-y-4'>
-      {/* Master Fields Section */}
-      <div className='bg-white p-6 rounded-lg border'>
-        <h3 className='text-lg font-semibold mb-4'>GD Master Information</h3>
+  const totalAV = calculateTotalAssessedValue();
 
-        {/* ✅ IMPROVED: Show auto-generated GD Number at top */}
+  // ── Render ───────────────────────────────────────────────────────────────────
+  return (
+    <TabsContent value='gd'>
+      <div className='bg-white border border-gray-200 rounded-md p-4'>
+        {/* ── GD NUMBER (auto-generated, prominent read-only) ── */}
         {form.watch("gdnumber") && (
-          <Alert className='mb-4 bg-green-50 border-green-200'>
-            <Info className='h-4 w-4 text-green-600' />
-            <AlertDescription className='text-sm text-green-800'>
-              <strong>Generated GD Number:</strong>{" "}
-              <span className='font-mono text-lg font-bold'>
-                {form.watch("gdnumber")}
-              </span>
-            </AlertDescription>
-          </Alert>
+          <div className='flex items-center gap-3 mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded'>
+            <span className='text-[11px] font-bold uppercase tracking-widest text-green-700 whitespace-nowrap'>
+              Generated GD No.
+            </span>
+            <span className='font-mono text-[15px] font-bold text-green-800 tracking-wider'>
+              {form.watch("gdnumber")}
+            </span>
+            <span className='text-[10px] text-green-600 ml-auto'>
+              Format: PREFIX-TYPE-SERIAL-DDMMYYYY
+            </span>
+          </div>
         )}
 
-        {/* ✅ NEW: Updated info about format with customizable prefix */}
-        <Alert className='mb-4 bg-blue-50 border-blue-200'>
-          <Info className='h-4 w-4 text-blue-600' />
-          <AlertDescription className='text-sm text-blue-800'>
-            <strong>GD Number Format:</strong> PREFIX-TYPE-SERIAL-DDMMYYYY
-            <br />
-            <span className='text-xs'>
-              Enter your prefix (default: KAPS), select Type and Date, then
-              enter the serial number (any length).
-            </span>
-          </AlertDescription>
-        </Alert>
-
-        <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
-          {/* ✅ NEW: Row 1 - GD Number Components */}
-          {/* ✅ NEW: Prefix Input (User can change from KAPS) */}
-          <div className='space-y-2'>
-            <Label htmlFor='gdPrefix'>
-              GD Prefix <span className='text-red-500'>*</span>
-              <span className='text-xs text-gray-500 ml-1'>
-                (e.g., KAPS, KAPT)
-              </span>
-            </Label>
+        {/* ── GD NUMBER COMPONENTS ── */}
+        <SectionBar title='GD Number Components' />
+        <div className='flex gap-3 flex-wrap items-end'>
+          {/* Prefix */}
+          <Field label='Prefix *' className='w-[100px]'>
             <Input
-              id='gdPrefix'
-              type='text'
+              className={`${tinyInputClass} font-mono`}
               placeholder='KAPS'
               value={gdPrefix}
-              onChange={(e) => {
-                const value = e.target.value
-                  .toUpperCase()
-                  .replace(/[^A-Z0-9]/g, ""); // Only letters and numbers
-                setGdPrefix(value);
-              }}
-              className='font-mono text-lg'
               maxLength={10}
+              onChange={(e) =>
+                setGdPrefix(
+                  e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""),
+                )
+              }
             />
-            <p className='text-xs text-gray-500'>
-              Default: KAPS (customizable)
-            </p>
-          </div>
+          </Field>
 
-          <div className='space-y-2'>
-            <Label>
-              Type <span className='text-red-500'>*</span>
-              <span className='text-xs text-gray-500 ml-1'>
-                (HC/IB/EB/TI/SB)
-              </span>
-            </Label>
-            <Select
-              value={selectedType || ""}
-              onValueChange={(value) => {
-                console.log("Type selected:", value);
-                setSelectedType(value);
-                form.setValue("gdType", value, {
+          {/* Type */}
+          <Field label='Type *' className='w-[210px]'>
+            <ReactSelect
+              options={GD_TYPE_OPTIONS}
+              value={
+                GD_TYPE_OPTIONS.find((o) => o.value === selectedType) || null
+              }
+              onChange={(val) => {
+                const v = val?.value ?? "";
+                setSelectedType(v);
+                form.setValue("gdType", v, {
                   shouldValidate: true,
                   shouldDirty: true,
                 });
               }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select Type' />
-              </SelectTrigger>
-              <SelectContent position='popper' sideOffset={5}>
-                <SelectItem value='HC'>HC - Home Consumption</SelectItem>
-                <SelectItem value='IB'>IB - Import Bond</SelectItem>
-                <SelectItem value='EB'>EB - Export Bond</SelectItem>
-                <SelectItem value='TI'>TI - Temporary Import</SelectItem>
-                <SelectItem value='SB'>SB - Supply Bond</SelectItem>
-              </SelectContent>
-            </Select>
-            {!selectedType && (
-              <p className='text-xs text-orange-600'>
-                ⚠️ Please select a GD Type
-              </p>
-            )}
-            {selectedType && (
-              <p className='text-xs text-green-600'>
-                ✅ Selected: {selectedType}
-              </p>
-            )}
-          </div>
+              styles={tinySelectStyles}
+              isClearable
+              placeholder='Select type…'
+            />
+          </Field>
 
-          {/* ✅ UPDATED: Serial Number Input (No length limit) */}
-          <div className='space-y-2'>
-            <Label htmlFor='gdSerialNumber'>
-              Serial Number <span className='text-red-500'>*</span>
-              <span className='text-xs text-gray-500 ml-1'>(any length)</span>
-            </Label>
+          {/* Serial */}
+          <Field label='Serial No. *' className='w-[110px]'>
             <Input
-              id='gdSerialNumber'
-              type='text'
+              className={`${tinyInputClass} font-mono`}
               placeholder='1119'
               value={gdSerialNumber}
-              onChange={(e) => {
-                const value = e.target.value.replace(/[^0-9]/g, ""); // Only digits
-                setGdSerialNumber(value);
-              }}
-              className='font-mono text-lg'
+              onChange={(e) =>
+                setGdSerialNumber(e.target.value.replace(/[^0-9]/g, ""))
+              }
             />
-            <p className='text-xs text-gray-500'>
-              Enter serial number (e.g., 1119, 0001, 123456)
-            </p>
-          </div>
+          </Field>
 
-          <div className='space-y-2'>
-            <Label htmlFor='gddate'>
-              GD Date <span className='text-red-500'>*</span>
-              <span className='text-xs text-gray-500 ml-1'>
-                (No future dates)
-              </span>
-            </Label>
+          {/* GD Date */}
+          <Field
+            label={`GD Date * (max ${fmtDate(getTodayDate())})`}
+            className='w-[160px]'
+          >
             <Input
-              id='gddate'
               type='date'
+              className={tinyInputClass}
               max={getTodayDate()}
               {...form.register("gddate")}
             />
-            <p className='text-xs text-gray-500'>
-              Maximum date: {new Date().toLocaleDateString()}
-            </p>
-          </div>
+          </Field>
 
-          {/* Row 2: Exchange Rate & Charges */}
-          <div className='space-y-2'>
-            <Label htmlFor='jobInvoiceExchRate'>
-              Exchange Rate{" "}
-              <span className='text-xs text-gray-500'>(4 decimals)</span>
-            </Label>
+          {/* Preview */}
+          {gdPrefix &&
+            selectedType &&
+            gdSerialNumber &&
+            form.watch("gddate") && (
+              <div className='flex flex-col justify-end pb-0.5'>
+                <span className='text-[11px] text-gray-400 uppercase tracking-wide'>
+                  Preview
+                </span>
+                <span className='font-mono text-[13px] font-semibold text-blue-700'>
+                  {formatGDNumber(
+                    gdPrefix,
+                    selectedType,
+                    gdSerialNumber,
+                    form.watch("gddate"),
+                  )}
+                </span>
+              </div>
+            )}
+        </div>
+
+        {/* ── FINANCIAL DETAILS ── */}
+        <SectionBar title='Financial Details' />
+        <div className='flex gap-3 flex-wrap items-end'>
+          {/* Exchange Rate */}
+          <Field label='Exchange Rate (4 dec)' className='w-[150px]'>
             <Input
-              id='jobInvoiceExchRate'
               type='number'
               step='0.0001'
-              placeholder='e.g., 282.2500'
+              placeholder='282.2500'
+              className={tinyInputClass}
               {...form.register("jobInvoiceExchRate", { valueAsNumber: true })}
             />
-          </div>
+          </Field>
 
-          <div className='space-y-2'>
-            <Label htmlFor='gdcharges'>
-              {freightType === "Collect" ? "Freight Charges" : "Other Charges"}
-            </Label>
+          {/* GD Charges */}
+          <Field
+            label={
+              freightType === "Collect" ? "Freight Charges" : "Other Charges"
+            }
+            className='w-[140px]'
+          >
             <Input
-              id='gdcharges'
               type='number'
               step='0.01'
               placeholder='0.00'
+              className={tinyInputClass}
               {...form.register("gdcharges", { valueAsNumber: true })}
             />
-            <p className='text-xs text-gray-500'>
-              {freightType === "Collect"
-                ? "Freight is Collect - enter freight charges"
-                : "Enter other charges"}
-            </p>
-          </div>
+          </Field>
 
-          <div className='space-y-2'>
-            <Label htmlFor='insurance'>Insurance</Label>
-            <div className='flex gap-2'>
-              <Select
-                value={insuranceType}
-                onValueChange={(value) => {
-                  setInsuranceType(value as "1percent" | "Rs");
-                  if (value === "1percent") {
-                    const totalAV = calculateTotalAssessedValue();
-                    form.setValue("insurance", (totalAV * 0.01).toFixed(2));
+          {/* Insurance — type picker + amount side by side */}
+          <Field label='Insurance'>
+            <div className='flex gap-1 items-center'>
+              <div className='w-[130px]'>
+                <ReactSelect
+                  options={INSURANCE_TYPE_OPTIONS}
+                  value={
+                    INSURANCE_TYPE_OPTIONS.find(
+                      (o) => o.value === insuranceType,
+                    ) || null
                   }
-                }}
-              >
-                <SelectTrigger className='w-[120px]'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position='popper' sideOffset={5}>
-                  <SelectItem value='1percent'>1% of AV</SelectItem>
-                  <SelectItem value='Rs'>Rs.</SelectItem>
-                </SelectContent>
-              </Select>
+                  onChange={(val) => {
+                    const v = (val?.value ?? "Rs") as "1percent" | "Rs";
+                    setInsuranceType(v);
+                    if (v === "1percent") {
+                      form.setValue("insurance", (totalAV * 0.01).toFixed(2));
+                    }
+                  }}
+                  styles={tinySelectStyles}
+                  isSearchable={false}
+                  placeholder='Type…'
+                />
+              </div>
               <Input
-                id='insurance'
                 type='number'
                 step='0.01'
                 placeholder='0.00'
+                className={`${tinyInputClass} w-[110px] ${insuranceType === "1percent" ? "bg-amber-50 border-amber-300 cursor-not-allowed" : ""}`}
                 disabled={insuranceType === "1percent"}
-                className={insuranceType === "1percent" ? "bg-gray-100" : ""}
                 {...form.register("insurance")}
               />
             </div>
             {insuranceType === "1percent" && (
-              <p className='text-xs text-green-600'>
-                Auto-calculated: 1% of Total AV ($
-                {calculateTotalAssessedValue().toFixed(2)})
-              </p>
+              <span className='text-[10px] text-green-600 mt-0.5'>
+                Auto: 1% of AV ({totalAV.toFixed(2)})
+              </span>
             )}
-          </div>
+          </Field>
 
-          <div className='space-y-2'>
-            <Label htmlFor='landing'>Landing (1% of AV + Insurance)</Label>
+          {/* Landing — auto-calc */}
+          <Field label='Landing ↺ (1% of AV + Ins.)' className='w-[160px]'>
             <Input
-              id='landing'
               type='number'
               step='0.01'
               placeholder='0.00'
+              className={`${tinyInputClass} bg-amber-50 border-amber-300 cursor-not-allowed`}
               disabled
-              className='bg-gray-100'
               {...form.register("landing")}
             />
-            <p className='text-xs text-blue-600'>Auto-calculated</p>
-          </div>
+          </Field>
         </div>
 
-        {/* Summary Display */}
+        {/* ── FINANCIAL SUMMARY (shown when items exist) ── */}
         {goodsDeclarations.length > 0 && (
-          <div className='mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200'>
-            <h4 className='font-semibold text-sm mb-2'>Financial Summary</h4>
-            <div className='grid grid-cols-2 md:grid-cols-4 gap-3 text-sm'>
-              <div>
-                <span className='text-gray-600'>Total Items:</span>{" "}
-                <span className='font-semibold'>
+          <>
+            <SectionBar title='Financial Summary' />
+            <div className='flex flex-wrap gap-x-6 gap-y-1 text-[12px] py-1'>
+              <span className='text-gray-500'>
+                Items:{" "}
+                <strong className='text-gray-800'>
                   {goodsDeclarations.length}
-                </span>
-              </div>
-              <div>
-                <span className='text-gray-600'>Total AV:</span>{" "}
-                <span className='font-semibold'>
-                  ${calculateTotalAssessedValue().toFixed(2)}
-                </span>
-              </div>
-              <div>
-                <span className='text-gray-600'>Insurance:</span>{" "}
-                <span className='font-semibold'>
+                </strong>
+              </span>
+              <span className='text-gray-500'>
+                Total Qty:{" "}
+                <strong className='text-gray-800'>
+                  {goodsDeclarations.reduce(
+                    (s: number, g: any) => s + g.quantity,
+                    0,
+                  )}
+                </strong>
+              </span>
+              <span className='text-gray-500'>
+                Total AV:{" "}
+                <strong className='text-blue-700'>${totalAV.toFixed(2)}</strong>
+              </span>
+              <span className='text-gray-500'>
+                Insurance:{" "}
+                <strong className='text-gray-800'>
                   ${parseFloat(form.watch("insurance") || "0").toFixed(2)}
-                </span>
-              </div>
-              <div>
-                <span className='text-gray-600'>Landing:</span>{" "}
-                <span className='font-semibold'>
+                </strong>
+              </span>
+              <span className='text-gray-500'>
+                Landing:{" "}
+                <strong className='text-gray-800'>
                   ${parseFloat(form.watch("landing") || "0").toFixed(2)}
-                </span>
-              </div>
+                </strong>
+              </span>
+              <span className='text-gray-500'>
+                Total Payable (CD+ST+RD):{" "}
+                <strong className='text-orange-700'>
+                  PKR{" "}
+                  {goodsDeclarations
+                    .reduce(
+                      (s: number, g: any) =>
+                        s + g.payableCd + g.payableSt + g.payableRd,
+                      0,
+                    )
+                    .toFixed(2)}
+                </strong>
+              </span>
             </div>
-          </div>
+          </>
         )}
-      </div>
 
-      {/* Detail Grid Section - SAME AS BEFORE */}
-      <div className='bg-white p-6 rounded-lg border'>
-        <div className='flex items-center justify-between mb-4'>
-          <h3 className='text-lg font-semibold'>GD Detail Items</h3>
-          <div className='flex gap-2'>
-            <Button
-              type='button'
-              variant='outline'
-              size='sm'
-              onClick={downloadTemplate}
-            >
-              <Download className='h-4 w-4 mr-2' />
-              Download Template
-            </Button>
+        {/* ── GD DETAIL ITEMS TABLE ── */}
+        <SectionBar
+          title={`GD Detail Items${goodsDeclarations.length > 0 ? ` (${goodsDeclarations.length})` : ""}`}
+          aside={
+            <div className='flex gap-1'>
+              <button
+                type='button'
+                onClick={downloadTemplate}
+                className='flex items-center gap-1 h-7 px-2 text-xs border border-gray-300 rounded hover:bg-gray-50 text-gray-700'
+              >
+                <Download className='h-3 w-3' /> Template
+              </button>
 
-            <label htmlFor='excel-upload'>
-              <Button type='button' variant='outline' size='sm' asChild>
-                <span>
-                  <Upload className='h-4 w-4 mr-2' />
-                  Upload Template
-                </span>
-              </Button>
-            </label>
-            <input
-              id='excel-upload'
-              type='file'
-              accept='.xlsx,.xls'
-              className='hidden'
-              onChange={handleFileUpload}
-            />
+              <label
+                htmlFor='excel-upload'
+                className='flex items-center gap-1 h-7 px-2 text-xs border border-gray-300 rounded hover:bg-gray-50 text-gray-700 cursor-pointer'
+              >
+                <Upload className='h-3 w-3' /> Upload
+              </label>
+              <input
+                id='excel-upload'
+                type='file'
+                accept='.xlsx,.xls'
+                className='hidden'
+                onChange={handleFileUpload}
+              />
 
-            <label htmlFor='official-gd-upload'>
-              <Button type='button' variant='outline' size='sm' asChild>
-                <span>
-                  <FileText className='h-4 w-4 mr-2' />
-                  Import GD File
-                </span>
-              </Button>
-            </label>
-            <input
-              id='official-gd-upload'
-              type='file'
-              accept='.xlsx,.xls'
-              className='hidden'
-              onChange={handleOfficialGDUpload}
-              title='Upload official Pakistan Customs GD format (Fields 37-48)'
-            />
+              <label
+                htmlFor='official-gd-upload'
+                className='flex items-center gap-1 h-7 px-2 text-xs border border-gray-300 rounded hover:bg-gray-50 text-gray-700 cursor-pointer'
+              >
+                <FileText className='h-3 w-3' /> Import GD
+              </label>
+              <input
+                id='official-gd-upload'
+                type='file'
+                accept='.xlsx,.xls'
+                className='hidden'
+                onChange={handleOfficialGDUpload}
+              />
 
-            <Button type='button' size='sm' onClick={handleAddGD}>
-              <Plus className='h-4 w-4 mr-2' />
-              Add Item
-            </Button>
-          </div>
-        </div>
+              <button
+                type='button'
+                onClick={handleAddGD}
+                className='flex items-center gap-1 h-7 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded font-medium'
+              >
+                <Plus className='h-3 w-3' /> Add Item
+              </button>
+            </div>
+          }
+        />
 
-        <div className='border rounded-lg overflow-x-auto max-h-[600px] styled-scrollbar'>
+        {/* Scrollable table */}
+        <div className='border border-gray-200 rounded overflow-x-auto max-h-[500px] overflow-y-auto'>
           <style jsx>{`
-            .styled-scrollbar::-webkit-scrollbar {
-              width: 14px;
-              height: 14px;
+            div::-webkit-scrollbar {
+              width: 10px;
+              height: 10px;
             }
-            .styled-scrollbar::-webkit-scrollbar-track {
+            div::-webkit-scrollbar-track {
               background: #f1f1f1;
-              border-radius: 10px;
+              border-radius: 6px;
             }
-            .styled-scrollbar::-webkit-scrollbar-thumb {
+            div::-webkit-scrollbar-thumb {
+              background: #aaa;
+              border-radius: 6px;
+              border: 2px solid #f1f1f1;
+            }
+            div::-webkit-scrollbar-thumb:hover {
               background: #888;
-              border-radius: 10px;
-              border: 3px solid #f1f1f1;
-            }
-            .styled-scrollbar::-webkit-scrollbar-thumb:hover {
-              background: #555;
-            }
-            .styled-scrollbar::-webkit-scrollbar-corner {
-              background: #f1f1f1;
-            }
-            .styled-scrollbar {
-              scrollbar-width: thick;
-              scrollbar-color: #888 #f1f1f1;
             }
           `}</style>
 
           <Table>
             <TableHeader>
-              <TableRow className='bg-gray-100'>
-                <TableHead className='w-16 sticky left-0 bg-gray-100 z-10'>
+              <TableRow className='bg-gray-50 h-8'>
+                <TableHead className='text-[11px] font-semibold py-1 px-2 sticky left-0 bg-gray-50 z-10 w-10'>
                   #
                 </TableHead>
-                <TableHead className='min-w-[100px]'>Unit Type</TableHead>
-                <TableHead className='min-w-[80px] text-right'>Qty</TableHead>
-                <TableHead className='min-w-[120px]'>CO Code</TableHead>
-                <TableHead className='min-w-[120px]'>SRO No</TableHead>
-                <TableHead className='min-w-[120px]'>HS Code</TableHead>
-                <TableHead className='min-w-[250px]'>Description</TableHead>
-                <TableHead className='min-w-[140px] text-right'>
-                  Decl. Unit Value
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[80px]'>
+                  Unit
                 </TableHead>
-                <TableHead className='min-w-[140px] text-right'>
-                  Assd. Unit Value
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[60px] text-right'>
+                  Qty
                 </TableHead>
-                <TableHead className='min-w-[140px] text-right'>
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[90px]'>
+                  CO Code
+                </TableHead>
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[100px]'>
+                  SRO No.
+                </TableHead>
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[100px]'>
+                  HS Code
+                </TableHead>
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[200px]'>
+                  Description
+                </TableHead>
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[110px] text-right'>
+                  Decl. Unit
+                </TableHead>
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[110px] text-right'>
+                  Assd. Unit
+                </TableHead>
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[110px] text-right'>
                   Total Decl.
                 </TableHead>
-                <TableHead className='min-w-[140px] text-right'>
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[110px] text-right'>
                   Total Assd.
                 </TableHead>
-                <TableHead className='min-w-[160px] text-right'>
-                  Custom Decl. (PKR)
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[130px] text-right'>
+                  Cust. Decl (PKR)
                 </TableHead>
-                <TableHead className='min-w-[160px] text-right'>
-                  Custom Assd. (PKR)
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[130px] text-right'>
+                  Cust. Assd (PKR)
                 </TableHead>
-                <TableHead className='min-w-[100px] text-right'>
-                  CD Rate %
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[70px] text-right'>
+                  CD%
                 </TableHead>
-                <TableHead className='min-w-[100px] text-right'>
-                  ST Rate %
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[70px] text-right'>
+                  ST%
                 </TableHead>
-                <TableHead className='min-w-[100px] text-right'>
-                  RD Rate %
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[70px] text-right'>
+                  RD%
                 </TableHead>
-                <TableHead className='min-w-[120px] text-right'>
-                  Payable CD
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[100px] text-right'>
+                  Pay. CD
                 </TableHead>
-                <TableHead className='min-w-[120px] text-right'>
-                  Payable ST
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[100px] text-right'>
+                  Pay. ST
                 </TableHead>
-                <TableHead className='min-w-[120px] text-right'>
-                  Payable RD
+                <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[100px] text-right'>
+                  Pay. RD
                 </TableHead>
-                <TableHead className='w-28 sticky right-0 bg-gray-100 z-10'>
-                  Actions
-                </TableHead>
+                <TableHead className='text-[11px] font-semibold py-1 px-2 sticky right-0 bg-gray-50 z-10 w-16'></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1055,77 +1021,94 @@ export default function GDInfoTab({
                 <TableRow>
                   <TableCell
                     colSpan={20}
-                    className='text-center text-muted-foreground py-8'
+                    className='text-center text-[12px] text-gray-400 py-8'
                   >
-                    No items added. Click Add Item or Upload Excel to get
-                    started.
+                    No items yet — click <strong>Add Item</strong> or upload a
+                    template.
                   </TableCell>
                 </TableRow>
               ) : (
                 goodsDeclarations.map((gd: any, index: number) => (
-                  <TableRow key={gd.id || index} className='hover:bg-gray-50'>
-                    <TableCell className='sticky left-0 bg-white'>
+                  <TableRow
+                    key={gd.id || index}
+                    className='h-8 hover:bg-gray-50'
+                  >
+                    <TableCell className='text-[12px] py-1 px-2 sticky left-0 bg-white z-10 font-medium'>
                       {index + 1}
                     </TableCell>
-                    <TableCell>{gd.unitType}</TableCell>
-                    <TableCell className='text-right'>{gd.quantity}</TableCell>
-                    <TableCell>{gd.cocode}</TableCell>
-                    <TableCell>{gd.sronumber}</TableCell>
-                    <TableCell>{gd.hscode}</TableCell>
+                    <TableCell className='text-[12px] py-1 px-2'>
+                      {gd.unitType}
+                    </TableCell>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
+                      {gd.quantity}
+                    </TableCell>
+                    <TableCell className='text-[12px] py-1 px-2'>
+                      {gd.cocode}
+                    </TableCell>
+                    <TableCell className='text-[12px] py-1 px-2'>
+                      {gd.sronumber}
+                    </TableCell>
+                    <TableCell className='text-[12px] py-1 px-2 font-mono'>
+                      {gd.hscode}
+                    </TableCell>
                     <TableCell
-                      className='max-w-[250px] truncate'
+                      className='text-[12px] py-1 px-2 max-w-[200px] truncate'
                       title={gd.itemDescription}
                     >
                       {gd.itemDescription}
                     </TableCell>
-                    <TableCell className='text-right'>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
                       {gd.declaredUnitValue.toFixed(2)}
                     </TableCell>
-                    <TableCell className='text-right'>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
                       {gd.assessedUnitValue.toFixed(2)}
                     </TableCell>
-                    <TableCell className='text-right'>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
                       {gd.totalDeclaredValue.toFixed(2)}
                     </TableCell>
-                    <TableCell className='text-right'>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
                       {gd.totalAssessedValue.toFixed(2)}
                     </TableCell>
-                    <TableCell className='text-right'>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
                       {gd.customDeclaredValue.toFixed(2)}
                     </TableCell>
-                    <TableCell className='text-right'>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
                       {gd.customAssessedValue.toFixed(2)}
                     </TableCell>
-                    <TableCell className='text-right'>{gd.rateCd}%</TableCell>
-                    <TableCell className='text-right'>{gd.rateSt}%</TableCell>
-                    <TableCell className='text-right'>{gd.rateRd}%</TableCell>
-                    <TableCell className='text-right'>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
+                      {gd.rateCd}%
+                    </TableCell>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
+                      {gd.rateSt}%
+                    </TableCell>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
+                      {gd.rateRd}%
+                    </TableCell>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
                       {gd.payableCd.toFixed(2)}
                     </TableCell>
-                    <TableCell className='text-right'>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
                       {gd.payableSt.toFixed(2)}
                     </TableCell>
-                    <TableCell className='text-right'>
+                    <TableCell className='text-[12px] py-1 px-2 text-right'>
                       {gd.payableRd.toFixed(2)}
                     </TableCell>
-                    <TableCell className='sticky right-0 bg-white'>
-                      <div className='flex gap-1'>
-                        <Button
+                    <TableCell className='text-[12px] py-1 px-1 sticky right-0 bg-white z-10'>
+                      <div className='flex'>
+                        <button
                           type='button'
-                          variant='ghost'
-                          size='sm'
                           onClick={() => handleEditGD(index)}
+                          className='p-1 rounded hover:bg-blue-100 text-blue-500'
                         >
-                          <Pencil className='h-4 w-4' />
-                        </Button>
-                        <Button
+                          <Pencil className='h-3.5 w-3.5' />
+                        </button>
+                        <button
                           type='button'
-                          variant='ghost'
-                          size='sm'
                           onClick={() => handleDeleteGD(index)}
+                          className='p-1 rounded hover:bg-red-100 text-red-500'
                         >
-                          <Trash2 className='h-4 w-4 text-red-500' />
-                        </Button>
+                          <Trash2 className='h-3.5 w-3.5' />
+                        </button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1134,384 +1117,264 @@ export default function GDInfoTab({
             </TableBody>
           </Table>
         </div>
-
-        {/* Summary */}
-        {goodsDeclarations.length > 0 && (
-          <div className='mt-4 p-4 bg-gray-50 rounded-lg'>
-            <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm'>
-              <div>
-                <span className='font-semibold'>Total Items:</span>{" "}
-                {goodsDeclarations.length}
-              </div>
-              <div>
-                <span className='font-semibold'>Total Qty:</span>{" "}
-                {goodsDeclarations.reduce(
-                  (sum: number, gd: any) => sum + gd.quantity,
-                  0,
-                )}
-              </div>
-              <div>
-                <span className='font-semibold'>Total Assessed Value:</span> $
-                {goodsDeclarations
-                  .reduce(
-                    (sum: number, gd: any) => sum + gd.totalAssessedValue,
-                    0,
-                  )
-                  .toFixed(2)}
-              </div>
-              <div>
-                <span className='font-semibold'>Total Payable (CD+ST+RD):</span>{" "}
-                PKR{" "}
-                {goodsDeclarations
-                  .reduce(
-                    (sum: number, gd: any) =>
-                      sum + gd.payableCd + gd.payableSt + gd.payableRd,
-                    0,
-                  )
-                  .toFixed(2)}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Add/Edit Dialog - TRUNCATED FOR BREVITY - SAME AS BEFORE */}
+      {/* ══════════════════════════════════════════
+          ADD / EDIT GD ITEM DIALOG
+      ══════════════════════════════════════════ */}
       <Dialog open={isGDDialogOpen} onOpenChange={setIsGDDialogOpen}>
-        <DialogContent className='max-w-4xl max-h-[90vh] overflow-y-auto'>
-          <DialogHeader>
-            <DialogTitle>
+        <DialogContent className='max-w-3xl max-h-[90vh] overflow-y-auto'>
+          <DialogHeader className='pb-2 border-b'>
+            <DialogTitle className='text-[14px] font-semibold'>
               {editingGDIndex !== null ? "Edit" : "Add"} GD Item
             </DialogTitle>
-            <DialogDescription>
-              Enter the goods declaration details below
+            <DialogDescription className='text-[12px]'>
+              Enter goods declaration item details below
             </DialogDescription>
           </DialogHeader>
 
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-            {/* All the form fields from before - same code */}
-            <div className='space-y-2'>
-              <Label>Unit Type</Label>
-              <Input
-                value={currentGD.unitType}
-                onChange={(e) =>
-                  setCurrentGD({ ...currentGD, unitType: e.target.value })
-                }
-                placeholder='e.g., PCS, KGS, MT'
-              />
+          <div className='py-3 space-y-3'>
+            {/* Row 1: basic identifiers */}
+            <div className='grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-3'>
+              <DField label='Unit Type'>
+                <Input
+                  className={tinyInputClass}
+                  placeholder='PCS / KGS / MT'
+                  value={currentGD.unitType}
+                  onChange={(e) =>
+                    setCurrentGD({ ...currentGD, unitType: e.target.value })
+                  }
+                />
+              </DField>
+              <DField label='Quantity'>
+                <Input
+                  type='number'
+                  className={tinyInputClass}
+                  value={currentGD.quantity}
+                  onChange={(e) =>
+                    setCurrentGD({
+                      ...currentGD,
+                      quantity: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                />
+              </DField>
+              <DField label='CO Code'>
+                <Input
+                  className={tinyInputClass}
+                  placeholder='e.g. China'
+                  value={currentGD.cocode}
+                  onChange={(e) =>
+                    setCurrentGD({ ...currentGD, cocode: e.target.value })
+                  }
+                />
+              </DField>
+              <DField label='SRO Number'>
+                <Input
+                  className={tinyInputClass}
+                  value={currentGD.sronumber}
+                  onChange={(e) =>
+                    setCurrentGD({ ...currentGD, sronumber: e.target.value })
+                  }
+                />
+              </DField>
+              <DField label='HS Code'>
+                <Input
+                  className={`${tinyInputClass} font-mono`}
+                  value={currentGD.hscode}
+                  onChange={(e) =>
+                    setCurrentGD({ ...currentGD, hscode: e.target.value })
+                  }
+                />
+              </DField>
+              <DField label='Item Description'>
+                <Input
+                  className={`${tinyInputClass} col-span-3`}
+                  value={currentGD.itemDescription}
+                  onChange={(e) =>
+                    setCurrentGD({
+                      ...currentGD,
+                      itemDescription: e.target.value,
+                    })
+                  }
+                />
+              </DField>
             </div>
 
-            <div className='space-y-2'>
-              <Label>Quantity</Label>
-              <Input
-                type='number'
-                value={currentGD.quantity}
-                onChange={(e) =>
-                  setCurrentGD({
-                    ...currentGD,
-                    quantity: parseFloat(e.target.value) || 0,
-                  })
-                }
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>CO Code</Label>
-              <Input
-                value={currentGD.cocode}
-                onChange={(e) =>
-                  setCurrentGD({ ...currentGD, cocode: e.target.value })
-                }
-                placeholder='e.g., China'
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>SRO Number</Label>
-              <Input
-                value={currentGD.sronumber}
-                onChange={(e) =>
-                  setCurrentGD({ ...currentGD, sronumber: e.target.value })
-                }
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>HS Code</Label>
-              <Input
-                value={currentGD.hscode}
-                onChange={(e) =>
-                  setCurrentGD({ ...currentGD, hscode: e.target.value })
-                }
-              />
-            </div>
-
-            <div className='space-y-2 md:col-span-2'>
-              <Label>Item Description</Label>
-              <Input
-                value={currentGD.itemDescription}
-                onChange={(e) =>
-                  setCurrentGD({
-                    ...currentGD,
-                    itemDescription: e.target.value,
-                  })
-                }
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>Declared Unit Value</Label>
-              <Input
-                type='number'
-                step='0.01'
-                value={currentGD.declaredUnitValue}
-                onChange={(e) =>
-                  setCurrentGD({
-                    ...currentGD,
-                    declaredUnitValue: parseFloat(e.target.value) || 0,
-                  })
-                }
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>Assessed Unit Value</Label>
-              <Input
-                type='number'
-                step='0.01'
-                value={currentGD.assessedUnitValue}
-                onChange={(e) =>
-                  setCurrentGD({
-                    ...currentGD,
-                    assessedUnitValue: parseFloat(e.target.value) || 0,
-                  })
-                }
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>Total Declared Value</Label>
-              <Input
-                type='number'
-                step='0.01'
-                value={currentGD.totalDeclaredValue}
-                onChange={(e) =>
-                  setCurrentGD({
-                    ...currentGD,
-                    totalDeclaredValue: parseFloat(e.target.value) || 0,
-                  })
-                }
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>Total Assessed Value</Label>
-              <Input
-                type='number'
-                step='0.01'
-                value={currentGD.totalAssessedValue}
-                onChange={(e) =>
-                  setCurrentGD({
-                    ...currentGD,
-                    totalAssessedValue: parseFloat(e.target.value) || 0,
-                  })
-                }
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>Custom Declared Value (PKR)</Label>
-              <Input
-                type='number'
-                step='0.01'
-                value={currentGD.customDeclaredValue}
-                onChange={(e) =>
-                  setCurrentGD({
-                    ...currentGD,
-                    customDeclaredValue: parseFloat(e.target.value) || 0,
-                  })
-                }
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label>Custom Assessed Value (PKR)</Label>
-              <Input
-                type='number'
-                step='0.01'
-                value={currentGD.customAssessedValue}
-                onChange={(e) =>
-                  setCurrentGD({
-                    ...currentGD,
-                    customAssessedValue: parseFloat(e.target.value) || 0,
-                  })
-                }
-              />
-            </div>
-
-            <div className='md:col-span-2 mt-4'>
-              <h4 className='font-semibold mb-2'>Tax Rates (%)</h4>
-              <div className='grid grid-cols-5 gap-2'>
-                <div className='space-y-2'>
-                  <Label>CD %</Label>
+            {/* Row 2: declared / assessed values */}
+            <div>
+              <span className='text-[11px] font-bold uppercase tracking-widest text-blue-700'>
+                Values
+              </span>
+              <div className='border-t border-blue-200 mt-1 mb-2' />
+              <div className='grid grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-3'>
+                <DField label='Declared Unit Value'>
                   <Input
                     type='number'
                     step='0.01'
-                    value={currentGD.rateCd}
+                    className={tinyInputClass}
+                    value={currentGD.declaredUnitValue}
                     onChange={(e) =>
                       setCurrentGD({
                         ...currentGD,
-                        rateCd: parseFloat(e.target.value) || 0,
+                        declaredUnitValue: parseFloat(e.target.value) || 0,
                       })
                     }
                   />
-                </div>
-                <div className='space-y-2'>
-                  <Label>ST %</Label>
+                </DField>
+                <DField label='Assessed Unit Value'>
                   <Input
                     type='number'
                     step='0.01'
-                    value={currentGD.rateSt}
+                    className={tinyInputClass}
+                    value={currentGD.assessedUnitValue}
                     onChange={(e) =>
                       setCurrentGD({
                         ...currentGD,
-                        rateSt: parseFloat(e.target.value) || 0,
+                        assessedUnitValue: parseFloat(e.target.value) || 0,
                       })
                     }
                   />
-                </div>
-                <div className='space-y-2'>
-                  <Label>RD %</Label>
+                </DField>
+                <DField label='Total Declared Value'>
                   <Input
                     type='number'
                     step='0.01'
-                    value={currentGD.rateRd}
+                    className={tinyInputClass}
+                    value={currentGD.totalDeclaredValue}
                     onChange={(e) =>
                       setCurrentGD({
                         ...currentGD,
-                        rateRd: parseFloat(e.target.value) || 0,
+                        totalDeclaredValue: parseFloat(e.target.value) || 0,
                       })
                     }
                   />
-                </div>
-                <div className='space-y-2'>
-                  <Label>AST %</Label>
+                </DField>
+                <DField label='Total Assessed Value'>
                   <Input
                     type='number'
                     step='0.01'
-                    value={currentGD.rateAsd}
+                    className={tinyInputClass}
+                    value={currentGD.totalAssessedValue}
                     onChange={(e) =>
                       setCurrentGD({
                         ...currentGD,
-                        rateAsd: parseFloat(e.target.value) || 0,
+                        totalAssessedValue: parseFloat(e.target.value) || 0,
                       })
                     }
                   />
-                </div>
-                <div className='space-y-2'>
-                  <Label>IT %</Label>
+                </DField>
+                <DField label='Custom Declared (PKR)'>
                   <Input
                     type='number'
                     step='0.01'
-                    value={currentGD.rateIt}
+                    className={tinyInputClass}
+                    value={currentGD.customDeclaredValue}
                     onChange={(e) =>
                       setCurrentGD({
                         ...currentGD,
-                        rateIt: parseFloat(e.target.value) || 0,
+                        customDeclaredValue: parseFloat(e.target.value) || 0,
                       })
                     }
                   />
-                </div>
+                </DField>
+                <DField label='Custom Assessed (PKR)'>
+                  <Input
+                    type='number'
+                    step='0.01'
+                    className={tinyInputClass}
+                    value={currentGD.customAssessedValue}
+                    onChange={(e) =>
+                      setCurrentGD({
+                        ...currentGD,
+                        customAssessedValue: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                  />
+                </DField>
               </div>
             </div>
 
-            <div className='md:col-span-2 mt-4'>
-              <h4 className='font-semibold mb-2'>Payable Amounts (PKR)</h4>
-              <div className='grid grid-cols-5 gap-2'>
-                <div className='space-y-2'>
-                  <Label>CD</Label>
-                  <Input
-                    type='number'
-                    step='0.01'
-                    value={currentGD.payableCd}
-                    onChange={(e) =>
-                      setCurrentGD({
-                        ...currentGD,
-                        payableCd: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                  />
-                </div>
-                <div className='space-y-2'>
-                  <Label>ST</Label>
-                  <Input
-                    type='number'
-                    step='0.01'
-                    value={currentGD.payableSt}
-                    onChange={(e) =>
-                      setCurrentGD({
-                        ...currentGD,
-                        payableSt: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                  />
-                </div>
-                <div className='space-y-2'>
-                  <Label>RD</Label>
-                  <Input
-                    type='number'
-                    step='0.01'
-                    value={currentGD.payableRd}
-                    onChange={(e) =>
-                      setCurrentGD({
-                        ...currentGD,
-                        payableRd: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                  />
-                </div>
-                <div className='space-y-2'>
-                  <Label>AST</Label>
-                  <Input
-                    type='number'
-                    step='0.01'
-                    value={currentGD.payableAsd}
-                    onChange={(e) =>
-                      setCurrentGD({
-                        ...currentGD,
-                        payableAsd: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                  />
-                </div>
-                <div className='space-y-2'>
-                  <Label>IT</Label>
-                  <Input
-                    type='number'
-                    step='0.01'
-                    value={currentGD.payableIt}
-                    onChange={(e) =>
-                      setCurrentGD({
-                        ...currentGD,
-                        payableIt: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                  />
-                </div>
+            {/* Row 3: tax rates — 5 in one line */}
+            <div>
+              <span className='text-[11px] font-bold uppercase tracking-widest text-blue-700'>
+                Tax Rates (%)
+              </span>
+              <div className='border-t border-blue-200 mt-1 mb-2' />
+              <div className='grid grid-cols-5 gap-x-3 gap-y-3'>
+                {[
+                  { label: "CD %", key: "rateCd" },
+                  { label: "ST %", key: "rateSt" },
+                  { label: "RD %", key: "rateRd" },
+                  { label: "AST %", key: "rateAsd" },
+                  { label: "IT %", key: "rateIt" },
+                ].map(({ label, key }) => (
+                  <DField key={key} label={label}>
+                    <Input
+                      type='number'
+                      step='0.01'
+                      className={tinyInputClass}
+                      value={currentGD[key]}
+                      onChange={(e) =>
+                        setCurrentGD({
+                          ...currentGD,
+                          [key]: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </DField>
+                ))}
+              </div>
+            </div>
+
+            {/* Row 4: payable amounts — 5 in one line */}
+            <div>
+              <span className='text-[11px] font-bold uppercase tracking-widest text-blue-700'>
+                Payable Amounts (PKR)
+              </span>
+              <div className='border-t border-blue-200 mt-1 mb-2' />
+              <div className='grid grid-cols-5 gap-x-3 gap-y-3'>
+                {[
+                  { label: "Pay. CD", key: "payableCd" },
+                  { label: "Pay. ST", key: "payableSt" },
+                  { label: "Pay. RD", key: "payableRd" },
+                  { label: "Pay. AST", key: "payableAsd" },
+                  { label: "Pay. IT", key: "payableIt" },
+                ].map(({ label, key }) => (
+                  <DField key={key} label={label}>
+                    <Input
+                      type='number'
+                      step='0.01'
+                      className={tinyInputClass}
+                      value={currentGD[key]}
+                      onChange={(e) =>
+                        setCurrentGD({
+                          ...currentGD,
+                          [key]: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </DField>
+                ))}
               </div>
             </div>
           </div>
 
-          <DialogFooter>
-            <Button
+          <DialogFooter className='pt-3 border-t gap-2'>
+            <button
               type='button'
-              variant='outline'
+              className='h-8 px-4 text-xs font-medium border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 rounded'
               onClick={() => setIsGDDialogOpen(false)}
             >
               Cancel
-            </Button>
-            <Button type='button' onClick={handleSaveGD}>
+            </button>
+            <button
+              type='button'
+              className='h-8 px-4 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded'
+              onClick={handleSaveGD}
+            >
               {editingGDIndex !== null ? "Update" : "Add"} Item
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

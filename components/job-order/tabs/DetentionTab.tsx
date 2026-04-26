@@ -1,15 +1,7 @@
 import React, { useState, useEffect } from "react";
-import ReactSelect from "react-select";
+import ReactSelect, { StylesConfig, GroupBase } from "react-select";
 import { TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -18,9 +10,112 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Info, DollarSign } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { DollarSign } from "lucide-react";
+import { compactSelectStyles } from "../utils/styles";
+
+// ─── Shared compact design primitives ────────────────────────────────────────
+
+/** Format YYYY-MM-DD or ISO string → dd/mm/yyyy, timezone-safe */
+const fmtDate = (val: string | null | undefined): string => {
+  if (!val) return "—";
+  const datePart = val.split("T")[0];
+  const parts = datePart.split("-");
+  if (parts.length === 3 && parts[0].length === 4)
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return val;
+};
+
+function Field({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col gap-0.5 ${className}`}>
+      <span className='text-[11px] font-semibold uppercase tracking-wide text-gray-500 leading-none'>
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function SectionBar({
+  title,
+  aside,
+}: {
+  title: string;
+  aside?: React.ReactNode;
+}) {
+  return (
+    <div className='flex items-center gap-2 mt-4 mb-2 first:mt-0'>
+      <span className='text-[11px] font-bold uppercase tracking-widest text-blue-700 whitespace-nowrap'>
+        {title}
+      </span>
+      <div className='flex-1 border-t border-blue-200' />
+      {aside}
+    </div>
+  );
+}
+
+const tinyInputClass =
+  "h-[30px] text-[13px] px-2 py-0 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
+
+// react-select compact styles — same tokens as all other tabs
+const tinySelectStyles: StylesConfig<any, false, GroupBase<any>> = {
+  ...compactSelectStyles,
+  control: (base, state) => ({
+    ...base,
+    minHeight: "30px",
+    height: "30px",
+    fontSize: "13px",
+    borderColor: state.isFocused ? "#3b82f6" : "#d1d5db",
+    boxShadow: state.isFocused ? "0 0 0 1px #3b82f6" : "none",
+    "&:hover": { borderColor: "#3b82f6" },
+  }),
+  valueContainer: (base) => ({ ...base, padding: "0 6px" }),
+  input: (base) => ({ ...base, margin: 0, padding: 0, fontSize: "13px" }),
+  indicatorsContainer: (base) => ({ ...base, height: "30px" }),
+  indicatorSeparator: () => ({ display: "none" }),
+  dropdownIndicator: (base) => ({ ...base, padding: "0 4px" }),
+  menu: (base) => ({ ...base, fontSize: "13px", zIndex: 9999 }),
+  option: (base, state) => ({
+    ...base,
+    padding: "5px 10px",
+    backgroundColor: state.isSelected
+      ? "#3b82f6"
+      : state.isFocused
+        ? "#eff6ff"
+        : "white",
+    color: state.isSelected ? "white" : "#111",
+  }),
+};
+
+// ─── Condition options (single source of truth) ───────────────────────────────
+const CONDITION_OPTIONS = ["Good", "Fair", "Poor", "Damaged", "Dirty"];
+
+const normalizeCondition = (raw: string | null | undefined): string => {
+  if (!raw || typeof raw !== "string") return "";
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  if (CONDITION_OPTIONS.includes(trimmed)) return trimmed;
+  const lower = trimmed.toLowerCase();
+  const exact = CONDITION_OPTIONS.find((o) => o.toLowerCase() === lower);
+  if (exact) return exact;
+  const partial = CONDITION_OPTIONS.find(
+    (o) =>
+      o.toLowerCase().startsWith(lower) || lower.startsWith(o.toLowerCase()),
+  );
+  if (partial) return partial;
+  console.warn(`[DetentionTab] Unrecognized condition value: "${trimmed}"`);
+  return "";
+};
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface DetentionRecord {
   jobEquipmentDetentionDetailId?: number;
@@ -62,46 +157,12 @@ interface PartyOption {
   value: number;
   label: string;
 }
-
 interface ContainerOption {
   value: number;
   label: string;
 }
 
-// ─── Condition options (single source of truth) ───────────────────────────────
-const CONDITION_OPTIONS = ["Good", "Fair", "Poor", "Damaged", "Dirty"];
-
-/**
- * Normalize a condition string from the API to exactly match one of
- * CONDITION_OPTIONS, regardless of casing / extra whitespace.
- * Returns "" if no match found (shows placeholder instead of broken value).
- */
-const normalizeCondition = (raw: string | null | undefined): string => {
-  if (!raw || typeof raw !== "string") return "";
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-
-  // 1. Exact match — fastest path
-  if (CONDITION_OPTIONS.includes(trimmed)) return trimmed;
-
-  // 2. Case-insensitive exact match
-  const lower = trimmed.toLowerCase();
-  const exact = CONDITION_OPTIONS.find((o) => o.toLowerCase() === lower);
-  if (exact) return exact;
-
-  // 3. Starts-with match (handles truncation e.g. "Goo" → "Good")
-  const partial = CONDITION_OPTIONS.find(
-    (o) =>
-      o.toLowerCase().startsWith(lower) || lower.startsWith(o.toLowerCase()),
-  );
-  if (partial) return partial;
-
-  // Nothing matched — log for debugging, return "" to show placeholder
-  console.warn(
-    `[DetentionTab] Unrecognized condition value from API: "${trimmed}"`,
-  );
-  return "";
-};
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function DetentionTab({
   form,
@@ -115,48 +176,10 @@ export default function DetentionTab({
   parties = [],
   loadingParties = false,
 }: any) {
-  // ─── advanceRentPaidUpto: fully controlled via form (no separate local state)
-  // form.watch keeps the input populated correctly in edit mode.
   const uptoDateValue: string = form.watch("advanceRentPaidUpto") || "";
 
-  // ─── react-select compact styles (matches other selects in the app) ──────────
-  const compactSelectStyles = {
-    control: (base: any) => ({
-      ...base,
-      minHeight: "36px",
-      height: "36px",
-      fontSize: "0.875rem",
-      borderColor: "hsl(var(--input))",
-      borderRadius: "6px",
-      boxShadow: "none",
-      "&:hover": { borderColor: "hsl(var(--input))" },
-    }),
-    valueContainer: (base: any) => ({
-      ...base,
-      padding: "0 10px",
-    }),
-    indicatorsContainer: (base: any) => ({
-      ...base,
-      height: "36px",
-    }),
-    menu: (base: any) => ({
-      ...base,
-      zIndex: 9999,
-      fontSize: "0.875rem",
-    }),
-    option: (base: any, state: any) => ({
-      ...base,
-      backgroundColor: state.isSelected
-        ? "hsl(var(--primary))"
-        : state.isFocused
-          ? "hsl(var(--accent))"
-          : "transparent",
-      color: state.isSelected ? "hsl(var(--primary-foreground))" : "inherit",
-      padding: "6px 12px",
-    }),
-  };
+  // ─── Transporter helpers ──────────────────────────────────────────────────
 
-  // ─── Transporter helpers ─────────────────────────────────────────────────────
   const getTransporterNameForContainer = (containerNumber: string): string => {
     if (!dispatchRecords?.length || !parties?.length) return "";
     const rec = dispatchRecords.find(
@@ -177,7 +200,8 @@ export default function DetentionTab({
     return rec?.transporterPartyId || 0;
   };
 
-  // ─── Auto-add new containers from Shipping tab ───────────────────────────────
+  // ─── Auto-add new containers from Shipping tab ────────────────────────────
+
   useEffect(() => {
     if (!fclContainers.length) return;
     const existingNos = new Set(
@@ -201,13 +225,12 @@ export default function DetentionTab({
         damage: "",
         dirty: "",
       }));
-
-    if (newRecords.length > 0) {
+    if (newRecords.length > 0)
       setDetentionRecords([...detentionRecords, ...newRecords]);
-    }
   }, [fclContainers]);
 
-  // ─── Sync transporter IDs when dispatch records arrive ───────────────────────
+  // ─── Sync transporter IDs when dispatch records arrive ────────────────────
+
   useEffect(() => {
     if (!detentionRecords.length || !dispatchRecords.length) return;
     const updated = detentionRecords.map((r: DetentionRecord) => {
@@ -217,7 +240,8 @@ export default function DetentionTab({
     setDetentionRecords(updated);
   }, [dispatchRecords]);
 
-  // ─── Recalculate balance from form values ────────────────────────────────────
+  // ─── Recalculate balance ──────────────────────────────────────────────────
+
   const recalculateBalance = () => {
     const total = form.getValues("detentionTotalPayable") || 0;
     const deposit = form.getValues("detentionDepositAmount") || 0;
@@ -241,7 +265,8 @@ export default function DetentionTab({
     recalculateBalance();
   }, [detentionRecords]);
 
-  // ─── Update a single detention row field ─────────────────────────────────────
+  // ─── Update a single detention row field ─────────────────────────────────
+
   const updateDetentionRecord = (
     index: number,
     field: keyof DetentionRecord,
@@ -253,7 +278,6 @@ export default function DetentionTab({
     if (field === "emptyDate" && uptoDateValue) {
       updated[index].rentDays = calculateRentDays(value, uptoDateValue);
     }
-
     if (field === "rentAmountFc" || field === "exchangeRate") {
       const usd =
         field === "rentAmountFc" ? value : updated[index].rentAmountFc || 0;
@@ -261,7 +285,6 @@ export default function DetentionTab({
         field === "exchangeRate" ? value : updated[index].exchangeRate || 0;
       updated[index].rentAmountLc = parseFloat((usd * rate).toFixed(2));
     }
-
     setDetentionRecords(updated);
   };
 
@@ -276,11 +299,10 @@ export default function DetentionTab({
     }
   };
 
-  // ─── Upto Date handler — persists to form AND recalculates rent days ─────────
-  const handleUptoDateChange = (newDate: string) => {
-    // ✅ Write directly into form field so it saves to DB
-    form.setValue("advanceRentPaidUpto", newDate, { shouldDirty: true });
+  // ─── Upto Date handler ────────────────────────────────────────────────────
 
+  const handleUptoDateChange = (newDate: string) => {
+    form.setValue("advanceRentPaidUpto", newDate, { shouldDirty: true });
     if (newDate) {
       const updated = detentionRecords.map((r: DetentionRecord) =>
         r.emptyDate
@@ -291,14 +313,16 @@ export default function DetentionTab({
     }
   };
 
-  // ─── Label helpers ────────────────────────────────────────────────────────────
+  // ─── Label helpers ────────────────────────────────────────────────────────
+
   const getContainerTypeLabel = (id?: number) =>
     containerTypes.find((t: ContainerOption) => t.value === id)?.label || "";
 
   const getContainerSizeLabel = (id?: number) =>
     containerSizes.find((s: ContainerOption) => s.value === id)?.label || "";
 
-  // ─── Aggregates ───────────────────────────────────────────────────────────────
+  // ─── Aggregates ───────────────────────────────────────────────────────────
+
   const totalRentUsd = detentionRecords.reduce(
     (s: number, r: DetentionRecord) => s + (r.rentAmountFc || 0),
     0,
@@ -307,592 +331,521 @@ export default function DetentionTab({
     (s: number, r: DetentionRecord) => s + (r.rentAmountLc || 0),
     0,
   );
-
   const depositAmount = form.watch("detentionDepositAmount") || 0;
   const advanceRent = form.watch("detentionAdvanceRentPaid") || 0;
   const totalPayable = form.watch("detentionTotalPayable") || 0;
   const balanceReceivable = form.watch("detentionBalanceReceivable") || 0;
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <TabsContent value='detention' className='space-y-4'>
-      {/* Header Card */}
-      <Card>
-        <CardHeader className='py-3 px-4 bg-blue-50'>
-          <CardTitle className='text-base text-center'>
-            Container Detention Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className='p-4'>
-          <div className='bg-blue-50 p-4 rounded-lg border border-blue-200 mb-4'>
-            <div className='flex items-start gap-2'>
-              <Info className='h-5 w-5 text-blue-600 mt-0.5 shrink-0' />
-              <div>
-                <h3 className='font-semibold text-blue-900 mb-1'>
-                  Container Detention Management (FCL Only)
-                </h3>
-                <p className='text-sm text-blue-700'>
-                  Track container detention charges, deposits, and refunds. Grid
-                  auto-populates from containers in Shipping Tab.
-                  <span className='font-semibold ml-1'>
-                    Transport field is pre-filled from Dispatch Tab.
-                  </span>
-                  <br />
-                  <DollarSign className='inline h-4 w-4 mr-1' />
-                  <span className='font-semibold'>
-                    Rent amounts are in USD. Enter exchange rate to
-                    auto-calculate PKR amounts.
-                  </span>
-                </p>
-              </div>
-            </div>
+    <TabsContent value='detention'>
+      <div className='bg-white border border-gray-200 rounded-md p-4'>
+        {/* ── MASTER FIELDS ── */}
+        <SectionBar title='Detention Master' />
+
+        <div className='flex flex-wrap gap-x-3 gap-y-3 items-end'>
+          {/* Depositor — react-select */}
+          <Field label='Depositor' className='min-w-[200px] flex-1'>
+            <ReactSelect
+              options={parties.filter((p: PartyOption) => p.value && p.label)}
+              value={
+                parties.find(
+                  (p: PartyOption) =>
+                    p.value === form.watch("depositorPartyId"),
+                ) || null
+              }
+              onChange={(val: any) =>
+                form.setValue("depositorPartyId", val?.value ?? 0, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+              isLoading={loadingParties}
+              isClearable
+              placeholder='Select depositor…'
+              styles={tinySelectStyles}
+            />
+          </Field>
+
+          {/* Deposit Amount */}
+          <Field label='Deposit Amount (PKR)' className='w-[150px]'>
+            <Input
+              type='number'
+              step='0.01'
+              placeholder='0.00'
+              className={tinyInputClass}
+              {...form.register("detentionDepositAmount", {
+                valueAsNumber: true,
+                onChange: () => recalculateBalance(),
+              })}
+            />
+          </Field>
+
+          {/* Advance Rent */}
+          <Field label='Advance Rent (PKR)' className='w-[150px]'>
+            <Input
+              type='number'
+              step='0.01'
+              placeholder='0.00'
+              className={tinyInputClass}
+              {...form.register("detentionAdvanceRentPaid", {
+                valueAsNumber: true,
+                onChange: () => recalculateBalance(),
+              })}
+            />
+          </Field>
+
+          {/* Total Payable — auto-calc */}
+          <Field label='Total Payable (PKR) ↺' className='w-[150px]'>
+            <Input
+              type='number'
+              step='0.01'
+              placeholder='0.00'
+              className={`${tinyInputClass} bg-amber-50 border-amber-300 cursor-not-allowed font-semibold`}
+              readOnly
+              {...form.register("detentionTotalPayable", {
+                valueAsNumber: true,
+              })}
+            />
+          </Field>
+
+          {/* Balance Receivable — auto-calc */}
+          <Field label='Balance Receivable (PKR) ↺' className='w-[165px]'>
+            <Input
+              type='number'
+              step='0.01'
+              placeholder='0.00'
+              className={`${tinyInputClass} bg-blue-50 border-blue-300 cursor-not-allowed font-bold`}
+              readOnly
+              {...form.register("detentionBalanceReceivable", {
+                valueAsNumber: true,
+              })}
+            />
+          </Field>
+
+          {/* Upto Date */}
+          <Field label='Advance Rent Upto Date' className='w-[160px]'>
+            <Input
+              type='date'
+              className={tinyInputClass}
+              value={uptoDateValue}
+              onChange={(e) => handleUptoDateChange(e.target.value)}
+            />
+            <span className='text-[10px] text-gray-400 mt-0.5'>
+              Auto-calculates rent days
+            </span>
+          </Field>
+        </div>
+
+        {/* Info note */}
+        <div className='flex items-center gap-1.5 mt-3 text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-1.5'>
+          <DollarSign className='h-3.5 w-3.5 shrink-0' />
+          <span>
+            Rent amounts are in <strong>USD</strong>. Enter exchange rate per
+            row to auto-calculate PKR. Transport is pre-filled from Dispatch
+            Tab.
+          </span>
+        </div>
+
+        {/* ── DETENTION RECORDS TABLE ── */}
+        <SectionBar
+          title={`Container Detention Grid${detentionRecords.length > 0 ? ` (${detentionRecords.length})` : ""}`}
+          aside={
+            fclContainers.length === 0 && (
+              <span className='text-[10px] text-amber-600'>
+                ⚠ Add containers in Shipping tab first
+              </span>
+            )
+          }
+        />
+
+        {detentionRecords.length === 0 ? (
+          <div className='text-center py-8 text-[12px] text-gray-400 border-2 border-dashed border-gray-200 rounded-md'>
+            No containers — add FCL containers in the Shipping tab first.
           </div>
+        ) : (
+          <div className='border border-gray-200 rounded overflow-x-auto overflow-y-auto max-h-[500px]'>
+            <style jsx>{`
+              div::-webkit-scrollbar {
+                width: 10px;
+                height: 10px;
+              }
+              div::-webkit-scrollbar-track {
+                background: #f1f1f1;
+                border-radius: 6px;
+              }
+              div::-webkit-scrollbar-thumb {
+                background: #aaa;
+                border-radius: 6px;
+                border: 2px solid #f1f1f1;
+              }
+              div::-webkit-scrollbar-thumb:hover {
+                background: #888;
+              }
+            `}</style>
 
-          {/* Master fields — all wired to form */}
-          <div className='grid grid-cols-1 md:grid-cols-5 gap-4 mb-4'>
-            {/* Depositor — react-select with search */}
-            <div className='space-y-2'>
-              <Label>Depositor</Label>
-              <ReactSelect
-                options={parties.filter((p: PartyOption) => p.value && p.label)}
-                value={
-                  parties.find(
-                    (p: PartyOption) =>
-                      p.value === form.watch("depositorPartyId"),
-                  ) || null
-                }
-                onChange={(val: any) =>
-                  form.setValue("depositorPartyId", val?.value ?? 0, {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  })
-                }
-                isLoading={loadingParties}
-                isClearable
-                placeholder='Select Depositor'
-                styles={compactSelectStyles}
-              />
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow className='bg-gray-50 h-8'>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 sticky left-0 bg-gray-50 z-20 w-8'>
+                    #
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[130px]'>
+                    Container No.
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[70px]'>
+                    Type
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[60px]'>
+                    Size
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[80px] text-right'>
+                    Wt (kg)
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[150px]'>
+                    Transporter
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[120px]'>
+                    Empty Date
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[120px]'>
+                    EIR Received
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[120px]'>
+                    Condition
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[80px] text-right'>
+                    Rent Days
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[110px] text-right bg-blue-50'>
+                    Rent (USD)
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[110px] text-right bg-blue-50'>
+                    Exch. Rate
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[120px] text-right bg-green-50'>
+                    Rent (PKR) ↺
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[160px]'>
+                    Damage
+                  </TableHead>
+                  <TableHead className='text-[11px] font-semibold py-1 px-2 min-w-[160px]'>
+                    Dirty
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
 
-            {/* Deposit Amount */}
-            <div className='space-y-2'>
-              <Label>Deposit Amount (PKR)</Label>
-              <Input
-                type='number'
-                step='0.01'
-                placeholder='0.00'
-                {...form.register("detentionDepositAmount", {
-                  valueAsNumber: true,
-                  onChange: () => recalculateBalance(),
-                })}
-              />
-            </div>
+              <TableBody>
+                {detentionRecords.map(
+                  (record: DetentionRecord, index: number) => {
+                    const normalizedCondition = normalizeCondition(
+                      record.condition,
+                    );
+                    const transporterName = getTransporterNameForContainer(
+                      record.containerNumber,
+                    );
 
-            {/* Advance Rent */}
-            <div className='space-y-2'>
-              <Label>Advance Rent (PKR)</Label>
-              <Input
-                type='number'
-                step='0.01'
-                placeholder='0.00'
-                {...form.register("detentionAdvanceRentPaid", {
-                  valueAsNumber: true,
-                  onChange: () => recalculateBalance(),
-                })}
-              />
-            </div>
+                    return (
+                      <TableRow key={index} className='h-9 hover:bg-gray-50'>
+                        {/* # */}
+                        <TableCell className='text-[12px] py-0.5 px-2 sticky left-0 bg-white z-10 font-medium'>
+                          {index + 1}
+                        </TableCell>
 
-            {/* Total Payable — read-only, auto-calculated */}
-            <div className='space-y-2'>
-              <Label>Total Payable (PKR)</Label>
-              <Input
-                type='number'
-                step='0.01'
-                placeholder='0.00'
-                className='bg-green-50 font-semibold'
-                readOnly
-                {...form.register("detentionTotalPayable", {
-                  valueAsNumber: true,
-                })}
-              />
-              <p className='text-xs text-green-600'>Auto-calculated</p>
-            </div>
+                        {/* Container No. — read */}
+                        <TableCell className='text-[12px] py-0.5 px-2 font-mono'>
+                          {record.containerNumber}
+                        </TableCell>
 
-            {/* Balance Receivable — read-only, auto-calculated */}
-            <div className='space-y-2'>
-              <Label>Balance Receivable (PKR)</Label>
-              <Input
-                type='number'
-                step='0.01'
-                placeholder='0.00'
-                className='bg-blue-50 font-bold'
-                readOnly
-                {...form.register("detentionBalanceReceivable", {
-                  valueAsNumber: true,
-                })}
-              />
-              <p className='text-xs text-blue-600'>Auto-calculated</p>
-            </div>
+                        {/* Type — read */}
+                        <TableCell className='text-[12px] py-0.5 px-2'>
+                          {getContainerTypeLabel(record.containerTypeId)}
+                        </TableCell>
+
+                        {/* Size — read */}
+                        <TableCell className='text-[12px] py-0.5 px-2'>
+                          {getContainerSizeLabel(record.containerSizeId)}
+                        </TableCell>
+
+                        {/* Weight — read */}
+                        <TableCell className='text-[12px] py-0.5 px-2 text-right'>
+                          {(record.netWeight || 0).toFixed(2)}
+                        </TableCell>
+
+                        {/* Transporter — read-only, filled from Dispatch Tab */}
+                        <TableCell className='py-0.5 px-1'>
+                          <Input
+                            className={`${tinyInputClass} bg-gray-50 cursor-not-allowed w-[145px]`}
+                            value={transporterName || "Not assigned"}
+                            readOnly
+                            title='Assign transporter in Dispatch Tab'
+                          />
+                        </TableCell>
+
+                        {/* Empty Date */}
+                        <TableCell className='py-0.5 px-1'>
+                          <Input
+                            type='date'
+                            className={`${tinyInputClass} w-[120px]`}
+                            value={record.emptyDate || ""}
+                            onChange={(e) =>
+                              updateDetentionRecord(
+                                index,
+                                "emptyDate",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </TableCell>
+
+                        {/* EIR Received */}
+                        <TableCell className='py-0.5 px-1'>
+                          <Input
+                            type='date'
+                            className={`${tinyInputClass} w-[120px]`}
+                            value={record.eirReceivedOn || ""}
+                            onChange={(e) =>
+                              updateDetentionRecord(
+                                index,
+                                "eirReceivedOn",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </TableCell>
+
+                        {/*
+                        Condition — native <select> is intentional.
+                        Radix/shadcn Select silently ignores value changes in table
+                        rows after mount. Native select is always a fully controlled
+                        component: whatever `value` is, that's what the user sees.
+                      */}
+                        <TableCell className='py-0.5 px-1'>
+                          <select
+                            value={normalizedCondition}
+                            onChange={(e) =>
+                              updateDetentionRecord(
+                                index,
+                                "condition",
+                                e.target.value,
+                              )
+                            }
+                            className='h-[30px] w-[115px] rounded border border-gray-300 bg-white px-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-blue-500'
+                          >
+                            <option value=''>Select…</option>
+                            {CONDITION_OPTIONS.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        </TableCell>
+
+                        {/* Rent Days */}
+                        <TableCell className='py-0.5 px-1'>
+                          <Input
+                            type='number'
+                            className={`${tinyInputClass} w-[75px] text-right`}
+                            value={record.rentDays || 0}
+                            onChange={(e) =>
+                              updateDetentionRecord(
+                                index,
+                                "rentDays",
+                                parseInt(e.target.value) || 0,
+                              )
+                            }
+                          />
+                        </TableCell>
+
+                        {/* Rent USD */}
+                        <TableCell className='py-0.5 px-1 bg-blue-50/40'>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            placeholder='0.00'
+                            className={`${tinyInputClass} w-[100px] text-right font-semibold bg-blue-50 border-blue-200`}
+                            value={record.rentAmountFc || ""}
+                            onChange={(e) =>
+                              updateDetentionRecord(
+                                index,
+                                "rentAmountFc",
+                                parseFloat(e.target.value) || 0,
+                              )
+                            }
+                          />
+                        </TableCell>
+
+                        {/* Exchange Rate */}
+                        <TableCell className='py-0.5 px-1 bg-blue-50/40'>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            placeholder='0.00'
+                            className={`${tinyInputClass} w-[100px] text-right bg-blue-50 border-blue-200`}
+                            value={record.exchangeRate || ""}
+                            onChange={(e) =>
+                              updateDetentionRecord(
+                                index,
+                                "exchangeRate",
+                                parseFloat(e.target.value) || 0,
+                              )
+                            }
+                          />
+                        </TableCell>
+
+                        {/* Rent PKR — auto-calc, read-only */}
+                        <TableCell className='py-0.5 px-1 bg-green-50/40'>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            className={`${tinyInputClass} w-[110px] text-right font-bold bg-green-50 border-green-200 cursor-not-allowed`}
+                            value={record.rentAmountLc?.toFixed(2) || "0.00"}
+                            readOnly
+                            title='Auto-calculated: USD × Rate'
+                          />
+                        </TableCell>
+
+                        {/* Damage */}
+                        <TableCell className='py-0.5 px-1'>
+                          <Input
+                            type='text'
+                            placeholder='e.g. Scratched on side'
+                            className={`${tinyInputClass} w-[155px]`}
+                            value={record.damage || ""}
+                            onChange={(e) =>
+                              updateDetentionRecord(
+                                index,
+                                "damage",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </TableCell>
+
+                        {/* Dirty */}
+                        <TableCell className='py-0.5 px-1'>
+                          <Input
+                            type='text'
+                            placeholder='e.g. Oil stains'
+                            className={`${tinyInputClass} w-[155px]`}
+                            value={record.dirty || ""}
+                            onChange={(e) =>
+                              updateDetentionRecord(
+                                index,
+                                "dirty",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  },
+                )}
+              </TableBody>
+            </Table>
           </div>
+        )}
 
-          {/*
-            ✅ Upto Date — fully controlled via form.watch / form.setValue.
-            NO separate local state. This ensures:
-            - Edit mode populates correctly when form.reset() fires
-            - The value is persisted to DB via advanceRentPaidUpto
-          */}
-          <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
-            <div className='space-y-2'>
-              <Label htmlFor='advanceRentPaidUpto'>Upto Date</Label>
-              <Input
-                id='advanceRentPaidUpto'
-                type='date'
-                value={uptoDateValue}
-                onChange={(e) => handleUptoDateChange(e.target.value)}
-              />
-              <p className='text-xs text-gray-500'>
-                Auto-calculates rent days for all containers
-              </p>
+        {/* ── SUMMARY ── */}
+        {detentionRecords.length > 0 && (
+          <>
+            <SectionBar title='Financial Summary' />
+            <div className='flex flex-wrap gap-x-6 gap-y-1 text-[12px] py-0.5'>
+              <span className='text-gray-500'>
+                Containers:{" "}
+                <strong className='text-gray-800'>
+                  {detentionRecords.length}
+                </strong>
+              </span>
+              <span className='text-gray-500'>
+                Total Rent (USD):{" "}
+                <strong className='text-blue-700'>
+                  ${totalRentUsd.toFixed(2)}
+                </strong>
+              </span>
+              <span className='text-gray-500'>
+                Total Rent (PKR):{" "}
+                <strong className='text-green-700'>
+                  PKR{" "}
+                  {totalRentPkr.toLocaleString("en-PK", {
+                    minimumFractionDigits: 2,
+                  })}
+                </strong>
+              </span>
+              <span className='text-gray-500'>
+                Total Payable:{" "}
+                <strong className='text-gray-800'>
+                  PKR{" "}
+                  {Number(totalPayable).toLocaleString("en-PK", {
+                    minimumFractionDigits: 2,
+                  })}
+                </strong>
+              </span>
+              <span className='text-gray-500'>
+                Deposit:{" "}
+                <strong className='text-gray-800'>
+                  PKR{" "}
+                  {Number(depositAmount).toLocaleString("en-PK", {
+                    minimumFractionDigits: 2,
+                  })}
+                </strong>
+              </span>
+              <span className='text-gray-500'>
+                Advance Rent:{" "}
+                <strong className='text-gray-800'>
+                  PKR{" "}
+                  {Number(advanceRent).toLocaleString("en-PK", {
+                    minimumFractionDigits: 2,
+                  })}
+                </strong>
+              </span>
+              <span className='text-blue-700 font-semibold'>
+                Balance Receivable:{" "}
+                <strong className='text-blue-800'>
+                  PKR{" "}
+                  {Number(balanceReceivable).toLocaleString("en-PK", {
+                    minimumFractionDigits: 2,
+                  })}
+                </strong>
+              </span>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Detention Records Table */}
-      <Card>
-        <CardHeader className='py-3 px-4 border-b'>
-          <div className='flex items-center justify-between'>
-            <h3 className='text-lg font-semibold'>Container Detention Grid</h3>
-            <Badge variant='outline'>
-              {detentionRecords.length} Container(s)
-            </Badge>
-          </div>
-          {fclContainers.length === 0 && (
-            <p className='text-sm text-amber-600 mt-2'>
-              ⚠️ No containers found. Add containers in Shipping Tab first.
+            <p className='text-[10px] text-gray-400 mt-1'>
+              ℹ Damage and Dirty are description fields only — not included in
+              financial calculations.
             </p>
-          )}
-          {dispatchRecords.length > 0 && (
-            <p className='text-sm text-green-600 mt-2'>
-              ✅ Transport field pre-filled from Dispatch Tab selections
-            </p>
-          )}
-        </CardHeader>
-        <CardContent className='p-0'>
-          {detentionRecords.length === 0 ? (
-            <div className='p-8 text-center text-gray-500'>
-              <Info className='h-12 w-12 mx-auto mb-4 text-gray-400' />
-              <p className='text-lg font-medium mb-2'>No Containers</p>
-              <p className='text-sm'>
-                Add containers in Shipping Tab to track detention details
-              </p>
-            </div>
-          ) : (
-            <>
-              <style jsx>{`
-                .detention-table-wrapper::-webkit-scrollbar {
-                  width: 14px;
-                  height: 14px;
-                }
-                .detention-table-wrapper::-webkit-scrollbar-track {
-                  background: #f1f1f1;
-                  border-radius: 10px;
-                }
-                .detention-table-wrapper::-webkit-scrollbar-thumb {
-                  background: #888;
-                  border-radius: 10px;
-                  border: 3px solid #f1f1f1;
-                }
-                .detention-table-wrapper::-webkit-scrollbar-thumb:hover {
-                  background: #555;
-                }
-                .detention-table-wrapper::-webkit-scrollbar-corner {
-                  background: #f1f1f1;
-                }
-                .detention-table-wrapper {
-                  scrollbar-width: thick;
-                  scrollbar-color: #888 #f1f1f1;
-                }
-              `}</style>
+          </>
+        )}
 
-              <div className='overflow-x-auto detention-table-wrapper max-h-[600px]'>
-                <Table>
-                  <TableHeader>
-                    <TableRow className='bg-gray-50'>
-                      <TableHead className='w-[50px] sticky left-0 bg-gray-50 z-20'>
-                        #
-                      </TableHead>
-                      <TableHead className='min-w-[140px]'>
-                        Container No.
-                      </TableHead>
-                      <TableHead className='min-w-[90px]'>Type</TableHead>
-                      <TableHead className='min-w-[80px]'>Size</TableHead>
-                      <TableHead className='min-w-[110px]'>
-                        Weight (kg)
-                      </TableHead>
-                      <TableHead className='min-w-[180px]'>Transport</TableHead>
-                      <TableHead className='min-w-[150px]'>
-                        Empty Date
-                      </TableHead>
-                      <TableHead className='min-w-[150px]'>
-                        EIR Received
-                      </TableHead>
-                      <TableHead className='min-w-[160px]'>Condition</TableHead>
-                      <TableHead className='min-w-[100px] text-right'>
-                        Rent Days
-                      </TableHead>
-                      <TableHead className='min-w-[140px] text-right bg-blue-50'>
-                        Rent (USD)
-                      </TableHead>
-                      <TableHead className='min-w-[140px] text-right bg-blue-50'>
-                        Exch. Rate
-                      </TableHead>
-                      <TableHead className='min-w-[140px] text-right bg-green-50'>
-                        Rent (PKR)
-                      </TableHead>
-                      <TableHead className='min-w-[150px]'>Damage</TableHead>
-                      <TableHead className='min-w-[150px]'>Dirty</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {detentionRecords.map(
-                      (record: DetentionRecord, index: number) => {
-                        /*
-                          ✅ CONDITION FIX — two-part approach:
-                          1. normalizeCondition() maps any casing the API sends
-                             ("good", "GOOD", "Good") to the exact SelectItem value.
-                          2. key prop includes the raw condition value so Radix UI
-                             Select fully remounts when async data arrives, preventing
-                             the "Select condition" placeholder staying stuck.
-                        */
-                        const normalizedCondition = normalizeCondition(
-                          record.condition,
-                        );
+        {/* ── ADDITIONAL INFORMATION ── */}
+        <SectionBar title='Additional Information' />
+        <div className='flex flex-wrap gap-x-3 gap-y-3 items-end'>
+          <Field label='Case Submitted to Line on' className='w-[175px]'>
+            <Input
+              type='date'
+              className={tinyInputClass}
+              {...form.register("caseSubmittedToLineOn")}
+            />
+          </Field>
 
-                        return (
-                          <TableRow key={index} className='hover:bg-gray-50'>
-                            <TableCell className='font-medium sticky left-0 bg-white z-10'>
-                              {index + 1}
-                            </TableCell>
+          <Field label='Rent Invoice Issued on' className='w-[175px]'>
+            <Input
+              type='date'
+              className={tinyInputClass}
+              {...form.register("rentInvoiceIssuedOn")}
+            />
+          </Field>
 
-                            <TableCell className='font-mono text-sm'>
-                              {record.containerNumber}
-                            </TableCell>
-
-                            <TableCell>
-                              {getContainerTypeLabel(record.containerTypeId)}
-                            </TableCell>
-
-                            <TableCell>
-                              {getContainerSizeLabel(record.containerSizeId)}
-                            </TableCell>
-
-                            <TableCell className='text-right'>
-                              {record.netWeight?.toFixed(2) || "0.00"}
-                            </TableCell>
-
-                            <TableCell>
-                              <Input
-                                className='h-9 bg-gray-50'
-                                value={
-                                  getTransporterNameForContainer(
-                                    record.containerNumber,
-                                  ) || "Not assigned"
-                                }
-                                readOnly
-                                title='Assign transporter in Dispatch Tab'
-                              />
-                            </TableCell>
-
-                            <TableCell>
-                              <Input
-                                type='date'
-                                className='h-9'
-                                value={record.emptyDate || ""}
-                                onChange={(e) =>
-                                  updateDetentionRecord(
-                                    index,
-                                    "emptyDate",
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                            </TableCell>
-
-                            <TableCell>
-                              <Input
-                                type='date'
-                                className='h-9'
-                                value={record.eirReceivedOn || ""}
-                                onChange={(e) =>
-                                  updateDetentionRecord(
-                                    index,
-                                    "eirReceivedOn",
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                            </TableCell>
-
-                            {/*
-                              ✅ CONDITION — native <select> instead of Radix UI.
-                              Radix UI Select silently ignores value changes that
-                              happen after the initial mount in table rows, so the
-                              trigger label stays stuck on the placeholder even when
-                              `value` is correct. A native select is always a
-                              controlled component: whatever `value` is, that's
-                              exactly what the user sees — no remount tricks needed.
-                            */}
-                            <TableCell>
-                              <select
-                                value={normalizedCondition}
-                                onChange={(e) =>
-                                  updateDetentionRecord(
-                                    index,
-                                    "condition",
-                                    e.target.value,
-                                  )
-                                }
-                                className='h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
-                              >
-                                <option value=''>Select condition</option>
-                                {CONDITION_OPTIONS.map((opt) => (
-                                  <option key={opt} value={opt}>
-                                    {opt}
-                                  </option>
-                                ))}
-                              </select>
-                            </TableCell>
-
-                            <TableCell className='text-right'>
-                              <Input
-                                type='number'
-                                className='h-9 text-right'
-                                value={record.rentDays || 0}
-                                onChange={(e) =>
-                                  updateDetentionRecord(
-                                    index,
-                                    "rentDays",
-                                    parseInt(e.target.value) || 0,
-                                  )
-                                }
-                              />
-                            </TableCell>
-
-                            <TableCell className='bg-blue-50'>
-                              <Input
-                                type='number'
-                                step='0.01'
-                                className='h-9 text-right font-semibold'
-                                placeholder='0.00'
-                                value={record.rentAmountFc || ""}
-                                onChange={(e) =>
-                                  updateDetentionRecord(
-                                    index,
-                                    "rentAmountFc",
-                                    parseFloat(e.target.value) || 0,
-                                  )
-                                }
-                              />
-                            </TableCell>
-
-                            <TableCell className='bg-blue-50'>
-                              <Input
-                                type='number'
-                                step='0.01'
-                                className='h-9 text-right'
-                                placeholder='0.00'
-                                value={record.exchangeRate || ""}
-                                onChange={(e) =>
-                                  updateDetentionRecord(
-                                    index,
-                                    "exchangeRate",
-                                    parseFloat(e.target.value) || 0,
-                                  )
-                                }
-                              />
-                            </TableCell>
-
-                            <TableCell className='bg-green-50'>
-                              <Input
-                                type='number'
-                                step='0.01'
-                                className='h-9 text-right bg-green-50 font-bold'
-                                value={
-                                  record.rentAmountLc?.toFixed(2) || "0.00"
-                                }
-                                readOnly
-                                title='Auto-calculated: USD Rent × Exchange Rate'
-                              />
-                            </TableCell>
-
-                            <TableCell>
-                              <Input
-                                type='text'
-                                className='h-9'
-                                placeholder='e.g., Scratched on side'
-                                value={record.damage || ""}
-                                onChange={(e) =>
-                                  updateDetentionRecord(
-                                    index,
-                                    "damage",
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                            </TableCell>
-
-                            <TableCell>
-                              <Input
-                                type='text'
-                                className='h-9'
-                                placeholder='e.g., Oil stains'
-                                value={record.dirty || ""}
-                                onChange={(e) =>
-                                  updateDetentionRecord(
-                                    index,
-                                    "dirty",
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                            </TableCell>
-                          </TableRow>
-                        );
-                      },
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </>
-          )}
-
-          {/* Summary Footer */}
-          {detentionRecords.length > 0 && (
-            <div className='p-4 border-t bg-gray-50'>
-              <div className='grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4'>
-                <div>
-                  <span className='text-gray-600'>Total Containers:</span>{" "}
-                  <span className='font-semibold'>
-                    {detentionRecords.length}
-                  </span>
-                </div>
-                <div className='bg-blue-50 p-2 rounded'>
-                  <span className='text-blue-900'>Total Rent (USD):</span>{" "}
-                  <span className='font-bold text-blue-900'>
-                    ${totalRentUsd.toFixed(2)}
-                  </span>
-                </div>
-                <div className='bg-green-50 p-2 rounded'>
-                  <span className='text-green-900'>Total Rent (PKR):</span>{" "}
-                  <span className='font-bold text-green-900'>
-                    PKR{" "}
-                    {totalRentPkr.toLocaleString("en-PK", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-              </div>
-
-              <div className='bg-white p-4 rounded border'>
-                <h4 className='font-semibold mb-3'>Financial Summary (PKR)</h4>
-                <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm'>
-                  <div>
-                    <div className='text-gray-600'>Total Rent Payable:</div>
-                    <div className='font-semibold'>
-                      PKR{" "}
-                      {Number(totalPayable).toLocaleString("en-PK", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </div>
-                  </div>
-                  <div>
-                    <div className='text-gray-600'>Security Deposit:</div>
-                    <div className='font-semibold'>
-                      PKR{" "}
-                      {Number(depositAmount).toLocaleString("en-PK", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </div>
-                  </div>
-                  <div>
-                    <div className='text-gray-600'>Advance Rent:</div>
-                    <div className='font-semibold'>
-                      PKR{" "}
-                      {Number(advanceRent).toLocaleString("en-PK", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </div>
-                  </div>
-                  <div className='bg-blue-50 p-2 rounded'>
-                    <div className='text-blue-900 font-medium'>
-                      Balance Receivable:
-                    </div>
-                    <div className='font-bold text-blue-900 text-lg'>
-                      PKR{" "}
-                      {Number(balanceReceivable).toLocaleString("en-PK", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </div>
-                  </div>
-                </div>
-                <div className='mt-3 text-xs text-gray-500 bg-blue-50 p-2 rounded'>
-                  <p>
-                    ℹ️ <strong>Note:</strong> Damage and Dirty are text fields
-                    for descriptions (e.g., &quot;Scratched on side&quot;,
-                    &quot;Oil stains&quot;). Financial calculations are based on
-                    rent only.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Additional Information */}
-      <Card>
-        <CardHeader className='py-3 px-4 border-b'>
-          <h3 className='text-lg font-semibold'>Additional Information</h3>
-        </CardHeader>
-        <CardContent className='p-4'>
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-            <div className='space-y-2'>
-              <Label htmlFor='caseSubmittedToLineOn'>
-                Case Submitted to Line on
-              </Label>
-              <Input
-                id='caseSubmittedToLineOn'
-                type='date'
-                {...form.register("caseSubmittedToLineOn")}
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label htmlFor='rentInvoiceIssuedOn'>
-                Rent Invoice Issued on
-              </Label>
-              <Input
-                id='rentInvoiceIssuedOn'
-                type='date'
-                {...form.register("rentInvoiceIssuedOn")}
-              />
-            </div>
-
-            <div className='space-y-2'>
-              <Label htmlFor='refundBalanceReceivedOn'>
-                Refund/Balance Received on
-              </Label>
-              <Input
-                id='refundBalanceReceivedOn'
-                type='date'
-                {...form.register("refundBalanceReceivedOn")}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          <Field label='Refund / Balance Received on' className='w-[185px]'>
+            <Input
+              type='date'
+              className={tinyInputClass}
+              {...form.register("refundBalanceReceivedOn")}
+            />
+          </Field>
+        </div>
+      </div>
     </TabsContent>
   );
 }
