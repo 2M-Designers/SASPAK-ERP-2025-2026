@@ -1,8 +1,8 @@
-// components/job-order/UpdateJobStatusDialog.tsx
+// components/job-order/statusupdatedialog/UpdateJobStatusDialog.tsx
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,13 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,7 +22,7 @@ import {
   FiClock,
   FiAlertCircle,
 } from "react-icons/fi";
-import { Portal } from "@radix-ui/react-portal";
+import Select, { SingleValue } from "react-select";
 
 type JobMaster = {
   jobId: number;
@@ -38,6 +31,18 @@ type JobMaster = {
   remarks?: string;
   operationType?: string;
   operationMode?: string;
+};
+
+type StatusMeta = {
+  dot: string;
+  badge: string;
+  icon?: JSX.Element;
+};
+
+type StatusOption = {
+  value: string;
+  label: string;
+  meta: StatusMeta;
 };
 
 type UpdateJobStatusDialogProps = {
@@ -68,6 +73,66 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
+const getStatusMeta = (status: string): StatusMeta => {
+  const s = (status ?? "").toUpperCase();
+
+  if (s.includes("HOLD") || s.includes("CANCEL")) {
+    return {
+      dot: "bg-red-500",
+      badge: "bg-red-50 text-red-700 border-red-300",
+      icon: <FiAlertCircle className='h-3 w-3' />,
+    };
+  }
+  if (
+    s.includes("COLLECT") ||
+    s.includes("DISPATCH") ||
+    s.includes("COMPLETE")
+  ) {
+    return {
+      dot: "bg-green-500",
+      badge: "bg-green-50 text-green-700 border-green-300",
+      icon: <FiCheckCircle className='h-3 w-3' />,
+    };
+  }
+  if (
+    s.includes("IN PROCESS") ||
+    s.includes("GROUNDING") ||
+    s.includes("ACTIVE")
+  ) {
+    return {
+      dot: "bg-blue-500",
+      badge: "bg-blue-50 text-blue-700 border-blue-300",
+    };
+  }
+  if (s.includes("AWAITED") || s.includes("PAYMENT") || s.includes("DRAFT")) {
+    return {
+      dot: "bg-yellow-500",
+      badge: "bg-yellow-50 text-yellow-700 border-yellow-300",
+      icon: <FiClock className='h-3 w-3' />,
+    };
+  }
+  return {
+    dot: "bg-gray-400",
+    badge: "bg-gray-100 text-gray-700 border-gray-300",
+  };
+};
+
+// Map a Tailwind bg-* class name to a hex color for inline use in react-select
+const dotClassToHex = (cls: string): string => {
+  switch (cls) {
+    case "bg-red-500":
+      return "#ef4444";
+    case "bg-green-500":
+      return "#22c55e";
+    case "bg-blue-500":
+      return "#3b82f6";
+    case "bg-yellow-500":
+      return "#eab308";
+    default:
+      return "#9ca3af"; // gray-400
+  }
+};
+
 export function UpdateJobStatusDialog({
   open,
   job,
@@ -76,7 +141,7 @@ export function UpdateJobStatusDialog({
   apiBaseUrl = process.env.NEXT_PUBLIC_BASE_URL || "",
 }: UpdateJobStatusDialogProps) {
   const { toast } = useToast();
-  const [statusOptions, setStatusOptions] = useState<
+  const [rawStatusOptions, setRawStatusOptions] = useState<
     { key: string; label: string }[]
   >([]);
   const [selectedStatus, setSelectedStatus] = useState("");
@@ -84,51 +149,17 @@ export function UpdateJobStatusDialog({
   const [isLoadingStatuses, setIsLoadingStatuses] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const getStatusMeta = (
-    status: string,
-  ): { dot: string; badge: string; icon?: JSX.Element } => {
-    const s = (status ?? "").toUpperCase();
-
-    if (s.includes("HOLD") || s.includes("CANCEL")) {
-      return {
-        dot: "bg-red-500",
-        badge: "bg-red-50 text-red-700 border-red-300",
-        icon: <FiAlertCircle className='h-3 w-3' />,
-      };
-    }
-    if (
-      s.includes("COLLECT") ||
-      s.includes("DISPATCH") ||
-      s.includes("COMPLET")
-    ) {
-      return {
-        dot: "bg-green-500",
-        badge: "bg-green-50 text-green-700 border-green-300",
-        icon: <FiCheckCircle className='h-3 w-3' />,
-      };
-    }
-    if (
-      s.includes("IN PROCESS") ||
-      s.includes("GROUNDING") ||
-      s.includes("ACTIVE")
-    ) {
-      return {
-        dot: "bg-blue-500",
-        badge: "bg-blue-50 text-blue-700 border-blue-300",
-      };
-    }
-    if (s.includes("AWAITED") || s.includes("PAYMENT") || s.includes("DRAFT")) {
-      return {
-        dot: "bg-yellow-500",
-        badge: "bg-yellow-50 text-yellow-700 border-yellow-300",
-        icon: <FiClock className='h-3 w-3' />,
-      };
-    }
-    return {
-      dot: "bg-gray-400",
-      badge: "bg-gray-100 text-gray-700 border-gray-300",
-    };
-  };
+  // Pre-compute react-select options with meta attached so formatOptionLabel
+  // doesn't have to re-run getStatusMeta on every render.
+  const statusOptions: StatusOption[] = useMemo(
+    () =>
+      rawStatusOptions.map((opt) => ({
+        value: opt.key,
+        label: opt.label,
+        meta: getStatusMeta(opt.key),
+      })),
+    [rawStatusOptions],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -165,7 +196,7 @@ export function UpdateJobStatusDialog({
             key: key,
             label: label.replace(/["']+$/g, "").trim(),
           }));
-          setStatusOptions(options);
+          setRawStatusOptions(options);
         } else {
           throw new Error("Failed to fetch status options");
         }
@@ -254,6 +285,23 @@ export function UpdateJobStatusDialog({
   const selectedMeta = getStatusMeta(selectedStatus);
   const currentMeta = getStatusMeta(job?.status ?? "");
 
+  // Controlled value for react-select (find pattern, fall back to null)
+  const selectedOption =
+    statusOptions.find((o) => o.value === selectedStatus) ?? null;
+
+  // Render a single option (with colored dot)
+  const formatOptionLabel = (option: StatusOption) => (
+    <div className='flex items-start gap-2'>
+      <span
+        className='inline-block w-2 h-2 rounded-full flex-shrink-0 mt-1'
+        style={{ backgroundColor: dotClassToHex(option.meta.dot) }}
+      />
+      <span className='text-xs leading-snug whitespace-normal'>
+        {option.label}
+      </span>
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className='max-w-md'>
@@ -306,65 +354,69 @@ export function UpdateJobStatusDialog({
               New Stage Status <span className='text-red-500'>*</span>
             </Label>
 
-            {isLoadingStatuses ? (
-              <div className='h-10 bg-gray-100 animate-pulse rounded-md flex items-center px-3 text-xs text-gray-400'>
-                Loading statuses...
-              </div>
-            ) : (
-              <Select
-                value={selectedStatus}
-                onValueChange={setSelectedStatus}
-                disabled={isSubmitting}
-              >
-                <SelectTrigger className='w-full text-sm min-h-[40px] h-auto'>
-                  <SelectValue placeholder='Select new stage...'>
-                    {selectedStatus && (
-                      <div className='flex items-center gap-2 py-0.5'>
-                        <span
-                          className={`w-2 h-2 rounded-full flex-shrink-0 ${selectedMeta.dot}`}
-                        />
-                        <span className='text-xs leading-snug whitespace-normal text-left'>
-                          {selectedStatus}
-                        </span>
-                      </div>
-                    )}
-                  </SelectValue>
-                </SelectTrigger>
-                <Portal>
-                  <SelectContent
-                    className='max-h-[320px] z-[9999] bg-white'
-                    position='popper'
-                    sideOffset={5}
-                  >
-                    {statusOptions.length === 0 ? (
-                      <div className='p-3 text-center text-sm text-gray-500'>
-                        No statuses available
-                      </div>
-                    ) : (
-                      statusOptions.map((option) => {
-                        const meta = getStatusMeta(option.key);
-                        return (
-                          <SelectItem
-                            key={option.key}
-                            value={option.key}
-                            className='py-2.5 cursor-pointer focus:bg-blue-50'
-                          >
-                            <div className='flex items-start gap-2'>
-                              <span
-                                className={`w-2 h-2 rounded-full flex-shrink-0 mt-1 ${meta.dot}`}
-                              />
-                              <span className='text-xs leading-snug whitespace-normal'>
-                                {option.label}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        );
-                      })
-                    )}
-                  </SelectContent>
-                </Portal>
-              </Select>
-            )}
+            <Select<StatusOption, false>
+              value={selectedOption}
+              onChange={(opt: SingleValue<StatusOption>) =>
+                setSelectedStatus(opt?.value ?? "")
+              }
+              options={statusOptions}
+              isLoading={isLoadingStatuses}
+              isDisabled={isSubmitting}
+              isClearable
+              isSearchable
+              placeholder='Select new stage...'
+              formatOptionLabel={formatOptionLabel}
+              noOptionsMessage={() => "No statuses available"}
+              loadingMessage={() => "Loading statuses..."}
+              // Portal the menu so it escapes the Dialog's stacking context
+              menuPortalTarget={
+                typeof window !== "undefined" ? document.body : null
+              }
+              menuPosition='fixed'
+              styles={{
+                control: (base, state) => ({
+                  ...base,
+                  minHeight: 40,
+                  fontSize: 14,
+                  borderColor: state.isFocused ? "#3b82f6" : "#e5e7eb",
+                  boxShadow: state.isFocused ? "0 0 0 1px #3b82f6" : "none",
+                  "&:hover": {
+                    borderColor: "#3b82f6",
+                  },
+                }),
+                valueContainer: (base) => ({
+                  ...base,
+                  padding: "2px 8px",
+                }),
+                input: (base) => ({
+                  ...base,
+                  margin: 0,
+                  padding: 0,
+                }),
+                option: (base, state) => ({
+                  ...base,
+                  fontSize: 12,
+                  padding: "8px 12px",
+                  backgroundColor: state.isSelected
+                    ? "#dbeafe"
+                    : state.isFocused
+                      ? "#eff6ff"
+                      : "white",
+                  color: "#111827",
+                  cursor: "pointer",
+                }),
+                menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+                menu: (base) => ({
+                  ...base,
+                  zIndex: 9999,
+                  maxHeight: 320,
+                }),
+                menuList: (base) => ({
+                  ...base,
+                  maxHeight: 320,
+                }),
+              }}
+            />
 
             {selectedStatus && (
               <div className='mt-2 flex items-center gap-1.5'>

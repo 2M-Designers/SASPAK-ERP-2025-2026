@@ -137,6 +137,7 @@ type LoadingState = {
   statuses: boolean;
   jobDetail: Record<number, boolean>;
   partyCharges: Record<number, boolean>;
+  allPartyCharges: boolean; // true while background batch-load is running
 };
 
 // ─── API Helpers ──────────────────────────────────────────────────────────────
@@ -241,6 +242,31 @@ const useDebounce = <T,>(value: T, delay: number): T => {
   return debouncedValue;
 };
 
+// ─── Concurrency limiter for batch fetches ────────────────────────────────────
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency: number,
+): Promise<T[]> {
+  const results: T[] = [];
+  let cursor = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, tasks.length) },
+    async () => {
+      while (cursor < tasks.length) {
+        const idx = cursor++;
+        try {
+          results[idx] = await tasks[idx]();
+        } catch (e) {
+          // swallow individual failures so the batch doesn't abort
+          console.warn("Batch task failed:", e);
+        }
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
 // ─── Line Item Row Component (Memoized) ───────────────────────────────────────
 
 const LineItemRow = ({
@@ -259,6 +285,8 @@ const LineItemRow = ({
   filteredBeneficiaries,
   beneficiarySearch,
   setBeneficiarySearch,
+  partyChargesCache,
+  isPartyChargesLoading,
   statusOptions,
   pendingStatus,
   approvedStatus,
@@ -290,6 +318,19 @@ const LineItemRow = ({
     if (status === rejectedStatus) return "bg-red-50/20";
     return "";
   };
+
+  // Per-line beneficiary filter:
+  // If a charge is selected for this line, show only parties whose
+  // partyCharges set includes the selected chargeId. If a party is not yet
+  // in the cache, we exclude it (loading indicator is shown separately).
+  const lineFilteredBeneficiaries = React.useMemo(() => {
+    if (!item.headCoaId) return filteredBeneficiaries;
+
+    return filteredBeneficiaries.filter((p: Party) => {
+      const charges = partyChargesCache?.[p.partyId];
+      return charges ? charges.has(item.headCoaId) : false;
+    });
+  }, [item.headCoaId, filteredBeneficiaries, partyChargesCache]);
 
   return (
     <TableRow className={`group ${getRowBg(item.subRequestStatus)}`}>
@@ -471,12 +512,19 @@ const LineItemRow = ({
               </div>
             </div>
             <div className='max-h-[250px] overflow-y-auto'>
-              {filteredBeneficiaries.length === 0 ? (
+              {item.headCoaId && isPartyChargesLoading ? (
                 <div className='p-4 text-center text-gray-500'>
-                  No beneficiaries found
+                  <FiLoader className='animate-spin inline mr-2 h-3 w-3' />
+                  Loading party–charge mappings...
+                </div>
+              ) : lineFilteredBeneficiaries.length === 0 ? (
+                <div className='p-4 text-center text-gray-500'>
+                  {item.headCoaId
+                    ? "No beneficiaries available for this Head of Account"
+                    : "No beneficiaries found"}
                 </div>
               ) : (
-                filteredBeneficiaries.map((party: Party) => (
+                lineFilteredBeneficiaries.map((party: Party) => (
                   <SelectItem
                     key={party.partyId}
                     value={party.partyId.toString()}
@@ -704,9 +752,15 @@ export default function InternalFundRequestForm({
   const [parties, setParties] = useState<Party[]>([]);
   const [chargesMasters, setChargesMasters] = useState<ChargesMaster[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+
+  // Maps partyId → Set of chargeIds active for that party.
+  // Built lazily by fetching Party/{id} for every party the first time
+  // any charge is selected on the form.
   const [partyChargesCache, setPartyChargesCache] = useState<
     Record<number, Set<number>>
   >({});
+  const partyChargesLoadedRef = useRef(false);
+  const partyChargesLoadingPromiseRef = useRef<Promise<void> | null>(null);
 
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [filteredCharges, setFilteredCharges] = useState<ChargesMaster[]>([]);
@@ -731,6 +785,7 @@ export default function InternalFundRequestForm({
     statuses: false,
     jobDetail: {},
     partyCharges: {},
+    allPartyCharges: false,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -785,7 +840,7 @@ export default function InternalFundRequestForm({
           `${getBaseUrl()}General/GetTypeValues?typeName=FundRequest_Detail_Status`,
           {
             method: "GET",
-            headers: getAuthHeaders(), // ✅ auth headers
+            headers: getAuthHeaders(),
           },
         );
 
@@ -852,11 +907,11 @@ export default function InternalFundRequestForm({
       try {
         const res = await fetch(`${getBaseUrl()}Job/GetList`, {
           method: "POST",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             select: "JobId, JobNumber, OperationType, Status",
             where: "",
-            search: "", // ✅ required field
+            search: "",
             sortOn: "JobId DESC",
             page: "1",
             pageSize: "500",
@@ -904,11 +959,11 @@ export default function InternalFundRequestForm({
       try {
         const res = await fetch(`${getBaseUrl()}ChargesMaster/GetList`, {
           method: "POST",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             select: "ChargeId, ChargeCode, ChargeName, ChargesNature",
             where: "IsActive == true",
-            search: "", // ✅ required field
+            search: "",
             sortOn: "ChargeCode ASC",
             page: "1",
             pageSize: "500",
@@ -947,6 +1002,7 @@ export default function InternalFundRequestForm({
           .filter((c: ChargesMaster) => c.chargeId > 0);
 
         setChargesMasters(normalised);
+        // Default view: non-operational if any exist, else everything.
         const nonOp = normalised.filter(
           (c) => c.chargesNature.toLowerCase() === "non-operational",
         );
@@ -968,11 +1024,11 @@ export default function InternalFundRequestForm({
       try {
         const res = await fetch(`${getBaseUrl()}Party/GetList`, {
           method: "POST",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             select: "PartyId, PartyCode, PartyName, BenificiaryNameOfPO",
             where: "",
-            search: "", // ✅ required field
+            search: "",
             sortOn: "PartyName ASC",
             page: "1",
             pageSize: "500",
@@ -1020,12 +1076,12 @@ export default function InternalFundRequestForm({
       try {
         const res = await fetch(`${getBaseUrl()}User/GetList`, {
           method: "POST",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             select:
               "UserId, Username, FullName, Email, Designation, DepartmentId, IsAllowedRequestApproval",
             where: "IsAllowedRequestApproval == true",
-            search: "", // ✅ required field
+            search: "",
             sortOn: "FullName ASC",
             page: "1",
             pageSize: "500",
@@ -1073,58 +1129,103 @@ export default function InternalFundRequestForm({
     fetchUsers();
   }, [toast]);
 
-  // ── Fetch party charges ────────────────────────────────────────────────────
-  const fetchPartyCharges = useCallback(
-    async (partyId: number): Promise<Set<number>> => {
-      if (partyChargesCache[partyId]) return partyChargesCache[partyId];
+  // ── Fetch a single party's charges ────────────────────────────────────────
+  const fetchSinglePartyCharges = useCallback(
+    async (partyId: number, maxRetries = 3): Promise<Set<number>> => {
+      let lastError: unknown = null;
 
-      setLoadingState((prev) => ({
-        ...prev,
-        partyCharges: { ...prev.partyCharges, [partyId]: true },
-      }));
-
-      try {
-        const res = await fetch(`${getBaseUrl()}Party/${partyId}`, {
-          method: "GET",
-          headers: getAuthHeaders(), // ✅ auth headers
-        });
-
-        if (res.status === 401) {
-          toast({
-            variant: "destructive",
-            title: "Session Expired",
-            description: "Please log in again.",
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const res = await fetch(`${getBaseUrl()}Party/${partyId}`, {
+            method: "GET",
+            headers: getAuthHeaders(),
           });
-          return new Set<number>();
+
+          if (!res.ok) {
+            // 4xx = don't retry (won't change). 5xx = retry.
+            if (res.status >= 400 && res.status < 500) {
+              return new Set<number>();
+            }
+            lastError = new Error(`HTTP ${res.status}`);
+          } else {
+            const data = await res.json();
+            const ids = new Set<number>(
+              (data.partyCharges ?? [])
+                .filter((pc: any) => pc.isActive)
+                .map((pc: any) => pc.chargesId as number),
+            );
+            return ids;
+          }
+        } catch (e) {
+          lastError = e;
         }
 
-        if (res.ok) {
-          const data = await res.json();
-          const ids = new Set<number>(
-            (data.partyCharges ?? [])
-              .filter((pc: any) => pc.isActive)
-              .map((pc: any) => pc.chargesId as number),
-          );
-          setPartyChargesCache((prev) => ({ ...prev, [partyId]: ids }));
-          return ids;
+        // Exponential backoff: 200ms, 400ms, 800ms
+        if (attempt < maxRetries - 1) {
+          await new Promise((r) => setTimeout(r, 200 * Math.pow(2, attempt)));
         }
-      } catch (e) {
-        console.error("Party charges fetch error:", e);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to load charges for party",
-        });
-      } finally {
-        setLoadingState((prev) => ({
-          ...prev,
-          partyCharges: { ...prev.partyCharges, [partyId]: false },
-        }));
       }
+
+      // All retries exhausted — fail silently, will be summarised by caller
       return new Set<number>();
     },
-    [partyChargesCache, toast],
+    [],
   );
+
+  // ── Lazy-load ALL parties' charges (called once on first charge select) ──
+  const ensureAllPartyChargesLoaded = useCallback(async (): Promise<void> => {
+    if (partyChargesLoadedRef.current) return;
+    if (partyChargesLoadingPromiseRef.current) {
+      return partyChargesLoadingPromiseRef.current;
+    }
+    if (parties.length === 0) return;
+
+    setLoadingState((prev) => ({ ...prev, allPartyCharges: true }));
+
+    const promise = (async () => {
+      let successCount = 0;
+      let failureCount = 0;
+
+      const tasks = parties.map((p) => async () => {
+        const ids = await fetchSinglePartyCharges(p.partyId);
+        // We treat empty set as "loaded but no charges" — same as success
+        // for our purposes. Truly broken responses are rare after retries.
+        setPartyChargesCache((prev) => ({ ...prev, [p.partyId]: ids }));
+        if (ids.size > 0) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+      });
+
+      // Concurrency reduced to 3 to avoid overwhelming the dev API.
+      // With retries, each task may take longer, so total time stays reasonable.
+      await runWithConcurrency(tasks, 3);
+      partyChargesLoadedRef.current = true;
+
+      console.log(
+        `📦 Party-charges cache built: ${successCount} with charges, ${failureCount} without/failed (out of ${parties.length})`,
+      );
+
+      if (failureCount > parties.length / 2) {
+        toast({
+          variant: "destructive",
+          title: "Some party data could not load",
+          description:
+            "Beneficiary filtering may be incomplete. Try refreshing the page.",
+        });
+      }
+    })();
+
+    partyChargesLoadingPromiseRef.current = promise;
+
+    try {
+      await promise;
+    } finally {
+      setLoadingState((prev) => ({ ...prev, allPartyCharges: false }));
+      partyChargesLoadingPromiseRef.current = null;
+    }
+  }, [parties, fetchSinglePartyCharges, toast]);
 
   // ── Fetch job detail ──────────────────────────────────────────────────────
   const fetchJobDetail = useCallback(
@@ -1139,7 +1240,7 @@ export default function InternalFundRequestForm({
       try {
         const res = await fetch(`${getBaseUrl()}Job/${jobId}`, {
           method: "GET",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
         });
 
         if (res.status === 401) {
@@ -1196,8 +1297,8 @@ export default function InternalFundRequestForm({
       );
       setFilteredCharges(nonOp.length > 0 ? nonOp : chargesMasters);
     } else {
-      setFilteredCharges((prev) =>
-        prev.filter(
+      setFilteredCharges(
+        chargesMasters.filter(
           (c) =>
             c.chargeName.toLowerCase().includes(q) ||
             c.chargeCode.toLowerCase().includes(q),
@@ -1246,34 +1347,27 @@ export default function InternalFundRequestForm({
     [],
   );
 
-  const clearLineJob = useCallback(
-    (lineId: string) => {
-      setLineItems((prev) =>
-        prev.map((item) =>
-          item.id === lineId
-            ? {
-                ...item,
-                jobId: null,
-                jobNumber: "",
-                jobOperationType: "",
-                customerName: "",
-                beneficiaryCoaId: null,
-                beneficiary: "",
-                partiesAccount: "",
-                headCoaId: null,
-                headOfAccount: "",
-              }
-            : item,
-        ),
-      );
-      const nonOp = chargesMasters.filter(
-        (c) => c.chargesNature?.toLowerCase() === "non-operational",
-      );
-      setFilteredCharges(nonOp.length > 0 ? nonOp : chargesMasters);
-    },
-    [chargesMasters],
-  );
+  const clearLineJob = useCallback((lineId: string) => {
+    setLineItems((prev) =>
+      prev.map((item) =>
+        item.id === lineId
+          ? {
+              ...item,
+              jobId: null,
+              jobNumber: "",
+              jobOperationType: "",
+              customerName: "",
+              beneficiaryCoaId: null,
+              beneficiary: "",
+              partiesAccount: "",
+              // Charges remain independent of job — no longer cleared here
+            }
+          : item,
+      ),
+    );
+  }, []);
 
+  // ── Job change: only auto-fills customer + (optional) auto-beneficiary ────
   const handleLineJobChange = useCallback(
     async (lineId: string, jobIdStr: string) => {
       const job = jobs.find((j) => j.jobId.toString() === jobIdStr);
@@ -1293,8 +1387,6 @@ export default function InternalFundRequestForm({
                 beneficiaryCoaId: null,
                 beneficiary: "",
                 partiesAccount: "",
-                headCoaId: null,
-                headOfAccount: "",
               }
             : item,
         ),
@@ -1309,63 +1401,91 @@ export default function InternalFundRequestForm({
           : null;
 
         setLineItems((prev) =>
-          prev.map((item) =>
-            item.id === lineId
-              ? {
-                  ...item,
-                  customerName,
-                  jobOperationType: job.operationType,
-                  ...(customerParty && {
-                    beneficiaryCoaId: customerParty.partyId,
-                    beneficiary:
-                      customerParty.benificiaryFromPO ||
-                      customerParty.partyName,
-                    partiesAccount: customerParty.partyName,
-                  }),
-                }
-              : item,
-          ),
-        );
+          prev.map((item) => {
+            if (item.id !== lineId) return item;
 
-        if (customerParty) {
-          const allowedIds = await fetchPartyCharges(customerParty.partyId);
-          if (allowedIds.size > 0) {
-            setFilteredCharges(
-              chargesMasters.filter((c) => allowedIds.has(c.chargeId)),
-            );
-          } else {
-            const nonOp = chargesMasters.filter(
-              (c) => c.chargesNature?.toLowerCase() === "non-operational",
-            );
-            setFilteredCharges(nonOp.length > 0 ? nonOp : chargesMasters);
-          }
-        } else {
-          const nonOp = chargesMasters.filter(
-            (c) => c.chargesNature?.toLowerCase() === "non-operational",
-          );
-          setFilteredCharges(nonOp.length > 0 ? nonOp : chargesMasters);
-        }
+            const baseUpdate = {
+              ...item,
+              customerName,
+              jobOperationType: job.operationType,
+            };
+
+            if (!customerParty) return baseUpdate;
+
+            // If a charge is already selected, only auto-fill beneficiary
+            // when this customer party is allowed for that charge.
+            if (item.headCoaId) {
+              const partyCharges = partyChargesCache[customerParty.partyId];
+              if (partyCharges && !partyCharges.has(item.headCoaId)) {
+                return baseUpdate;
+              }
+            }
+
+            return {
+              ...baseUpdate,
+              beneficiaryCoaId: customerParty.partyId,
+              beneficiary:
+                customerParty.benificiaryFromPO || customerParty.partyName,
+              partiesAccount: customerParty.partyName,
+            };
+          }),
+        );
       }
     },
-    [jobs, parties, chargesMasters, fetchJobDetail, fetchPartyCharges],
+    [jobs, parties, fetchJobDetail, partyChargesCache],
   );
 
+  // ── Head of Account change: trigger lazy load + validate beneficiary ──────
   const handleHeadOfAccountChange = useCallback(
-    (id: string, chargeIdStr: string) => {
+    async (id: string, chargeIdStr: string) => {
       const charge = chargesMasters.find(
         (c) => c.chargeId.toString() === chargeIdStr,
       );
-      if (charge) {
-        updateLineItem(id, "headCoaId", charge.chargeId);
-        updateLineItem(
-          id,
-          "headOfAccount",
-          charge.chargeName || charge.chargeCode,
-        );
-      }
+      if (!charge) return;
+
+      // 1. Set the charge first so UI is responsive
+      setLineItems((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                headCoaId: charge.chargeId,
+                headOfAccount: charge.chargeName || charge.chargeCode,
+              }
+            : item,
+        ),
+      );
+
+      // 2. Make sure all parties' charges are cached so we can filter.
+      // This runs at most once per session.
+      await ensureAllPartyChargesLoaded();
+      // The cache-update effect below will sweep all lines and clear any
+      // beneficiary that doesn't satisfy its line's charge.
     },
-    [chargesMasters, updateLineItem],
+    [chargesMasters, ensureAllPartyChargesLoaded],
   );
+
+  // After partyChargesCache updates, sweep all lines and clear any
+  // beneficiary that doesn't satisfy its line's charge.
+  useEffect(() => {
+    if (!partyChargesLoadedRef.current) return;
+    setLineItems((prev) =>
+      prev.map((item) => {
+        if (!item.headCoaId || !item.beneficiaryCoaId) return item;
+        const charges = partyChargesCache[item.beneficiaryCoaId];
+        if (charges && !charges.has(item.headCoaId)) {
+          return {
+            ...item,
+            beneficiaryCoaId: null,
+            beneficiary: "",
+            partiesAccount: "",
+          };
+        }
+        return item;
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partyChargesCache]);
 
   const handleBeneficiaryChange = useCallback(
     (id: string, partyId: string) => {
@@ -1529,6 +1649,7 @@ export default function InternalFundRequestForm({
 
       setLineItems(mapped);
 
+      // Warm up caches so dropdowns filter correctly when first opened.
       mapped.forEach(async (m) => {
         if (m.jobId) {
           await fetchJobDetail(m.jobId);
@@ -1544,6 +1665,13 @@ export default function InternalFundRequestForm({
           }
         }
       });
+
+      // If any line already has a charge, prefetch all party-charge mappings
+      // so the beneficiary filter works on first dropdown open.
+      const hasCharge = mapped.some((m) => m.headCoaId);
+      if (hasCharge) {
+        ensureAllPartyChargesLoaded();
+      }
     }
   }, [
     type,
@@ -1553,6 +1681,7 @@ export default function InternalFundRequestForm({
     chargesMasters,
     pendingStatus,
     fetchJobDetail,
+    ensureAllPartyChargesLoaded,
     updateLineItem,
   ]);
 
@@ -1716,7 +1845,7 @@ export default function InternalFundRequestForm({
 
         const response = await fetch(endpoint, {
           method,
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
           body: JSON.stringify(finalPayload),
         });
 
@@ -1919,8 +2048,11 @@ export default function InternalFundRequestForm({
               <p className='text-xs text-blue-700'>
                 • <strong>Job Number is optional</strong> — leave blank for
                 admin/vendor expenses • Customer name auto-fills from the
-                selected job • Head of Account is selected from Parties •
-                "Requested To" shows only users allowed to approve • All ✓ →
+                selected job •{" "}
+                <strong>
+                  Beneficiary list filters based on Head of Account selection
+                </strong>{" "}
+                • "Requested To" shows only users allowed to approve • All ✓ →
                 Master {approvedStatus} · All ✗ → {rejectedStatus} · Mixed →{" "}
                 {pendingStatus} •{" "}
                 <kbd className='px-1 bg-gray-100 border rounded'>
@@ -2105,6 +2237,8 @@ export default function InternalFundRequestForm({
                         filteredBeneficiaries={filteredBeneficiaries}
                         beneficiarySearch={beneficiarySearch}
                         setBeneficiarySearch={setBeneficiarySearch}
+                        partyChargesCache={partyChargesCache}
+                        isPartyChargesLoading={loadingState.allPartyCharges}
                         statusOptions={statusOptions}
                         pendingStatus={pendingStatus}
                         approvedStatus={approvedStatus}

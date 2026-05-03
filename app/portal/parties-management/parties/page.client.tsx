@@ -25,6 +25,9 @@ import {
   FiUpload,
   FiSearch,
   FiX,
+  FiAlertCircle,
+  FiCheckCircle,
+  FiInfo,
 } from "react-icons/fi";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -59,6 +62,22 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import moment from "moment";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type PartiesPageProps = { initialData?: any[] };
 
@@ -574,6 +593,50 @@ const displayedFields = fieldConfig.filter(
   (f) => f.isdisplayed && f.isselected,
 );
 
+// FK fields that must be sent as null (not 0) when not provided.
+// EF Core rejects rows where these are 0 because no entity exists with Id = 0.
+const NULLABLE_FK_FIELDS = new Set([
+  "unLocationId",
+  "glParentAccountId",
+  "glAccountId",
+  "salesRepId",
+  "docsRepId",
+  "accountsRepId",
+]);
+
+// Required text/contact fields — empty values get default substitutes + a warning.
+const REQUIRED_FIELDS = {
+  addressLine1: "Address Line 1",
+  phone: "Phone",
+  email: "Email",
+  contactPersonName: "Contact Person Name",
+  contactPersonEmail: "Contact Person Email",
+  contactPersonPhone: "Contact Person Phone",
+  benificiaryNameOfPO: "Beneficiary Name for PO",
+};
+
+// Defaults used to fill empty required fields. NOTE: glParentAccountId removed —
+// it's a real FK and must be resolved from a code lookup, not hardcoded.
+const DEFAULT_VALUES: Record<string, any> = {
+  addressLine1: "N/A",
+  phone: "000-000-0000",
+  email: "no-email@example.com",
+  contactPersonName: "Not Provided",
+  contactPersonDesignation: "N/A",
+  contactPersonEmail: "no-email@example.com",
+  contactPersonPhone: "000-000-0000",
+  benificiaryNameOfPO: "Not Provided",
+  paymentTerms: "Net 30",
+  partyShortName: "",
+  isActive: true,
+};
+
+// Optional Excel columns for resolving GL accounts by code.
+// If user adds these columns to their Excel, codes are looked up against
+// the chart of accounts at import time.
+const GL_PARENT_CODE_HEADER = "gl parent account code";
+const GL_ACCOUNT_CODE_HEADER = "gl account code";
+
 // ─── Type helpers ─────────────────────────────────────────────────────────────
 const parseBool = (v: any) =>
   typeof v === "boolean"
@@ -600,6 +663,17 @@ const convertValue = (v: any, t: string) => {
   }
 };
 
+// ─── Import Result Type ──────────────────────────────────────────────────────
+type ImportResult = {
+  row: number;
+  partyCode?: string;
+  partyName?: string;
+  status: "success" | "error" | "warning";
+  message: string;
+  errors?: string[];
+  warnings?: string[];
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function PartiesPage({ initialData }: PartiesPageProps) {
   const [data, setData] = useState<any[]>([]);
@@ -611,7 +685,9 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
     {},
   );
-  const [fetchingPartyId, setFetchingPartyId] = useState<number | null>(null); // ← per-row loading
+  const [fetchingPartyId, setFetchingPartyId] = useState<number | null>(null);
+  const [importResults, setImportResults] = useState<ImportResult[]>([]);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
@@ -981,41 +1057,103 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
   const downloadSampleExcel = () => {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("SampleParties");
-    ws.addRow(displayedFields.map((f) => f.displayName));
-    ws.addRow(
-      displayedFields.map((field) => {
-        switch (field.fieldName) {
-          case "partyCode":
-            return "PTY001";
-          case "partyName":
-            return "ABC Trading Company";
-          case "partyShortName":
-            return "ABC Trading";
-          case "isActive":
-            return "Yes";
-          case "isCustomer":
-            return "Yes";
-          case "email":
-            return "contact@abctrading.com";
-          case "phone":
-            return "+1234567890";
-          case "contactPersonName":
-            return "John Smith";
-          case "addressLine1":
-            return "123 Main Street";
-          case "creditLimitLC":
-            return "50000";
-          case "allowedCreditDays":
-            return "30";
-          default:
-            return field.type === "bool" ? "No" : `Sample ${field.displayName}`;
+
+    // Build headers: existing displayed fields + 2 GL code columns at the end
+    const baseHeaders = displayedFields.map((field) => {
+      const isRequired = Object.keys(REQUIRED_FIELDS).includes(field.fieldName);
+      return isRequired ? `${field.displayName} *` : field.displayName;
+    });
+    const headers = [
+      ...baseHeaders,
+      "GL Parent Account Code",
+      "GL Account Code",
+    ];
+    ws.addRow(headers);
+
+    // Sample row
+    const sampleRow = displayedFields.map((field) => {
+      if (DEFAULT_VALUES[field.fieldName] !== undefined) {
+        if (field.type === "bool") {
+          return DEFAULT_VALUES[field.fieldName] ? "Yes" : "No";
         }
-      }),
-    );
+        return DEFAULT_VALUES[field.fieldName];
+      }
+      switch (field.fieldName) {
+        case "partyCode":
+          return "PTY001";
+        case "partyName":
+          return "ABC Trading Company";
+        case "partyShortName":
+          return "ABC Trading";
+        case "isActive":
+          return "Yes";
+        case "isCustomer":
+          return "Yes";
+        case "isGLLinked":
+          return "Yes";
+        case "email":
+          return "contact@abctrading.com";
+        case "phone":
+          return "+1234567890";
+        case "contactPersonName":
+          return "John Smith";
+        case "addressLine1":
+          return "123 Main Street";
+        case "creditLimitLC":
+          return "50000";
+        case "allowedCreditDays":
+          return "30";
+        default:
+          return field.type === "bool" ? "No" : `Sample ${field.displayName}`;
+      }
+    });
+    // Sample GL codes (user replaces with their actual chart of accounts codes)
+    sampleRow.push("4001"); // GL Parent Account Code
+    sampleRow.push(""); // GL Account Code (optional)
+    ws.addRow(sampleRow);
+
+    // Instructions
+    ws.addRow([]);
+    ws.addRow(["Instructions:"]);
+    ws.addRow(["1. Fields marked with * are required"]);
+    ws.addRow(["2. For boolean fields, use Yes/No or True/False"]);
+    ws.addRow(["3. Empty required fields will be filled with default values"]);
+    ws.addRow([
+      "4. If GL Linked = Yes, you MUST provide a valid GL Parent Account Code from your chart of accounts",
+    ]);
+    ws.addRow([
+      "5. Set Non GL Party = Yes for parties that don't need a GL account",
+    ]);
+
     ws.columns = ws.columns.map((c) => ({ ...c, width: 15 }));
     wb.xlsx
       .writeBuffer()
       .then((buf: any) => saveAs(new Blob([buf]), "SampleFile_Parties.xlsx"));
+  };
+
+  const downloadImportResults = () => {
+    if (!importResults.length) return;
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Import Results");
+
+    ws.addRow(["Row", "Party Code", "Party Name", "Status", "Errors/Warnings"]);
+    importResults.forEach((result) => {
+      ws.addRow([
+        result.row,
+        result.partyCode || "N/A",
+        result.partyName || "N/A",
+        result.status,
+        result.errors?.join("; ") ||
+          result.warnings?.join("; ") ||
+          result.message,
+      ]);
+    });
+
+    ws.columns = ws.columns.map((c) => ({ ...c, width: 20 }));
+    wb.xlsx
+      .writeBuffer()
+      .then((buf: any) => saveAs(new Blob([buf]), "Import_Results.xlsx"));
   };
 
   // ── Import ─────────────────────────────────────────────────────────────────
@@ -1023,8 +1161,108 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     const map: Record<string, (typeof fieldConfig)[0]> = {};
     fieldConfig.forEach((f) => {
       map[f.displayName.trim().toLowerCase()] = f;
+      // Also map without trailing asterisk for required-field headers
+      map[f.displayName.trim().toLowerCase().replace(" *", "")] = f;
     });
     return map;
+  };
+
+  // Helper function to safely parse API response
+  const parseApiResponse = async (response: Response): Promise<any> => {
+    const contentType = response.headers.get("content-type");
+
+    if (contentType && contentType.includes("application/json")) {
+      try {
+        return await response.json();
+      } catch {
+        return { errors: { general: ["Failed to parse JSON response"] } };
+      }
+    }
+
+    try {
+      const text = await response.text();
+      if (text.includes("<!DOCTYPE html>") || text.includes("<html>")) {
+        if (response.status === 404) {
+          return {
+            errors: {
+              endpoint: [
+                "API endpoint not found (404). Please check the URL configuration.",
+              ],
+            },
+          };
+        } else if (response.status === 500) {
+          return {
+            errors: {
+              server: [
+                "Internal server error (500). The server encountered an error processing the request.",
+              ],
+            },
+          };
+        } else if (response.status === 401) {
+          return {
+            errors: { auth: ["Authentication required. Please log in again."] },
+          };
+        } else if (response.status === 403) {
+          return {
+            errors: {
+              auth: [
+                "Access forbidden. You don't have permission to perform this action.",
+              ],
+            },
+          };
+        }
+      }
+      return text
+        ? { rawText: text }
+        : {
+            errors: { general: [`Server returned status ${response.status}`] },
+          };
+    } catch {
+      return { errors: { general: ["Failed to read server response"] } };
+    }
+  };
+
+  // Pull session context. Adjust to match your auth pattern (JWT, store, cookie, etc.)
+  const getSessionContext = (): { companyId: number; userId: number } => {
+    try {
+      const companyId = Number(localStorage.getItem("companyId") ?? 0);
+      const userId = Number(localStorage.getItem("userId") ?? 0);
+      return { companyId, userId };
+    } catch {
+      return { companyId: 0, userId: 0 };
+    }
+  };
+
+  // Fetch GL accounts and build a code -> id map. Returns empty map on failure.
+  const fetchGlAccountsMap = async (
+    baseUrl: string,
+    companyId: number,
+  ): Promise<Map<string, number>> => {
+    try {
+      const res = await fetch(`${baseUrl}Glaccount/GetList`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          select: "AccountId,AccountCode,IsActive,CompanyId",
+          where: `CompanyId = ${companyId} AND IsActive = true`,
+          sortOn: "AccountCode",
+          page: "1",
+          pageSize: "5000",
+        }),
+      });
+      if (!res.ok) return new Map();
+      const accounts: any[] = await res.json();
+      return new Map(
+        accounts
+          .filter((a) => a.accountCode != null && a.accountId != null)
+          .map((a) => [
+            String(a.accountCode).trim().toLowerCase(),
+            Number(a.accountId),
+          ]),
+      );
+    } catch {
+      return new Map();
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1039,11 +1277,16 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
         return;
       }
       const headerRow = rows[0].map((h: any) =>
-        h != null ? String(h).trim().toLowerCase() : "",
+        h != null ? String(h).trim().toLowerCase().replace(" *", "") : "",
       );
       const dataRows = rows
         .slice(1)
-        .filter((row) => row.some((c) => c != null && c !== ""));
+        .filter(
+          (row) =>
+            !row[0]?.toString().toLowerCase().includes("instruction") &&
+            row.some((c) => c != null && c !== ""),
+        );
+
       if (!dataRows.length) {
         toast({
           variant: "destructive",
@@ -1058,61 +1301,295 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     e.target.value = "";
   };
 
+  const buildCompleteDto = (
+    rowData: any[],
+    headerRow: string[],
+    headerMap: Record<string, any>,
+    rowIndex: number,
+    companyId: number,
+    userId: number,
+    glCodeMap: Map<string, number>,
+  ): { dto: any; warnings: string[]; rowError: string | null } => {
+    const dto: Record<string, any> = {};
+    const warnings: string[] = [];
+
+    // Initialize defaults
+    fieldConfig.forEach((f) => {
+      if (NULLABLE_FK_FIELDS.has(f.fieldName)) {
+        dto[f.apiKey] = null;
+        return;
+      }
+      const defaultValue = DEFAULT_VALUES[f.fieldName];
+      if (defaultValue !== undefined) {
+        dto[f.apiKey] = defaultValue;
+      } else {
+        dto[f.apiKey] =
+          f.type === "bool"
+            ? false
+            : f.type === "int" || f.type === "decimal"
+              ? 0
+              : "";
+      }
+    });
+
+    // Override with Excel values
+    headerRow.forEach((header, idx) => {
+      const def = headerMap[header];
+      if (!def) return;
+
+      const excelValue = idx < rowData.length ? rowData[idx] : null;
+      const isEmpty =
+        excelValue === null || excelValue === undefined || excelValue === "";
+
+      if (NULLABLE_FK_FIELDS.has(def.fieldName) && isEmpty) {
+        dto[def.apiKey] = null;
+        return;
+      }
+
+      const convertedValue = convertValue(excelValue, def.type);
+      const isRequired = Object.keys(REQUIRED_FIELDS).includes(def.fieldName);
+      const valueIsBlank =
+        convertedValue === "" ||
+        convertedValue === null ||
+        convertedValue === undefined ||
+        (def.type !== "string" && convertedValue === 0);
+
+      if (isRequired && valueIsBlank) {
+        const fieldDisplayName =
+          REQUIRED_FIELDS[def.fieldName as keyof typeof REQUIRED_FIELDS];
+        warnings.push(
+          `${fieldDisplayName} is empty, using default value: ${DEFAULT_VALUES[def.fieldName]}`,
+        );
+      } else {
+        dto[def.apiKey] = convertedValue;
+      }
+    });
+
+    // Resolve GL Parent Account Code and GL Account Code from optional Excel columns
+    const findHeaderValue = (headerName: string): string => {
+      const idx = headerRow.indexOf(headerName);
+      if (idx < 0 || idx >= rowData.length) return "";
+      return String(rowData[idx] ?? "").trim();
+    };
+    const parentCodeRaw = findHeaderValue(GL_PARENT_CODE_HEADER);
+    const accountCodeRaw = findHeaderValue(GL_ACCOUNT_CODE_HEADER);
+    const parentCode = parentCodeRaw.toLowerCase();
+    const accountCode = accountCodeRaw.toLowerCase();
+
+    if (parentCode) {
+      const id = glCodeMap.get(parentCode);
+      if (id) {
+        dto["GlparentAccountId"] = id;
+      } else {
+        warnings.push(
+          `GL Parent Account Code "${parentCodeRaw}" not found in chart of accounts`,
+        );
+      }
+    }
+    if (accountCode) {
+      const id = glCodeMap.get(accountCode);
+      if (id) {
+        dto["GlaccountId"] = id;
+      } else {
+        warnings.push(
+          `GL Account Code "${accountCodeRaw}" not found in chart of accounts`,
+        );
+      }
+    }
+
+    // Hard validation: GL-linked rows that are NOT explicitly Non GL Party
+    // must have a resolved GL Parent Account, otherwise the API will 400.
+    let rowError: string | null = null;
+    const isGllinked = !!dto["IsGllinked"];
+    const isNonGl = !!dto["IsNonGlparty"];
+    if (isGllinked && !isNonGl && dto["GlparentAccountId"] == null) {
+      rowError = parentCodeRaw
+        ? `GL Linked = Yes but GL Parent Account Code "${parentCodeRaw}" could not be resolved. Add the column 'GL Parent Account Code' to your Excel and use a valid code from your chart of accounts.`
+        : `GL Linked = Yes but no GL Parent Account Code provided. Add the column 'GL Parent Account Code' to your Excel and use a valid code from your chart of accounts, or set Non GL Party = Yes.`;
+    }
+
+    // Force ownership/audit fields
+    dto["PartyId"] = 0;
+    dto["CompanyId"] = companyId;
+
+    return {
+      dto: {
+        ...dto,
+        partyCharges: [],
+        partyLocations: [],
+        partyBillingParties: [],
+        partiesContacts: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createLog: "Created via Excel import",
+        updateLog: "Created via Excel import",
+        version: 0,
+        createdBy: userId,
+      },
+      warnings,
+      rowError,
+    };
+  };
+
   const insertData = async (headerRow: string[], dataRows: any[][]) => {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
     const headerMap = buildHeaderMap();
-    let success = 0,
-      fail = 0;
-    try {
-      await Promise.all(
-        dataRows.map(async (row) => {
-          const dto: Record<string, any> = {};
-          fieldConfig.forEach((f) => {
-            dto[f.apiKey] =
-              f.type === "bool"
-                ? false
-                : f.type === "int" || f.type === "decimal"
-                  ? 0
-                  : "";
-          });
-          headerRow.forEach((header, idx) => {
-            const def = headerMap[header];
-            if (def)
-              dto[def.apiKey] = convertValue(
-                idx < row.length ? row[idx] : null,
-                def.type,
-              );
-          });
-          dto["PartyId"] = 0;
-          try {
-            const res = await fetch(`${baseUrl}Party`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(dto),
-            });
-            if (res.ok) success++;
-            else {
-              fail++;
-              console.error("Import fail:", await res.text());
-            }
-          } catch (err) {
-            fail++;
-            console.error("Import exception:", err);
-          }
-        }),
-      );
+    const results: ImportResult[] = [];
+
+    // Validate session context
+    const { companyId, userId } = getSessionContext();
+    if (!companyId) {
       setIsLoading(false);
-      if (fail === 0)
+      toast({
+        variant: "destructive",
+        title: "Session Error",
+        description:
+          "Could not determine the active company. Please log in again.",
+      });
+      return;
+    }
+
+    // Pre-fetch GL accounts once for code -> id resolution
+    const glCodeMap = await fetchGlAccountsMap(baseUrl ?? "", companyId);
+    if (glCodeMap.size === 0) {
+      // Not fatal — non-GL rows can still import. Just inform.
+      toast({
+        title: "GL accounts unavailable",
+        description:
+          "Could not load chart of accounts. Only Non-GL parties will import.",
+      });
+    }
+
+    try {
+      for (let i = 0; i < dataRows.length; i++) {
+        const row = dataRows[i];
+        const rowIndex = i + 2; // +1 for header, +1 for 1-based index
+
+        const {
+          dto: completeDto,
+          warnings,
+          rowError,
+        } = buildCompleteDto(
+          row,
+          headerRow,
+          headerMap,
+          rowIndex,
+          companyId,
+          userId,
+          glCodeMap,
+        );
+
+        const partyCode = completeDto.PartyCode || "N/A";
+        const partyName = completeDto.PartyName || "N/A";
+
+        // Pre-flight validation — skip the POST if we already know it'll fail
+        if (rowError) {
+          results.push({
+            row: rowIndex,
+            partyCode,
+            partyName,
+            status: "error",
+            message: "Validation failed",
+            errors: [rowError],
+          });
+          continue;
+        }
+
+        try {
+          const res = await fetch(`${baseUrl}Party`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(completeDto),
+          });
+
+          if (res.ok) {
+            results.push({
+              row: rowIndex,
+              partyCode,
+              partyName,
+              status: warnings.length > 0 ? "warning" : "success",
+              message:
+                warnings.length > 0
+                  ? "Imported with warnings"
+                  : "Imported successfully",
+              warnings: warnings.length > 0 ? warnings : undefined,
+            });
+          } else {
+            const errorData = await parseApiResponse(res);
+
+            // Try every shape the API might use, in priority order
+            const errors: string[] = errorData?.errors
+              ? Array.isArray(errorData.errors)
+                ? (Object.values(errorData.errors).flat() as string[])
+                : Object.entries(errorData.errors).map(
+                    ([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`,
+                  )
+              : errorData?.title
+                ? [errorData.title]
+                : errorData?.message
+                  ? [errorData.message]
+                  : errorData?.rawText
+                    ? [String(errorData.rawText).substring(0, 500)]
+                    : [
+                        JSON.stringify(errorData) ||
+                          `Request failed with status ${res.status}`,
+                      ];
+
+            results.push({
+              row: rowIndex,
+              partyCode,
+              partyName,
+              status: "error",
+              message: "Failed to import",
+              errors,
+            });
+          }
+        } catch (err) {
+          results.push({
+            row: rowIndex,
+            partyCode,
+            partyName,
+            status: "error",
+            message: "Network error",
+            errors: [(err as Error).message],
+          });
+        }
+      }
+
+      setIsLoading(false);
+      setImportResults(results);
+      setShowImportDialog(true);
+
+      const successCount = results.filter(
+        (r) => r.status === "success" || r.status === "warning",
+      ).length;
+      const errorCount = results.filter((r) => r.status === "error").length;
+      const warningCount = results.filter(
+        (r) => r.warnings && r.warnings.length > 0,
+      ).length;
+
+      if (errorCount === 0 && warningCount === 0) {
         toast({
           title: "Import Successful",
-          description: `${success} ${success === 1 ? "party" : "parties"} imported.`,
+          description: `All ${successCount} ${
+            successCount === 1 ? "party" : "parties"
+          } imported successfully.`,
         });
-      else
+      } else if (errorCount === 0) {
+        toast({
+          title: "Import Completed with Warnings",
+          description: `${successCount} imported with ${warningCount} ${
+            warningCount === 1 ? "warning" : "warnings"
+          }.`,
+        });
+      } else {
         toast({
           variant: "destructive",
-          title: "Partial Import",
-          description: `${success} imported, ${fail} failed.`,
+          title: "Import Completed with Errors",
+          description: `${successCount} imported, ${errorCount} failed. Check the report for details.`,
         });
+      }
+
       fetchParties();
     } catch {
       setIsLoading(false);
@@ -1375,6 +1852,131 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
     );
   };
 
+  // ── Import Results Dialog ──────────────────────────────────────────────────
+  const ImportResultsDialog = () => {
+    const successCount = importResults.filter(
+      (r) => r.status === "success",
+    ).length;
+    const warningCount = importResults.filter(
+      (r) => r.warnings && r.warnings.length > 0,
+    ).length;
+    const errorCount = importResults.filter((r) => r.status === "error").length;
+
+    return (
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent className='max-w-4xl max-h-[80vh] overflow-auto'>
+          <DialogHeader>
+            <DialogTitle className='flex items-center gap-2'>
+              <FiInfo className='h-5 w-5 text-blue-600' />
+              Import Results
+            </DialogTitle>
+            <DialogDescription>
+              Summary: {successCount} successful, {warningCount} with warnings,{" "}
+              {errorCount} failed
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='flex gap-4 mb-4'>
+            <div className='flex items-center gap-2'>
+              <FiCheckCircle className='h-4 w-4 text-green-600' />
+              <span className='text-sm'>Success: {successCount}</span>
+            </div>
+            <div className='flex items-center gap-2'>
+              <FiAlertCircle className='h-4 w-4 text-yellow-600' />
+              <span className='text-sm'>Warnings: {warningCount}</span>
+            </div>
+            <div className='flex items-center gap-2'>
+              <FiX className='h-4 w-4 text-red-600' />
+              <span className='text-sm'>Errors: {errorCount}</span>
+            </div>
+          </div>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className='w-16'>Row</TableHead>
+                <TableHead>Party Code</TableHead>
+                <TableHead>Party Name</TableHead>
+                <TableHead className='w-24'>Status</TableHead>
+                <TableHead>Details</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {importResults.map((result, index) => (
+                <TableRow key={index}>
+                  <TableCell>{result.row}</TableCell>
+                  <TableCell className='font-medium'>
+                    {result.partyCode}
+                  </TableCell>
+                  <TableCell>{result.partyName}</TableCell>
+                  <TableCell>
+                    {result.status === "success" && (
+                      <Badge className='bg-green-100 text-green-700 border-green-200'>
+                        Success
+                      </Badge>
+                    )}
+                    {result.status === "warning" && (
+                      <Badge className='bg-yellow-100 text-yellow-700 border-yellow-200'>
+                        Warning
+                      </Badge>
+                    )}
+                    {result.status === "error" && (
+                      <Badge className='bg-red-100 text-red-700 border-red-200'>
+                        Error
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className='space-y-1'>
+                      {result.warnings?.map((warning, wIndex) => (
+                        <div
+                          key={`w-${wIndex}`}
+                          className='flex items-start gap-1 text-sm text-yellow-600'
+                        >
+                          <FiAlertCircle className='h-3.5 w-3.5 mt-0.5 flex-shrink-0' />
+                          <span>{warning}</span>
+                        </div>
+                      ))}
+                      {result.errors?.map((error, eIndex) => (
+                        <div
+                          key={`e-${eIndex}`}
+                          className='flex items-start gap-1 text-sm text-red-600'
+                        >
+                          <FiX className='h-3.5 w-3.5 mt-0.5 flex-shrink-0' />
+                          <span>{error}</span>
+                        </div>
+                      ))}
+                      {!result.errors && !result.warnings && (
+                        <span className='text-sm text-gray-600'>
+                          {result.message}
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          <DialogFooter className='gap-2'>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={downloadImportResults}
+              className='flex items-center gap-1.5'
+            >
+              <FiDownload className='h-3.5 w-3.5' />
+              Download Report
+            </Button>
+            <Button size='sm' onClick={() => setShowImportDialog(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   // ── Render helpers ──────────────────────────────────────────────────────────
   const EmptyState = ({ term }: { term: string }) => (
     <div className='flex flex-col items-center justify-center py-16'>
@@ -1567,6 +2169,27 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
               />
             </div>
           </div>
+          {/* Info about default values & GL accounts */}
+          <div className='mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md'>
+            <div className='flex items-start gap-1.5 text-xs text-blue-700'>
+              <FiInfo className='h-3.5 w-3.5 mt-0.5 flex-shrink-0' />
+              <div>
+                <p className='font-medium'>Excel import notes:</p>
+                <p className='mt-0.5'>
+                  Empty contact fields auto-fill with placeholder values
+                  (Address Line 1, Phone, Email, Contact Person, Beneficiary
+                  Name).{" "}
+                  <strong>
+                    For GL Linked = Yes parties, you must include a &quot;GL
+                    Parent Account Code&quot; column with a valid code from your
+                    chart of accounts.
+                  </strong>{" "}
+                  Set Non GL Party = Yes for parties that don&apos;t need a GL
+                  account.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -1680,6 +2303,10 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Import Results Dialog */}
+      <ImportResultsDialog />
+
       {isLoading && <AppLoader />}
     </div>
   );

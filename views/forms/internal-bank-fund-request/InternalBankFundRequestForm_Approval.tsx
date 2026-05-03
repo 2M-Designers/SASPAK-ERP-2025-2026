@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +21,9 @@ import {
   FiFileText,
   FiDollarSign,
   FiBriefcase,
-  FiTag,
+  FiChevronDown,
+  FiChevronRight,
+  FiUsers,
 } from "react-icons/fi";
 import { Badge } from "@/components/ui/badge";
 import { Info, AlertTriangle } from "lucide-react";
@@ -37,12 +39,19 @@ import {
 
 type ApprovalFormProps = {
   requestData: any;
+  /** Optional batch — when present (length > 1) the form switches to batch mode */
+  batchRequests?: any[];
   onApprovalComplete: (updatedData: any) => void;
   onCancel: () => void;
 };
 
 type LineItemApproval = {
   internalFundsRequestBankId: number;
+  bankFundRequestMasterId: number;
+  parentRequestId: number;
+  requestorUserId: number | null;
+  requestorName: string;
+
   jobId: number | null;
   jobNumber: string;
   customerName: string;
@@ -60,7 +69,6 @@ type LineItemApproval = {
   remarks: string;
   createdOn: string;
   version?: number;
-  bankFundRequestMasterId?: number;
   bankId: number | null;
   bankName?: string;
 };
@@ -72,6 +80,12 @@ type Bank = {
 };
 
 type StatusOption = { key: string; label: string };
+
+type User = {
+  userId: number;
+  fullName: string;
+  username: string;
+};
 
 // ─── API Helpers ──────────────────────────────────────────────────────────────
 
@@ -87,11 +101,7 @@ function getAuthHeaders(): HeadersInit {
     "Content-Type": "application/json",
     Accept: "application/json",
   };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   return headers;
 }
 
@@ -104,9 +114,16 @@ function getBaseUrl(): string {
 
 export default function InternalBankFundRequestApprovalForm({
   requestData,
+  batchRequests,
   onApprovalComplete,
   onCancel,
 }: ApprovalFormProps) {
+  const isBatchMode = !!batchRequests && batchRequests.length > 1;
+  const sourceRequests = useMemo(() => {
+    if (isBatchMode) return batchRequests!;
+    return requestData ? [requestData] : [];
+  }, [isBatchMode, batchRequests, requestData]);
+
   const [lineItems, setLineItems] = useState<LineItemApproval[]>([]);
   const [masterRemarks, setMasterRemarks] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -118,10 +135,16 @@ export default function InternalBankFundRequestApprovalForm({
   const [isLoadingBanks, setIsLoadingBanks] = useState(false);
   const [bankSearch, setBankSearch] = useState("");
 
-  // Status values from API
+  const [users, setUsers] = useState<User[]>([]);
+
   const [pendingStatus, setPendingStatus] = useState("Pending");
   const [approvedStatus, setApprovedStatus] = useState("Approved");
   const [rejectedStatus, setRejectedStatus] = useState("Rejected");
+
+  // Group collapse state — keyed by requestorUserId (batch mode only)
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({});
 
   const { toast } = useToast();
 
@@ -145,25 +168,10 @@ export default function InternalBankFundRequestApprovalForm({
       try {
         const res = await fetch(
           `${getBaseUrl()}General/GetTypeValues?typeName=FundRequest_Detail_Status`,
-          {
-            method: "GET",
-            headers: getAuthHeaders(), // ✅ auth headers
-          },
+          { method: "GET", headers: getAuthHeaders() },
         );
 
-        if (res.status === 401) {
-          toast({
-            variant: "destructive",
-            title: "Session Expired",
-            description: "Please log in again.",
-          });
-          return;
-        }
-
-        if (!res.ok) {
-          console.error(`Status fetch failed: ${res.status} ${res.statusText}`);
-          return;
-        }
+        if (!res.ok) return;
 
         const raw: Record<string, string> = await res.json();
         const opts: StatusOption[] = Object.entries(raw).map(
@@ -180,7 +188,7 @@ export default function InternalBankFundRequestApprovalForm({
       }
     };
     fetchStatuses();
-  }, [toast]);
+  }, []);
 
   // ── Fetch Banks ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -189,11 +197,11 @@ export default function InternalBankFundRequestApprovalForm({
       try {
         const res = await fetch(`${getBaseUrl()}Banks/GetList`, {
           method: "POST",
-          headers: getAuthHeaders(), // ✅ auth headers
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             select: "BankId, BankCode, BankName",
             where: "",
-            search: "", // ✅ required field
+            search: "",
             sortOn: "BankName ASC",
             page: "1",
             pageSize: "200",
@@ -221,7 +229,6 @@ export default function InternalBankFundRequestApprovalForm({
         }
 
         const d = await res.json();
-        // Handle both plain array and wrapped { data: [...] } responses
         const rawList = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
         const normalized: Bank[] = rawList.map((b: any) => ({
           bankId: b.bankId ?? b.BankId,
@@ -244,7 +251,40 @@ export default function InternalBankFundRequestApprovalForm({
     fetchBanks();
   }, [toast]);
 
-  // ── Filter banks on search ────────────────────────────────────────────────
+  // ── Fetch users (for displaying requestor names in batch mode) ───────────
+  useEffect(() => {
+    if (!isBatchMode) return;
+    const fetchUsers = async () => {
+      try {
+        const res = await fetch(`${getBaseUrl()}User/GetList`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            select: "UserId, Username, FullName",
+            where: "",
+            search: "",
+            sortOn: "FullName ASC",
+            page: "1",
+            pageSize: "500",
+          }),
+        });
+        if (!res.ok) return;
+        const d = await res.json();
+        const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+        const normalized: User[] = list.map((u: any) => ({
+          userId: u.userId ?? u.UserId,
+          fullName: u.fullName ?? u.FullName ?? "",
+          username: u.username ?? u.Username ?? "",
+        }));
+        setUsers(normalized);
+      } catch (e) {
+        console.error("Users fetch error:", e);
+      }
+    };
+    fetchUsers();
+  }, [isBatchMode]);
+
+  // ── Filter banks ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (bankSearch.trim() === "") {
       setFilteredBanks(banks);
@@ -260,14 +300,31 @@ export default function InternalBankFundRequestApprovalForm({
     }
   }, [bankSearch, banks]);
 
-  // ── Initialize line items from request data ───────────────────────────────
+  // ── Initialize line items from sourceRequests ─────────────────────────────
   useEffect(() => {
-    if (!requestData?.internalBankFundsRequests) return;
+    if (sourceRequests.length === 0) return;
 
-    setMasterRemarks(requestData.remarks || "");
+    if (!isBatchMode) {
+      setMasterRemarks(sourceRequests[0]?.remarks || "");
+    }
 
-    const items: LineItemApproval[] = requestData.internalBankFundsRequests.map(
-      (detail: any) => {
+    const findUserName = (uid: number | null): string => {
+      if (!uid) return "Unknown User";
+      const u = users.find((x) => x.userId === uid);
+      return u?.fullName || u?.username || `User #${uid}`;
+    };
+
+    const allItems: LineItemApproval[] = [];
+
+    sourceRequests.forEach((req: any) => {
+      const parentRequestId = req.bankFundRequestId ?? req.BankFundRequestId;
+      const requestorUserId =
+        req.requestorUserId ?? req.RequestorUserId ?? null;
+      const requestorName = findUserName(requestorUserId);
+
+      const details = req.internalBankFundsRequests || [];
+
+      details.forEach((detail: any) => {
         const detailJobId = detail.jobId ?? detail.JobId ?? null;
         const jobObj = detail.job || detail.Job;
         const jobNumber =
@@ -281,10 +338,14 @@ export default function InternalBankFundRequestApprovalForm({
         const bankObj = detail.bank || detail.Bank;
         const bankName = bankObj?.bankName || bankObj?.BankName || "";
 
-        return {
+        allItems.push({
           internalFundsRequestBankId:
-            detail.internalFundsRequestBankId ||
+            detail.internalFundsRequestBankId ??
             detail.InternalFundsRequestBankId,
+          bankFundRequestMasterId: parentRequestId,
+          parentRequestId,
+          requestorUserId,
+          requestorName,
           jobId: detailJobId,
           jobNumber,
           customerName: detail.customerName || detail.CustomerName || "",
@@ -314,56 +375,117 @@ export default function InternalBankFundRequestApprovalForm({
           createdOn:
             detail.createdOn || detail.CreatedOn || new Date().toISOString(),
           version: detail.version ?? 0,
-          bankFundRequestMasterId: requestData.bankFundRequestId,
           bankId,
           bankName,
-        };
-      },
-    );
-
-    setLineItems(items);
-  }, [requestData, pendingStatus]);
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  const updateApprovedAmount = (index: number, amount: number) => {
-    setLineItems((prev) => {
-      const updated = [...prev];
-      updated[index].approvedAmount = Math.min(
-        amount,
-        updated[index].requestedAmount,
-      );
-      return updated;
+        });
+      });
     });
-  };
 
-  const updateBank = (index: number, bankId: string) => {
-    const selectedBank = banks.find((b) => b.bankId.toString() === bankId);
-    setLineItems((prev) => {
-      const updated = [...prev];
-      updated[index].bankId = parseInt(bankId);
-      updated[index].bankName = selectedBank?.bankName || "";
-      return updated;
-    });
-  };
+    setLineItems(allItems);
+  }, [sourceRequests, isBatchMode, pendingStatus, users]);
 
-  const setLineStatus = (index: number, status: string) => {
-    setLineItems((prev) => {
-      const updated = [...prev];
-      updated[index].subRequestStatus = status;
-      if (status === rejectedStatus) {
-        updated[index].approvedAmount = 0;
+  // ── Group items by requestor (batch mode) ─────────────────────────────────
+  const groupedByRequestor = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        requestorUserId: number | null;
+        requestorName: string;
+        items: LineItemApproval[];
       }
-      return updated;
+    >();
+
+    lineItems.forEach((item) => {
+      const key = String(item.requestorUserId ?? "unknown");
+      if (!groups.has(key)) {
+        groups.set(key, {
+          requestorUserId: item.requestorUserId,
+          requestorName: item.requestorName,
+          items: [],
+        });
+      }
+      groups.get(key)!.items.push(item);
     });
-  };
 
-  const approveAllLines = () => {
+    return Array.from(groups.entries()).map(([key, value]) => ({
+      key,
+      ...value,
+    }));
+  }, [lineItems]);
+
+  const toggleGroup = useCallback((key: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  // ── Mutators ──────────────────────────────────────────────────────────────
+  const updateLineByItemId = useCallback(
+    (itemId: number, patch: Partial<LineItemApproval>) => {
+      setLineItems((prev) =>
+        prev.map((it) =>
+          it.internalFundsRequestBankId === itemId ? { ...it, ...patch } : it,
+        ),
+      );
+    },
+    [],
+  );
+
+  const updateApprovedAmount = useCallback((itemId: number, amount: number) => {
     setLineItems((prev) =>
-      prev.map((i) => ({ ...i, subRequestStatus: approvedStatus })),
+      prev.map((it) => {
+        if (it.internalFundsRequestBankId !== itemId) return it;
+        return {
+          ...it,
+          approvedAmount: Math.min(amount, it.requestedAmount),
+        };
+      }),
     );
-  };
+  }, []);
 
-  const rejectAllLines = () => {
+  const updateBank = useCallback(
+    (itemId: number, bankIdStr: string) => {
+      const selected = banks.find((b) => b.bankId.toString() === bankIdStr);
+      updateLineByItemId(itemId, {
+        bankId: parseInt(bankIdStr, 10),
+        bankName: selected?.bankName || "",
+      });
+    },
+    [banks, updateLineByItemId],
+  );
+
+  const updateRemarks = useCallback(
+    (itemId: number, remarks: string) => {
+      updateLineByItemId(itemId, { remarks });
+    },
+    [updateLineByItemId],
+  );
+
+  const setLineStatus = useCallback(
+    (itemId: number, status: string) => {
+      setLineItems((prev) =>
+        prev.map((it) => {
+          if (it.internalFundsRequestBankId !== itemId) return it;
+          return {
+            ...it,
+            subRequestStatus: status,
+            approvedAmount: status === rejectedStatus ? 0 : it.approvedAmount,
+          };
+        }),
+      );
+    },
+    [rejectedStatus],
+  );
+
+  const approveAllLines = () =>
+    setLineItems((prev) =>
+      prev.map((i) => ({
+        ...i,
+        subRequestStatus: approvedStatus,
+        approvedAmount:
+          i.approvedAmount > 0 ? i.approvedAmount : i.requestedAmount,
+      })),
+    );
+
+  const rejectAllLines = () =>
     setLineItems((prev) =>
       prev.map((i) => ({
         ...i,
@@ -371,14 +493,36 @@ export default function InternalBankFundRequestApprovalForm({
         approvedAmount: 0,
       })),
     );
-  };
+
+  const approveAllInGroup = (groupKey: string) =>
+    setLineItems((prev) =>
+      prev.map((i) =>
+        String(i.requestorUserId ?? "unknown") === groupKey
+          ? {
+              ...i,
+              subRequestStatus: approvedStatus,
+              approvedAmount:
+                i.approvedAmount > 0 ? i.approvedAmount : i.requestedAmount,
+            }
+          : i,
+      ),
+    );
+
+  const rejectAllInGroup = (groupKey: string) =>
+    setLineItems((prev) =>
+      prev.map((i) =>
+        String(i.requestorUserId ?? "unknown") === groupKey
+          ? { ...i, subRequestStatus: rejectedStatus, approvedAmount: 0 }
+          : i,
+      ),
+    );
 
   const autoFillApprovedAmounts = () => {
     setLineItems((prev) =>
-      prev.map((item) => ({
-        ...item,
+      prev.map((it) => ({
+        ...it,
         approvedAmount:
-          item.subRequestStatus !== rejectedStatus ? item.requestedAmount : 0,
+          it.subRequestStatus !== rejectedStatus ? it.requestedAmount : 0,
       })),
     );
     toast({
@@ -389,31 +533,70 @@ export default function InternalBankFundRequestApprovalForm({
   };
 
   // ── Totals ────────────────────────────────────────────────────────────────
-  const totals = {
-    totalRequested: lineItems.reduce((s, i) => s + (i.requestedAmount || 0), 0),
-    totalApproved: lineItems.reduce(
-      (s, i) =>
-        s + (i.subRequestStatus === approvedStatus ? i.approvedAmount : 0),
-      0,
-    ),
-  };
+  const totals = useMemo(
+    () => ({
+      totalRequested: lineItems.reduce(
+        (s, i) => s + (i.requestedAmount || 0),
+        0,
+      ),
+      totalApproved: lineItems.reduce(
+        (s, i) =>
+          s + (i.subRequestStatus === approvedStatus ? i.approvedAmount : 0),
+        0,
+      ),
+      approvedCount: lineItems.filter(
+        (i) => i.subRequestStatus === approvedStatus,
+      ).length,
+      rejectedCount: lineItems.filter(
+        (i) => i.subRequestStatus === rejectedStatus,
+      ).length,
+      pendingCount: lineItems.filter(
+        (i) =>
+          i.subRequestStatus !== approvedStatus &&
+          i.subRequestStatus !== rejectedStatus,
+      ).length,
+    }),
+    [lineItems, approvedStatus, rejectedStatus],
+  );
 
-  // ── Derived master status ─────────────────────────────────────────────────
-  const derivedMasterStatus = (() => {
+  const derivedMasterStatus = useMemo(() => {
     if (lineItems.length === 0) return pendingStatus;
     const statuses = lineItems.map((i) => i.subRequestStatus);
     if (statuses.every((s) => s === approvedStatus)) return approvedStatus;
     if (statuses.every((s) => s === rejectedStatus)) return rejectedStatus;
     return pendingStatus;
-  })();
+  }, [lineItems, pendingStatus, approvedStatus, rejectedStatus]);
 
-  // ── Validation & Save ─────────────────────────────────────────────────────
+  // ── Save validations ──────────────────────────────────────────────────────
+  const missingBankItems = useMemo(
+    () =>
+      lineItems.filter(
+        (it) => it.subRequestStatus === approvedStatus && !it.bankId,
+      ),
+    [lineItems, approvedStatus],
+  );
+
+  const hasInvalidApprovedAmount = useMemo(
+    () =>
+      lineItems.some(
+        (it) =>
+          it.subRequestStatus === approvedStatus &&
+          (it.approvedAmount < 0 || it.approvedAmount > it.requestedAmount),
+      ),
+    [lineItems, approvedStatus],
+  );
+
+  const isSaveDisabled =
+    isSubmitting ||
+    !userId ||
+    lineItems.length === 0 ||
+    missingBankItems.length > 0 ||
+    hasInvalidApprovedAmount ||
+    (totals.approvedCount === 0 && totals.rejectedCount === 0);
+
+  // ── Submit dispatcher ─────────────────────────────────────────────────────
   const handleSave = async () => {
-    const invalidAmount = lineItems.some(
-      (item) =>
-        item.approvedAmount < 0 || item.approvedAmount > item.requestedAmount,
-    );
-    if (invalidAmount) {
+    if (hasInvalidApprovedAmount) {
       toast({
         variant: "destructive",
         title: "Invalid Amounts",
@@ -421,53 +604,44 @@ export default function InternalBankFundRequestApprovalForm({
       });
       return;
     }
-
-    const missingBank = lineItems.some(
-      (item) => item.subRequestStatus === approvedStatus && !item.bankId,
-    );
-    if (missingBank) {
+    if (missingBankItems.length > 0) {
       toast({
         variant: "destructive",
         title: "Missing Bank",
-        description: "All approved line items must have a Bank selected",
+        description: `${missingBankItems.length} approved line item(s) need a Bank selected`,
       });
       return;
     }
 
-    await submitApproval();
+    if (isBatchMode) {
+      await submitBatchApproval();
+    } else {
+      await submitSingleApproval();
+    }
   };
 
-  // ── Submit ────────────────────────────────────────────────────────────────
-  const submitApproval = async () => {
-    if (!userId) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "User ID not found. Please log in again.",
-      });
-      return;
-    }
-
+  // ── Single-record PUT (existing flow) ─────────────────────────────────────
+  const submitSingleApproval = async () => {
+    if (!userId) return;
     setIsSubmitting(true);
 
     try {
+      const req = sourceRequests[0];
       const isApproving = derivedMasterStatus === approvedStatus;
 
       const payload = {
-        BankFundRequestId:
-          requestData.bankFundRequestId || requestData.BankFundRequestId,
+        BankFundRequestId: req.bankFundRequestId || req.BankFundRequestId,
         BankId: null,
         TotalRequestedAmount: totals.totalRequested,
         TotalApprovedAmount: totals.totalApproved,
         ApprovalStatus: derivedMasterStatus,
         ApprovedBy: isApproving ? userId.toString() : "",
         ApprovedOn: isApproving ? new Date().toISOString() : null,
-        RequestedTo: requestData.requestedTo || requestData.RequestedTo,
-        CreatedOn: requestData.createdOn || requestData.CreatedOn,
-        RequestorUserId:
-          requestData.requestorUserId || requestData.RequestorUserId,
+        RequestedTo: req.requestedTo || req.RequestedTo,
+        CreatedOn: req.createdOn || req.CreatedOn,
+        RequestorUserId: req.requestorUserId || req.RequestorUserId,
         Remarks: masterRemarks,
-        Version: requestData.version || requestData.Version || 1,
+        Version: req.version || req.Version || 1,
         RequestedToNavigation: null,
         InternalBankFundsRequests: lineItems.map((item) => ({
           InternalFundsRequestBankId: item.internalFundsRequestBankId,
@@ -483,7 +657,7 @@ export default function InternalBankFundRequestApprovalForm({
           RequestedTo: item.requestedTo,
           CreatedOn: item.createdOn,
           BankFundRequestMasterId:
-            requestData.bankFundRequestId || requestData.BankFundRequestId,
+            req.bankFundRequestId || req.BankFundRequestId,
           ChargesId: item.chargesId,
           CustomerName: item.customerName || "",
           OnAccountOfId: item.onAccountOfId || null,
@@ -494,14 +668,11 @@ export default function InternalBankFundRequestApprovalForm({
         })),
       };
 
-      console.log(
-        "📦 BANK APPROVAL PAYLOAD:",
-        JSON.stringify(payload, null, 2),
-      );
+      console.log("📦 BANK SINGLE PAYLOAD:", JSON.stringify(payload, null, 2));
 
       const response = await fetch(`${getBaseUrl()}InternalBankFundsRequest`, {
         method: "PUT",
-        headers: getAuthHeaders(), // ✅ auth headers
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -533,16 +704,13 @@ export default function InternalBankFundRequestApprovalForm({
       }
 
       const result = await response.json();
-      console.log("✅ SUCCESS!", result);
-
       toast({
         title: "Success",
         description: `Bank fund request saved — Status: ${derivedMasterStatus}`,
       });
-
       onApprovalComplete(result);
     } catch (error) {
-      console.error("💥", error);
+      console.error("Save error:", error);
       toast({
         variant: "destructive",
         title: "Save Failed",
@@ -553,7 +721,131 @@ export default function InternalBankFundRequestApprovalForm({
     }
   };
 
-  // ── Status badge styling ──────────────────────────────────────────────────
+  // ── Batch BulkApprove ─────────────────────────────────────────────────────
+  // Endpoint: PUT /InternalBankFundsRequestDetail/BulkApprove
+  // Payload: { fundRequestDetailIds, status, headId, remarks }
+  // For bank items, headId = bankId. Rejected items send headId = 0.
+  // We group by (status, headId, remarks) so each detail gets its correct values.
+  const submitBatchApproval = async () => {
+    if (!userId) return;
+    setIsSubmitting(true);
+
+    const endpoint = `${getBaseUrl()}InternalBankFundsRequestDetail/BulkApprove`;
+
+    type BatchKey = { status: string; headId: number; remarks: string };
+    const groupMap = new Map<string, { key: BatchKey; ids: number[] }>();
+
+    lineItems.forEach((item) => {
+      if (
+        item.subRequestStatus !== approvedStatus &&
+        item.subRequestStatus !== rejectedStatus
+      ) {
+        return;
+      }
+
+      const headId =
+        item.subRequestStatus === approvedStatus ? (item.bankId ?? 0) : 0;
+      const remarks = item.remarks || "";
+      const status = item.subRequestStatus;
+      const groupKey = `${status}::${headId}::${remarks}`;
+
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, {
+          key: { status, headId, remarks },
+          ids: [],
+        });
+      }
+      groupMap.get(groupKey)!.ids.push(item.internalFundsRequestBankId);
+    });
+
+    if (groupMap.size === 0) {
+      toast({
+        variant: "destructive",
+        title: "Nothing to submit",
+        description: "No items have been approved or rejected.",
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
+    const callBulk = async (
+      key: BatchKey,
+      ids: number[],
+    ): Promise<{ ok: boolean; count: number; error?: string }> => {
+      try {
+        const res = await fetch(endpoint, {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            fundRequestDetailIds: ids,
+            status: key.status,
+            headId: key.headId,
+            remarks: key.remarks,
+          }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          return { ok: false, count: ids.length, error: text };
+        }
+        return { ok: true, count: ids.length };
+      } catch (e) {
+        return {
+          ok: false,
+          count: ids.length,
+          error: e instanceof Error ? e.message : "Network error",
+        };
+      }
+    };
+
+    try {
+      const results = await Promise.all(
+        Array.from(groupMap.values()).map((g) => callBulk(g.key, g.ids)),
+      );
+
+      const totalOk = results
+        .filter((r) => r.ok)
+        .reduce((s, r) => s + r.count, 0);
+      const totalFailed = results
+        .filter((r) => !r.ok)
+        .reduce((s, r) => s + r.count, 0);
+      const errors = results.filter((r) => !r.ok).map((r) => r.error || "");
+
+      if (totalFailed === 0) {
+        toast({
+          title: "Bulk Approval Complete",
+          description: `${totals.approvedCount} approved · ${totals.rejectedCount} rejected (${totalOk} item${totalOk !== 1 ? "s" : ""} updated)`,
+        });
+        onApprovalComplete({
+          batch: true,
+          approved: totals.approvedCount,
+          rejected: totals.rejectedCount,
+        });
+      } else if (totalOk > 0) {
+        toast({
+          variant: "destructive",
+          title: "Partial Failure",
+          description: `${totalOk} item(s) updated, ${totalFailed} failed. ${errors[0] ? errors[0].slice(0, 80) : ""}`,
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Save Failed",
+          description: errors[0]?.slice(0, 100) || "All updates failed.",
+        });
+      }
+    } catch (e) {
+      console.error("Batch save error:", e);
+      toast({
+        variant: "destructive",
+        title: "Save Failed",
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── Status badge ──────────────────────────────────────────────────────────
   const getStatusBadge = (status: string) => {
     const s = (status || "").toLowerCase();
     if (s === approvedStatus.toLowerCase())
@@ -563,6 +855,284 @@ export default function InternalBankFundRequestApprovalForm({
     if (s === pendingStatus.toLowerCase())
       return "bg-yellow-100 text-yellow-800 border-yellow-300";
     return "bg-gray-100 text-gray-800 border-gray-300";
+  };
+
+  // ── Render single line item card ──────────────────────────────────────────
+  const renderLineItemCard = (item: LineItemApproval, displayIndex: number) => {
+    const isApproved = item.subRequestStatus === approvedStatus;
+    const isRejected = item.subRequestStatus === rejectedStatus;
+    const diff = item.approvedAmount - item.requestedAmount;
+    const itemId = item.internalFundsRequestBankId;
+
+    return (
+      <Card
+        key={itemId}
+        className={`border-l-4 ${
+          isApproved
+            ? "border-l-green-500"
+            : isRejected
+              ? "border-l-red-500"
+              : "border-l-yellow-500"
+        }`}
+      >
+        <CardContent className='p-3'>
+          <div className='grid grid-cols-12 gap-3 items-start'>
+            <div className='col-span-1'>
+              <Badge
+                variant='outline'
+                className='font-mono text-base px-2 py-0.5'
+              >
+                #{displayIndex}
+              </Badge>
+              {isBatchMode && (
+                <div className='mt-1'>
+                  <Badge
+                    variant='outline'
+                    className='text-[10px] bg-purple-50 text-purple-700 border-purple-200'
+                    title={`Master Request #${item.parentRequestId}`}
+                  >
+                    Req #{item.parentRequestId}
+                  </Badge>
+                </div>
+              )}
+            </div>
+
+            <div className='col-span-2'>
+              <div className='space-y-1'>
+                <div className='flex items-center gap-1'>
+                  <FiBriefcase className='h-3.5 w-3.5 text-gray-400' />
+                  <Badge
+                    variant='outline'
+                    className='bg-blue-50 text-blue-700 font-mono text-xs'
+                  >
+                    {item.jobNumber}
+                  </Badge>
+                </div>
+                <div className='flex items-center gap-1'>
+                  <FiUser className='h-3.5 w-3.5 text-gray-400' />
+                  <span
+                    className='text-sm text-gray-700 truncate'
+                    title={item.customerName}
+                  >
+                    {item.customerName || "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className='col-span-3'>
+              <div className='space-y-1'>
+                <div className='flex items-start gap-1'>
+                  <FiFileText className='h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0' />
+                  <span
+                    className='text-sm text-gray-900 truncate'
+                    title={item.headOfAccount}
+                  >
+                    {item.headOfAccount}
+                  </span>
+                </div>
+                <div className='flex items-start gap-1'>
+                  <FiUser className='h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0' />
+                  <span
+                    className='text-sm text-gray-700 truncate'
+                    title={item.beneficiary}
+                  >
+                    {item.beneficiary}
+                  </span>
+                </div>
+                {item.accountNo && (
+                  <div className='text-[10px] text-gray-500 font-mono truncate pl-4'>
+                    A/C: {item.accountNo}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className='col-span-1'>
+              <p className='text-xs text-gray-500'>Requested</p>
+              <p className='text-base font-semibold text-gray-900'>
+                {new Intl.NumberFormat("en-US", {
+                  style: "currency",
+                  currency: "PKR",
+                  minimumFractionDigits: 0,
+                }).format(item.requestedAmount)}
+              </p>
+            </div>
+
+            <div className='col-span-2'>
+              <Label className='text-xs text-gray-600 mb-1 block'>
+                Approved Amount
+              </Label>
+              <div className='relative'>
+                <span className='absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-medium'>
+                  PKR
+                </span>
+                <Input
+                  type='number'
+                  min='0'
+                  max={item.requestedAmount}
+                  step='0.01'
+                  value={item.approvedAmount || ""}
+                  onChange={(e) =>
+                    updateApprovedAmount(
+                      itemId,
+                      parseFloat(e.target.value) || 0,
+                    )
+                  }
+                  disabled={isRejected}
+                  className={`pl-12 text-right font-semibold ${
+                    isRejected
+                      ? "bg-gray-100"
+                      : diff > 0
+                        ? "bg-red-50 border-red-300"
+                        : diff < 0
+                          ? "bg-orange-50 border-orange-300"
+                          : "bg-green-50 border-green-300"
+                  }`}
+                />
+              </div>
+              {diff !== 0 && !isRejected && (
+                <p
+                  className={`text-xs mt-1 ${diff > 0 ? "text-red-600" : "text-orange-600"}`}
+                >
+                  {diff > 0 ? "+" : ""}
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "PKR",
+                  }).format(diff)}
+                </p>
+              )}
+            </div>
+
+            <div className='col-span-2'>
+              <Label className='text-xs text-gray-600 mb-1 block'>
+                Bank {isApproved && <span className='text-red-500'>*</span>}
+              </Label>
+              <Select
+                value={item.bankId?.toString() || ""}
+                onValueChange={(value) => updateBank(itemId, value)}
+                disabled={isRejected}
+              >
+                <SelectTrigger
+                  className={`h-9 text-sm ${
+                    isRejected ? "bg-gray-100" : "bg-blue-50 border-blue-300"
+                  } ${isApproved && !item.bankId ? "border-red-300" : ""}`}
+                >
+                  <SelectValue placeholder='Select bank...'>
+                    {item.bankName ? (
+                      <span className='flex items-center gap-2 truncate'>
+                        <FiDollarSign className='h-3.5 w-3.5 flex-shrink-0 text-blue-600' />
+                        <span className='truncate'>{item.bankName}</span>
+                      </span>
+                    ) : (
+                      <span className='text-gray-500'>Select bank...</span>
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className='max-h-[300px] w-[350px]'>
+                  <div className='sticky top-0 bg-white p-2 border-b z-50'>
+                    <div className='relative'>
+                      <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4' />
+                      <Input
+                        placeholder='Search banks...'
+                        value={bankSearch}
+                        onChange={(e) => setBankSearch(e.target.value)}
+                        className='pl-8 h-8 text-sm'
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  </div>
+                  <div className='max-h-[250px] overflow-y-auto'>
+                    {isLoadingBanks ? (
+                      <div className='p-4 text-center text-gray-500'>
+                        Loading...
+                      </div>
+                    ) : filteredBanks.length === 0 ? (
+                      <div className='p-4 text-center text-gray-500'>
+                        No banks found
+                      </div>
+                    ) : (
+                      filteredBanks.map((bank) => (
+                        <SelectItem
+                          key={bank.bankId}
+                          value={bank.bankId.toString()}
+                        >
+                          <div className='flex flex-col'>
+                            <span className='font-medium'>{bank.bankCode}</span>
+                            <span className='text-xs text-gray-500'>
+                              {bank.bankName}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
+                  </div>
+                </SelectContent>
+              </Select>
+              {isApproved && !item.bankId && (
+                <p className='text-xs text-red-600 mt-1'>
+                  Required for approved items
+                </p>
+              )}
+            </div>
+
+            <div className='col-span-1'>
+              <div className='flex items-center gap-1 justify-end'>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant={isApproved ? "default" : "outline"}
+                  onClick={() => setLineStatus(itemId, approvedStatus)}
+                  className={`h-8 w-8 p-0 ${
+                    isApproved
+                      ? "bg-green-600 hover:bg-green-700"
+                      : "text-green-700 border-green-300 hover:bg-green-50"
+                  }`}
+                  title='Approve'
+                >
+                  <FiCheckCircle className='h-4 w-4' />
+                </Button>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant={isRejected ? "default" : "outline"}
+                  onClick={() => setLineStatus(itemId, rejectedStatus)}
+                  className={`h-8 w-8 p-0 ${
+                    isRejected
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "text-red-700 border-red-300 hover:bg-red-50"
+                  }`}
+                  title='Reject'
+                >
+                  <FiXCircle className='h-4 w-4' />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Inline editable remarks */}
+          <div className='mt-2 pt-2 border-t border-gray-100'>
+            <div className='flex items-start gap-2'>
+              <Label
+                htmlFor={`remarks-${itemId}`}
+                className='text-xs text-gray-600 pt-2 flex-shrink-0 min-w-[60px]'
+              >
+                Remarks
+              </Label>
+              <Input
+                id={`remarks-${itemId}`}
+                type='text'
+                value={item.remarks}
+                onChange={(e) => updateRemarks(itemId, e.target.value)}
+                className='h-8 text-sm flex-1'
+                placeholder='Add remarks for this line item...'
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -575,59 +1145,67 @@ export default function InternalBankFundRequestApprovalForm({
             <div className='flex items-center gap-3'>
               <CardTitle className='text-lg flex items-center gap-2'>
                 <FiCheckCircle className='h-5 w-5 text-purple-600' />
-                Approve Bank Fund Request
+                {isBatchMode
+                  ? "Bulk Approve Bank Fund Requests"
+                  : "Approve Bank Fund Request"}
               </CardTitle>
-              <Badge variant='outline' className='font-mono'>
-                #{requestData?.bankFundRequestId}
-              </Badge>
+              {isBatchMode ? (
+                <Badge variant='outline' className='font-mono'>
+                  {sourceRequests.length} requests · {lineItems.length} line
+                  items
+                </Badge>
+              ) : (
+                <Badge variant='outline' className='font-mono'>
+                  #{requestData?.bankFundRequestId}
+                </Badge>
+              )}
             </div>
             <div className='flex items-center gap-3'>
               <Badge
                 className={`font-semibold ${getStatusBadge(derivedMasterStatus)}`}
               >
-                Master: {derivedMasterStatus}
+                {isBatchMode ? "Batch:" : "Master:"} {derivedMasterStatus}
               </Badge>
             </div>
           </div>
           <CardDescription className='pt-2 flex items-center justify-between'>
             <span>
-              Set approval status, approved amount, and select bank for each
-              line item
+              {isBatchMode
+                ? "Review all pending bank fund requests sent to you, grouped by requestor. Approve or reject in bulk."
+                : "Set approval status, approved amount, and select bank for each line item"}
             </span>
-            <span className='text-xs text-gray-500'>
-              Created:{" "}
-              {requestData?.createdOn
-                ? new Date(requestData.createdOn).toLocaleDateString()
-                : "—"}
-            </span>
+            {!isBatchMode && (
+              <span className='text-xs text-gray-500'>
+                Created:{" "}
+                {requestData?.createdOn
+                  ? new Date(requestData.createdOn).toLocaleDateString()
+                  : "—"}
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
       </Card>
 
       {/* Bulk Actions Bar */}
-      <div className='bg-white rounded-lg border p-3 flex items-center justify-between'>
-        <div className='flex items-center gap-2'>
+      <div className='bg-white rounded-lg border p-3 flex items-center justify-between flex-wrap gap-2'>
+        <div className='flex items-center gap-2 flex-wrap'>
           <Info className='h-4 w-4 text-blue-600' />
           <span className='text-sm text-gray-600'>
             <strong>{lineItems.length}</strong> line items •
             <span className='text-green-600 ml-2'>
-              {
-                lineItems.filter((i) => i.subRequestStatus === approvedStatus)
-                  .length
-              }{" "}
-              approved
+              {totals.approvedCount} approved
             </span>{" "}
             •
             <span className='text-red-600 ml-1'>
-              {
-                lineItems.filter((i) => i.subRequestStatus === rejectedStatus)
-                  .length
-              }{" "}
-              rejected
+              {totals.rejectedCount} rejected
+            </span>{" "}
+            •
+            <span className='text-yellow-600 ml-1'>
+              {totals.pendingCount} pending
             </span>
           </span>
         </div>
-        <div className='flex gap-2'>
+        <div className='flex gap-2 flex-wrap'>
           <Button
             type='button'
             variant='outline'
@@ -657,294 +1235,97 @@ export default function InternalBankFundRequestApprovalForm({
         </div>
       </div>
 
-      {/* Line Item Cards */}
-      <div className='space-y-3 max-h-[calc(100vh-350px)] overflow-y-auto pr-2'>
-        {lineItems.map((item, index) => {
-          const isApproved = item.subRequestStatus === approvedStatus;
-          const isRejected = item.subRequestStatus === rejectedStatus;
-          const diff = item.approvedAmount - item.requestedAmount;
+      {/* Line Items */}
+      <div className='space-y-3 max-h-[calc(100vh-380px)] overflow-y-auto pr-2'>
+        {isBatchMode
+          ? groupedByRequestor.map((group) => {
+              const collapsed = collapsedGroups[group.key];
+              const groupApproved = group.items.filter(
+                (i) => i.subRequestStatus === approvedStatus,
+              ).length;
+              const groupRejected = group.items.filter(
+                (i) => i.subRequestStatus === rejectedStatus,
+              ).length;
+              const groupTotal = group.items.reduce(
+                (s, i) => s + (i.requestedAmount || 0),
+                0,
+              );
 
-          return (
-            <Card
-              key={item.internalFundsRequestBankId || index}
-              className={`border-l-4 ${
-                isApproved
-                  ? "border-l-green-500"
-                  : isRejected
-                    ? "border-l-red-500"
-                    : "border-l-yellow-500"
-              }`}
-            >
-              <CardContent className='p-4'>
-                <div className='grid grid-cols-12 gap-3 items-start'>
-                  {/* Line Number */}
-                  <div className='col-span-1'>
-                    <Badge
-                      variant='outline'
-                      className='font-mono text-lg px-3 py-1'
+              return (
+                <div
+                  key={group.key}
+                  className='border rounded-lg overflow-hidden bg-white'
+                >
+                  <div className='bg-gradient-to-r from-purple-50 to-blue-50 border-b px-4 py-3 flex items-center justify-between'>
+                    <button
+                      type='button'
+                      onClick={() => toggleGroup(group.key)}
+                      className='flex items-center gap-2 text-left flex-1'
                     >
-                      #{index + 1}
-                    </Badge>
-                  </div>
-
-                  {/* Job & Customer */}
-                  <div className='col-span-2'>
-                    <div className='space-y-1'>
-                      <div className='flex items-center gap-1'>
-                        <FiBriefcase className='h-3.5 w-3.5 text-gray-400' />
-                        <Badge
-                          variant='outline'
-                          className='bg-blue-50 text-blue-700 font-mono text-xs'
-                        >
-                          {item.jobNumber}
-                        </Badge>
-                      </div>
-                      <div className='flex items-center gap-1'>
-                        <FiUser className='h-3.5 w-3.5 text-gray-400' />
-                        <span
-                          className='text-sm text-gray-700 truncate'
-                          title={item.customerName}
-                        >
-                          {item.customerName || "—"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Account Details */}
-                  <div className='col-span-3'>
-                    <div className='space-y-1'>
-                      <div className='flex items-start gap-1'>
-                        <FiFileText className='h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0' />
-                        <span
-                          className='text-sm text-gray-900 truncate'
-                          title={item.headOfAccount}
-                        >
-                          {item.headOfAccount}
-                        </span>
-                      </div>
-                      <div className='flex items-start gap-1'>
-                        <FiUser className='h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0' />
-                        <span
-                          className='text-sm text-gray-700 truncate'
-                          title={item.beneficiary}
-                        >
-                          {item.beneficiary}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Requested Amount */}
-                  <div className='col-span-1'>
-                    <p className='text-xs text-gray-500'>Requested</p>
-                    <p className='text-base font-semibold text-gray-900'>
-                      {new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: "PKR",
-                        minimumFractionDigits: 0,
-                      }).format(item.requestedAmount)}
-                    </p>
-                  </div>
-
-                  {/* Approved Amount */}
-                  <div className='col-span-2'>
-                    <Label className='text-xs text-gray-600 mb-1 block'>
-                      Approved Amount
-                    </Label>
-                    <div className='relative'>
-                      <span className='absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-medium'>
-                        PKR
+                      {collapsed ? (
+                        <FiChevronRight className='h-4 w-4 text-gray-600' />
+                      ) : (
+                        <FiChevronDown className='h-4 w-4 text-gray-600' />
+                      )}
+                      <FiUsers className='h-4 w-4 text-purple-600' />
+                      <span className='font-semibold text-sm text-gray-900'>
+                        {group.requestorName}
                       </span>
-                      <Input
-                        type='number'
-                        min='0'
-                        max={item.requestedAmount}
-                        step='0.01'
-                        value={item.approvedAmount || ""}
-                        onChange={(e) =>
-                          updateApprovedAmount(
-                            index,
-                            parseFloat(e.target.value) || 0,
-                          )
-                        }
-                        disabled={isRejected}
-                        className={`pl-12 text-right font-semibold ${
-                          isRejected
-                            ? "bg-gray-100"
-                            : diff > 0
-                              ? "bg-red-50 border-red-300"
-                              : diff < 0
-                                ? "bg-orange-50 border-orange-300"
-                                : "bg-green-50 border-green-300"
-                        }`}
-                      />
-                    </div>
-                    {diff !== 0 && !isRejected && (
-                      <p
-                        className={`text-xs mt-1 ${diff > 0 ? "text-red-600" : "text-orange-600"}`}
-                      >
-                        {diff > 0 ? "+" : ""}
+                      <Badge variant='outline' className='text-xs bg-white'>
+                        {group.items.length} item
+                        {group.items.length !== 1 ? "s" : ""}
+                      </Badge>
+                      <span className='text-xs text-gray-600'>
                         {new Intl.NumberFormat("en-US", {
                           style: "currency",
                           currency: "PKR",
-                        }).format(diff)}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Bank Selection */}
-                  <div className='col-span-2'>
-                    <Label className='text-xs text-gray-600 mb-1 block'>
-                      Bank{" "}
-                      {isApproved && <span className='text-red-500'>*</span>}
-                    </Label>
-                    <Select
-                      value={item.bankId?.toString() || ""}
-                      onValueChange={(value) => updateBank(index, value)}
-                      disabled={isRejected}
-                    >
-                      <SelectTrigger
-                        className={`h-9 text-sm ${
-                          isRejected
-                            ? "bg-gray-100"
-                            : "bg-blue-50 border-blue-300"
-                        } ${isApproved && !item.bankId ? "border-red-300" : ""}`}
-                      >
-                        <SelectValue placeholder='Select bank...'>
-                          {item.bankName ? (
-                            <span className='flex items-center gap-2 truncate'>
-                              <FiDollarSign className='h-3.5 w-3.5 flex-shrink-0 text-blue-600' />
-                              <span className='truncate'>{item.bankName}</span>
-                            </span>
-                          ) : (
-                            <span className='text-gray-500'>
-                              Select bank...
-                            </span>
-                          )}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent className='max-h-[300px] w-[350px]'>
-                        <div className='sticky top-0 bg-white p-2 border-b z-50'>
-                          <div className='relative'>
-                            <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4' />
-                            <Input
-                              placeholder='Search banks...'
-                              value={bankSearch}
-                              onChange={(e) => setBankSearch(e.target.value)}
-                              className='pl-8 h-8 text-sm'
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                        </div>
-                        <div className='max-h-[250px] overflow-y-auto'>
-                          {isLoadingBanks ? (
-                            <div className='p-4 text-center text-gray-500'>
-                              Loading...
-                            </div>
-                          ) : filteredBanks.length === 0 ? (
-                            <div className='p-4 text-center text-gray-500'>
-                              No banks found
-                            </div>
-                          ) : (
-                            filteredBanks.map((bank) => (
-                              <SelectItem
-                                key={bank.bankId}
-                                value={bank.bankId.toString()}
-                              >
-                                <div className='flex flex-col'>
-                                  <span className='font-medium'>
-                                    {bank.bankCode}
-                                  </span>
-                                  <span className='text-xs text-gray-500'>
-                                    {bank.bankName}
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            ))
-                          )}
-                        </div>
-                      </SelectContent>
-                    </Select>
-                    {isApproved && !item.bankId && (
-                      <p className='text-xs text-red-600 mt-1'>
-                        Required for approved items
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className='col-span-1'>
-                    <div className='flex items-center gap-1 justify-end'>
+                          minimumFractionDigits: 0,
+                        }).format(groupTotal)}
+                      </span>
+                      {groupApproved > 0 && (
+                        <span className='text-xs text-green-600'>
+                          {groupApproved}✓
+                        </span>
+                      )}
+                      {groupRejected > 0 && (
+                        <span className='text-xs text-red-600'>
+                          {groupRejected}✗
+                        </span>
+                      )}
+                    </button>
+                    <div className='flex gap-1.5'>
                       <Button
                         type='button'
                         size='sm'
-                        variant={isApproved ? "default" : "outline"}
-                        onClick={() =>
-                          setLineStatus(
-                            index,
-                            isApproved ? pendingStatus : approvedStatus,
-                          )
-                        }
-                        className={`h-8 w-8 p-0 ${
-                          isApproved
-                            ? "bg-green-600 hover:bg-green-700"
-                            : "text-green-700 border-green-300 hover:bg-green-50"
-                        }`}
-                        title={
-                          isApproved
-                            ? `Reset to ${pendingStatus}`
-                            : `Set to ${approvedStatus}`
-                        }
+                        variant='outline'
+                        onClick={() => approveAllInGroup(group.key)}
+                        className='h-7 text-xs text-green-700 border-green-300 hover:bg-green-50 px-2'
                       >
-                        <FiCheckCircle className='h-4 w-4' />
+                        <FiCheckCircle className='h-3 w-3 mr-1' /> Approve
                       </Button>
                       <Button
                         type='button'
                         size='sm'
-                        variant={isRejected ? "default" : "outline"}
-                        onClick={() =>
-                          setLineStatus(
-                            index,
-                            isRejected ? pendingStatus : rejectedStatus,
-                          )
-                        }
-                        className={`h-8 w-8 p-0 ${
-                          isRejected
-                            ? "bg-red-600 hover:bg-red-700"
-                            : "text-red-700 border-red-300 hover:bg-red-50"
-                        }`}
-                        title={
-                          isRejected
-                            ? `Reset to ${pendingStatus}`
-                            : `Set to ${rejectedStatus}`
-                        }
+                        variant='outline'
+                        onClick={() => rejectAllInGroup(group.key)}
+                        className='h-7 text-xs text-red-700 border-red-300 hover:bg-red-50 px-2'
                       >
-                        <FiXCircle className='h-4 w-4' />
+                        <FiXCircle className='h-3 w-3 mr-1' /> Reject
                       </Button>
-                      {item.remarks && (
-                        <div className='relative group'>
-                          <FiTag className='h-4 w-4 text-gray-400 cursor-help' />
-                          <div className='absolute bottom-full right-0 mb-2 hidden group-hover:block bg-gray-800 text-white text-xs rounded py-1 px-2 whitespace-nowrap max-w-[200px] truncate z-50'>
-                            {item.remarks}
-                          </div>
-                        </div>
+                    </div>
+                  </div>
+
+                  {!collapsed && (
+                    <div className='p-3 space-y-2'>
+                      {group.items.map((item, idx) =>
+                        renderLineItemCard(item, idx + 1),
                       )}
                     </div>
-                    <div className='flex justify-end mt-1'>
-                      <span
-                        className={`text-xs font-semibold px-1.5 py-0.5 rounded border ${getStatusBadge(item.subRequestStatus)}`}
-                      >
-                        {isApproved ? "✓ Apvd" : isRejected ? "✗ Rjct" : "Pend"}
-                      </span>
-                    </div>
-                  </div>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+              );
+            })
+          : lineItems.map((item, idx) => renderLineItemCard(item, idx + 1))}
       </div>
 
       {/* Summary Footer */}
@@ -990,22 +1371,24 @@ export default function InternalBankFundRequestApprovalForm({
           </div>
         </div>
 
-        {/* Master Remarks */}
-        <div>
-          <Label
-            htmlFor='master-remarks'
-            className='text-sm font-medium text-gray-700 mb-2 block'
-          >
-            Master Remarks
-          </Label>
-          <textarea
-            id='master-remarks'
-            value={masterRemarks}
-            onChange={(e) => setMasterRemarks(e.target.value)}
-            className='w-full min-h-[60px] p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white'
-            placeholder='Add overall notes about this approval...'
-          />
-        </div>
+        {/* Master remarks (single mode only) */}
+        {!isBatchMode && (
+          <div>
+            <Label
+              htmlFor='master-remarks'
+              className='text-sm font-medium text-gray-700 mb-2 block'
+            >
+              Master Remarks
+            </Label>
+            <textarea
+              id='master-remarks'
+              value={masterRemarks}
+              onChange={(e) => setMasterRemarks(e.target.value)}
+              className='w-full min-h-[60px] p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white'
+              placeholder='Add overall notes about this approval...'
+            />
+          </div>
+        )}
 
         {totals.totalApproved > totals.totalRequested && (
           <div className='mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2'>
@@ -1016,6 +1399,21 @@ export default function InternalBankFundRequestApprovalForm({
               </h4>
               <p className='text-xs text-red-700'>
                 Total approved exceeds requested. Please review before saving.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {missingBankItems.length > 0 && (
+          <div className='mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-2'>
+            <AlertTriangle className='h-5 w-5 text-orange-600 flex-shrink-0' />
+            <div>
+              <h4 className='font-semibold text-orange-900 text-sm'>
+                Bank Required
+              </h4>
+              <p className='text-xs text-orange-700'>
+                {missingBankItems.length} approved line item(s) need a Bank
+                before saving.
               </p>
             </div>
           </div>
@@ -1035,7 +1433,7 @@ export default function InternalBankFundRequestApprovalForm({
         <Button
           type='button'
           onClick={handleSave}
-          disabled={isSubmitting || !userId}
+          disabled={isSaveDisabled}
           className='bg-blue-600 hover:bg-blue-700'
         >
           {isSubmitting ? (
@@ -1045,7 +1443,10 @@ export default function InternalBankFundRequestApprovalForm({
             </>
           ) : (
             <>
-              <FiCheckCircle className='h-4 w-4 mr-2' /> Save Approval
+              <FiCheckCircle className='h-4 w-4 mr-2' />
+              {isBatchMode
+                ? `Save Batch Approval (${totals.approvedCount + totals.rejectedCount})`
+                : "Save Approval"}
             </>
           )}
         </Button>

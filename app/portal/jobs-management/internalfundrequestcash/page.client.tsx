@@ -25,6 +25,7 @@ import {
   FiList,
   FiAlertCircle,
   FiLock,
+  FiCheckSquare,
 } from "react-icons/fi";
 import {
   Tooltip,
@@ -76,7 +77,7 @@ type CashFundRequest = {
   cashFundRequestId: number;
   cashHeadId?: number | null;
   cashHeadName?: string;
-  requestorUserId?: number; // This might be the actual creator
+  requestorUserId?: number;
   totalRequestedAmount: number;
   totalApprovedAmount: number;
   approvalStatus: string;
@@ -84,7 +85,7 @@ type CashFundRequest = {
   approvedOn?: string | null;
   requestedTo?: number | null;
   createdOn: string;
-  createdBy?: number; // This might be null
+  createdBy?: number;
   version: number;
   internalCashFundsRequests: DetailLineItem[];
 };
@@ -157,6 +158,51 @@ const formatDate = (dateString?: string | null): string => {
   });
 };
 
+// ─── Concurrency limiter for batch fetches ────────────────────────────────────
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency: number,
+): Promise<T[]> {
+  const results: T[] = [];
+  let cursor = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, tasks.length) },
+    async () => {
+      while (cursor < tasks.length) {
+        const idx = cursor++;
+        try {
+          results[idx] = await tasks[idx]();
+        } catch (e) {
+          console.warn("Batch task failed:", e);
+        }
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+// ─── Master status derivation ────────────────────────────────────────────────
+// Rule: if every line item has been decided (each is either Approved or
+// Rejected with no Pending), the master is Approved — regardless of the mix.
+// Otherwise, fall back to the API's reported status.
+function deriveDisplayStatus(
+  request: CashFundRequest,
+  approvedKey: string,
+  rejectedKey: string,
+): string {
+  const details = request.internalCashFundsRequests;
+  if (!details || details.length === 0) return request.approvalStatus;
+
+  const allDecided = details.every((d) => {
+    const s = (d.subRequestStatus || "").toLowerCase();
+    return s === approvedKey.toLowerCase() || s === rejectedKey.toLowerCase();
+  });
+
+  if (allDecided) return approvedKey;
+  return request.approvalStatus;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function InternalFundRequestPage({
@@ -165,6 +211,7 @@ export default function InternalFundRequestPage({
   const [data, setData] = useState<CashFundRequest[]>(initialData || []);
   const [isLoading, setIsLoading] = useState(!initialData);
   const [isExporting, setIsExporting] = useState(false);
+  const [isLoadingBatch, setIsLoadingBatch] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -173,6 +220,9 @@ export default function InternalFundRequestPage({
     useState<CashFundRequest | null>(null);
   const [selectedRequestForApproval, setSelectedRequestForApproval] =
     useState<CashFundRequest | null>(null);
+  const [batchRequestsForApproval, setBatchRequestsForApproval] = useState<
+    CashFundRequest[] | null
+  >(null);
   const [activeTab, setActiveTab] = useState("ALL_REQUESTS");
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedRequestDetails, setSelectedRequestDetails] =
@@ -202,17 +252,10 @@ export default function InternalFundRequestPage({
   }, []);
 
   // ── Get current user from localStorage ──────────────────────────────────────
-  // Update the get current user from localStorage useEffect
   useEffect(() => {
     const storedUserId = localStorage.getItem("userId");
     const storedUserRole = localStorage.getItem("userRole");
     const storedUserData = localStorage.getItem("userData");
-
-    console.log("🔑 Current user from localStorage:", {
-      storedUserId,
-      storedUserRole,
-      storedUserData: storedUserData ? JSON.parse(storedUserData) : null,
-    });
 
     if (storedUserId) {
       setUserId(parseInt(storedUserId, 10));
@@ -226,7 +269,6 @@ export default function InternalFundRequestPage({
     if (storedUserData) {
       try {
         const userData = JSON.parse(storedUserData);
-        // Ensure isAllowedRequestApproval is set
         setCurrentUser({
           ...userData,
           userId:
@@ -244,8 +286,7 @@ export default function InternalFundRequestPage({
     }
   }, []);
 
-  // ── Fetch users with approval permission ────────────────────────────────────
-  // Update the fetchUsers useEffect to get ALL users
+  // ── Fetch users ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -258,7 +299,7 @@ export default function InternalFundRequestPage({
           body: JSON.stringify({
             select:
               "UserId, Username, FullName, Email, Designation, DepartmentId, IsAllowedRequestApproval, RoleId",
-            where: "", // Get ALL users, not filtered
+            where: "",
             sortOn: "FullName ASC",
             page: "1",
             pageSize: "500",
@@ -267,15 +308,6 @@ export default function InternalFundRequestPage({
 
         if (res.ok) {
           const usersData = await res.json();
-          console.log(
-            "📋 Users loaded:",
-            usersData.slice(0, 3).map((u: any) => ({
-              userId: u.userId || u.UserId,
-              fullName: u.fullName || u.FullName,
-              isAllowedRequestApproval:
-                u.isAllowedRequestApproval || u.IsAllowedRequestApproval,
-            })),
-          );
           setUsers(usersData);
         }
       } catch (e) {
@@ -349,64 +381,34 @@ export default function InternalFundRequestPage({
   );
 
   // ── Permission check helpers ────────────────────────────────────────────────
+  const userHasApprovalPermission = useMemo(() => {
+    if (!userId) return false;
+    if (currentUser?.isAllowedRequestApproval === true) return true;
+    const userFromList = users.find(
+      (u) => (u.userId ?? (u as any).UserId) === userId,
+    );
+    return (
+      userFromList?.isAllowedRequestApproval === true ||
+      (userFromList as any)?.IsAllowedRequestApproval === true
+    );
+  }, [currentUser, userId, users]);
+
   const canApproveRequest = useCallback(
     (request: CashFundRequest): boolean => {
-      if (!userId) {
-        console.log("❌ Cannot approve: No userId");
-        return false;
-      }
-
-      // Request must be pending
-      if (request.approvalStatus !== pendingStatus) {
-        console.log(
-          `❌ Cannot approve: Status is ${request.approvalStatus}, not ${pendingStatus}`,
-        );
-        return false;
-      }
-
-      // Current user must be the requestedTo user
-      if (request.requestedTo !== userId) {
-        console.log(
-          `❌ Cannot approve: Request sent to ${request.requestedTo}, but current user is ${userId}`,
-        );
-        return false;
-      }
-
-      // Check approval permission - first from currentUser, then from users list
-      let userHasApprovalPermission =
-        currentUser?.isAllowedRequestApproval === true;
-
-      // If not found in currentUser, check the users list
-      if (!userHasApprovalPermission) {
-        const userFromList = users.find((u) => u.userId === userId);
-        userHasApprovalPermission =
-          userFromList?.isAllowedRequestApproval === true;
-      }
-
-      console.log(`✅ Can approve check for user ${userId}:`, {
-        requestedTo: request.requestedTo,
-        approvalStatus: request.approvalStatus,
-        userHasApprovalPermission,
-        currentUserId: userId,
-      });
-
+      if (!userId) return false;
+      if (request.approvalStatus !== pendingStatus) return false;
+      if (request.requestedTo !== userId) return false;
       return userHasApprovalPermission;
     },
-    [currentUser, userId, pendingStatus, users],
+    [userId, pendingStatus, userHasApprovalPermission],
   );
+
   const canEditRequest = useCallback(
     (request: CashFundRequest): boolean => {
       if (!userId) return false;
-
-      // Admin can always edit
       if (isAdmin) return true;
-
-      // Only allow editing if request is PENDING
       if (request.approvalStatus !== pendingStatus) return false;
-
-      // Check if user is the creator - use requestorUserId as the creator identifier
       const isCreator = request.requestorUserId === userId;
-
       return isCreator;
     },
     [userId, isAdmin, pendingStatus],
@@ -415,22 +417,64 @@ export default function InternalFundRequestPage({
   const canDeleteRequest = useCallback(
     (request: CashFundRequest): boolean => {
       if (!userId) return false;
-
-      // Admin can always delete
       if (isAdmin) return true;
-
-      // Only allow deleting if request is PENDING
       if (request.approvalStatus !== pendingStatus) return false;
-
-      // Check if user is the creator - use requestorUserId as the creator identifier
       const isCreator = request.requestorUserId === userId;
-
       return isCreator;
     },
     [userId, isAdmin, pendingStatus],
   );
 
-  // ── Fetch list ──────────────────────────────────────────────────────────────
+  // ── Fetch single record (full details) ──────────────────────────────────────
+  const fetchRequestDetails = useCallback(
+    async (id: number): Promise<CashFundRequest | null> => {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        if (!baseUrl) {
+          throw new Error("API base URL not configured");
+        }
+
+        const response = await fetch(
+          `${baseUrl}InternalCashFundsRequest/${id}`,
+          {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(`${response.status}`);
+        }
+
+        const fullData = await response.json();
+
+        return {
+          ...fullData,
+          internalCashFundsRequests: Array.isArray(
+            fullData.internalCashFundsRequests,
+          )
+            ? fullData.internalCashFundsRequests
+            : [],
+          totalRequestedAmount: Number(fullData.totalRequestedAmount) || 0,
+          totalApprovedAmount: Number(fullData.totalApprovedAmount) || 0,
+        };
+      } catch (error) {
+        console.error("Detail fetch error:", error);
+        return null;
+      }
+    },
+    [],
+  );
+
+  // ── Pending requests assigned to me (for bulk approval) ────────────────────
+  const myPendingRequests = useMemo(() => {
+    if (!userId || !userHasApprovalPermission) return [];
+    return data.filter(
+      (r) => r.approvalStatus === pendingStatus && r.requestedTo === userId,
+    );
+  }, [data, userId, userHasApprovalPermission, pendingStatus]);
+
+  // ── Fetch list — eagerly hydrate detail records ─────────────────────────────
   const fetchFundRequests = useCallback(async () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -469,7 +513,7 @@ export default function InternalFundRequestPage({
 
       const requestData: ApiResponse<any> = await response.json();
 
-      const processedData: CashFundRequest[] = requestData.map((item: any) => ({
+      const baseProcessed: CashFundRequest[] = requestData.map((item: any) => ({
         ...item,
         internalCashFundsRequests: Array.isArray(item.internalCashFundsRequests)
           ? item.internalCashFundsRequests
@@ -477,28 +521,46 @@ export default function InternalFundRequestPage({
         totalRequestedAmount: Number(item.totalRequestedAmount) || 0,
         totalApprovedAmount: Number(item.totalApprovedAmount) || 0,
         cashHeadId: item.cashHeadId || item.CashHeadId || null,
-        // Use requestorUserId as the primary creator identifier
         requestorUserId: item.requestorUserId || item.RequestorUserId || null,
         createdBy: item.createdBy || item.CreatedBy || null,
       }));
 
-      setData(processedData);
+      // Show the rows immediately (counts will be 0 until details arrive)
+      setData(baseProcessed);
 
-      // Debug log to check creator IDs
-      console.log(
-        "📋 Processed Data Sample:",
-        processedData.slice(0, 2).map((d) => ({
-          id: d.cashFundRequestId,
-          requestorUserId: d.requestorUserId,
-          createdBy: d.createdBy,
-          status: d.approvalStatus,
-          requestedTo: d.requestedTo,
-        })),
-      );
+      // Eagerly fetch full details for every row so line item counts are
+      // correct before the user clicks anything. Concurrency = 5.
+      if (baseProcessed.length > 0) {
+        const tasks = baseProcessed.map((req) => async () => {
+          const full = await fetchRequestDetails(req.cashFundRequestId);
+          return full ? { id: req.cashFundRequestId, full } : null;
+        });
+
+        const results = await runWithConcurrency(tasks, 5);
+
+        // Merge fetched details back into data. Build a map for O(1) lookup.
+        const detailsMap = new Map<number, CashFundRequest>();
+        results.forEach((r) => {
+          if (r) detailsMap.set(r.id, r.full);
+        });
+
+        setData((prev) =>
+          prev.map((row) => {
+            const full = detailsMap.get(row.cashFundRequestId);
+            if (!full) return row;
+            return {
+              ...row,
+              ...full,
+              internalCashFundsRequests:
+                full.internalCashFundsRequests || row.internalCashFundsRequests,
+            };
+          }),
+        );
+      }
 
       toast({
         title: "Success",
-        description: `Loaded ${processedData.length} fund request(s)`,
+        description: `Loaded ${baseProcessed.length} fund request(s)`,
       });
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") return;
@@ -515,54 +577,7 @@ export default function InternalFundRequestPage({
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
-
-  // ── Fetch single record ─────────────────────────────────────────────────────
-  const fetchRequestDetails = useCallback(
-    async (id: number): Promise<CashFundRequest | null> => {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        if (!baseUrl) {
-          throw new Error("API base URL not configured");
-        }
-
-        const response = await fetch(
-          `${baseUrl}InternalCashFundsRequest/${id}`,
-          {
-            method: "GET",
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error(`${response.status}`);
-        }
-
-        const fullData = await response.json();
-
-        // Ensure internalCashFundsRequests is always an array
-        return {
-          ...fullData,
-          internalCashFundsRequests: Array.isArray(
-            fullData.internalCashFundsRequests,
-          )
-            ? fullData.internalCashFundsRequests
-            : [],
-          totalRequestedAmount: Number(fullData.totalRequestedAmount) || 0,
-          totalApprovedAmount: Number(fullData.totalApprovedAmount) || 0,
-        };
-      } catch (error) {
-        console.error("Detail fetch error:", error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to load request details",
-        });
-        return null;
-      }
-    },
-    [toast],
-  );
+  }, [toast, fetchRequestDetails]);
 
   // ── Bootstrap ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -610,35 +625,38 @@ export default function InternalFundRequestPage({
     [],
   );
 
+  // Helper: get the *display* status for a request (uses derived rule)
+  const displayStatusFor = useCallback(
+    (r: CashFundRequest) =>
+      deriveDisplayStatus(r, approvedStatus, rejectedStatus),
+    [approvedStatus, rejectedStatus],
+  );
+
   const getCurrentTabData = useMemo(() => {
     let tabData = data;
 
-    // Apply tab filter
     switch (activeTab) {
       case "PENDING":
-        tabData = data.filter((i) => i.approvalStatus === pendingStatus);
+        tabData = data.filter((i) => displayStatusFor(i) === pendingStatus);
         break;
       case "APPROVED":
-        tabData = data.filter((i) => i.approvalStatus === approvedStatus);
+        tabData = data.filter((i) => displayStatusFor(i) === approvedStatus);
         break;
       case "REJECTED":
-        tabData = data.filter((i) => i.approvalStatus === rejectedStatus);
+        tabData = data.filter((i) => displayStatusFor(i) === rejectedStatus);
         break;
       case "PAID":
         tabData = data.filter((i) => i.approvalStatus === "Paid");
         break;
       case "ALL_REQUESTS":
       default:
-        // No additional filtering
         break;
     }
 
-    // Apply status filter (only for ALL_REQUESTS tab)
     if (activeTab === "ALL_REQUESTS" && statusFilter !== "ALL") {
-      tabData = tabData.filter((i) => i.approvalStatus === statusFilter);
+      tabData = tabData.filter((i) => displayStatusFor(i) === statusFilter);
     }
 
-    // Apply search filter
     if (searchText) {
       tabData = tabData.filter((i) => searchInItem(i, searchText));
     }
@@ -652,19 +670,26 @@ export default function InternalFundRequestPage({
     pendingStatus,
     approvedStatus,
     rejectedStatus,
+    displayStatusFor,
     searchInItem,
   ]);
 
-  // ── Stats ───────────────────────────────────────────────────────────────────
-  const getRequestStats = useMemo(
-    () => ({
+  // ── Stats — use display status for accurate counts ──────────────────────────
+  const getRequestStats = useMemo(() => {
+    const totalLineItems = data.reduce(
+      (s, i) => s + (i.internalCashFundsRequests?.length || 0),
+      0,
+    );
+    return {
       totalRequests: data.length,
-      pendingRequests: data.filter((i) => i.approvalStatus === pendingStatus)
+      pendingRequests: data.filter((i) => displayStatusFor(i) === pendingStatus)
         .length,
-      approvedRequests: data.filter((i) => i.approvalStatus === approvedStatus)
-        .length,
-      rejectedRequests: data.filter((i) => i.approvalStatus === rejectedStatus)
-        .length,
+      approvedRequests: data.filter(
+        (i) => displayStatusFor(i) === approvedStatus,
+      ).length,
+      rejectedRequests: data.filter(
+        (i) => displayStatusFor(i) === rejectedStatus,
+      ).length,
       paidRequests: data.filter((i) => i.approvalStatus === "Paid").length,
       totalRequestedAmount: data.reduce(
         (s, i) => s + (i.totalRequestedAmount || 0),
@@ -674,13 +699,9 @@ export default function InternalFundRequestPage({
         (s, i) => s + (i.totalApprovedAmount || 0),
         0,
       ),
-      totalLineItems: data.reduce(
-        (s, i) => s + (i.internalCashFundsRequests?.length || 0),
-        0,
-      ),
-    }),
-    [data, pendingStatus, approvedStatus, rejectedStatus],
-  );
+      totalLineItems,
+    };
+  }, [data, displayStatusFor, pendingStatus, approvedStatus, rejectedStatus]);
 
   // ── Action handlers ─────────────────────────────────────────────────────────
   const handleAddEditComplete = useCallback(() => {
@@ -692,6 +713,7 @@ export default function InternalFundRequestPage({
   const handleApprovalComplete = useCallback(() => {
     setShowApprovalForm(false);
     setSelectedRequestForApproval(null);
+    setBatchRequestsForApproval(null);
     fetchFundRequests();
   }, [fetchFundRequests]);
 
@@ -751,6 +773,8 @@ export default function InternalFundRequestPage({
 
   const handleViewDetails = useCallback(
     async (request: CashFundRequest) => {
+      // Details should already be present from eager fetch, but refresh
+      // anyway in case anything changed since the page loaded.
       if (!request.internalCashFundsRequests?.length) {
         setIsLoading(true);
         const full = await fetchRequestDetails(request.cashFundRequestId);
@@ -797,6 +821,7 @@ export default function InternalFundRequestPage({
 
       if (full) {
         setSelectedRequestForApproval(full);
+        setBatchRequestsForApproval([full]);
         setShowApprovalForm(true);
       } else {
         toast({
@@ -808,6 +833,60 @@ export default function InternalFundRequestPage({
     },
     [fetchRequestDetails, toast, canApproveRequest],
   );
+
+  const handleApproveAllPendingClick = useCallback(async () => {
+    if (myPendingRequests.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Nothing to approve",
+        description: "There are no pending requests assigned to you.",
+      });
+      return;
+    }
+
+    setIsLoadingBatch(true);
+
+    try {
+      const tasks = myPendingRequests.map(
+        (r) => async () => fetchRequestDetails(r.cashFundRequestId),
+      );
+      const results = await runWithConcurrency(tasks, 3);
+
+      const fullRequests = results.filter(
+        (r): r is CashFundRequest => r !== null && r !== undefined,
+      );
+
+      if (fullRequests.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Load Failed",
+          description: "Could not load any pending request details.",
+        });
+        return;
+      }
+
+      if (fullRequests.length < myPendingRequests.length) {
+        toast({
+          variant: "destructive",
+          title: "Partial Load",
+          description: `Loaded ${fullRequests.length} of ${myPendingRequests.length} requests. Some may have failed.`,
+        });
+      }
+
+      setBatchRequestsForApproval(fullRequests);
+      setSelectedRequestForApproval(fullRequests[0]);
+      setShowApprovalForm(true);
+    } catch (e) {
+      console.error("Bulk approve load error:", e);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load pending requests for approval.",
+      });
+    } finally {
+      setIsLoadingBatch(false);
+    }
+  }, [myPendingRequests, fetchRequestDetails, toast]);
 
   const handleEditClick = useCallback(
     async (request: CashFundRequest) => {
@@ -878,7 +957,7 @@ export default function InternalFundRequestPage({
             r.internalCashFundsRequests?.length || 0,
             r.totalRequestedAmount || 0,
             r.totalApprovedAmount || 0,
-            r.approvalStatus || "",
+            displayStatusFor(r) || "",
             formatDate(r.createdOn),
           ]),
         );
@@ -908,7 +987,7 @@ export default function InternalFundRequestPage({
         setIsExporting(false);
       }
     },
-    [toast],
+    [toast, displayStatusFor],
   );
 
   const downloadPDFWithData = useCallback(
@@ -948,7 +1027,7 @@ export default function InternalFundRequestPage({
             i.internalCashFundsRequests?.length?.toString() || "0",
             new Intl.NumberFormat("en-US").format(i.totalRequestedAmount || 0),
             new Intl.NumberFormat("en-US").format(i.totalApprovedAmount || 0),
-            i.approvalStatus || "N/A",
+            displayStatusFor(i) || "N/A",
             formatDate(i.createdOn),
           ]),
           startY: 30,
@@ -982,7 +1061,7 @@ export default function InternalFundRequestPage({
         setIsExporting(false);
       }
     },
-    [toast],
+    [toast, displayStatusFor],
   );
 
   // ── Status badge styling ────────────────────────────────────────────────────
@@ -1024,26 +1103,12 @@ export default function InternalFundRequestPage({
         cell: ({ row }) => {
           const request = row.original;
 
-          // Debug log for each request
-          if (row.index === 0) {
-            console.log("📊 First request data:", {
-              id: request.cashFundRequestId,
-              requestorUserId: request.requestorUserId,
-              requestedTo: request.requestedTo,
-              approvalStatus: request.approvalStatus,
-              currentUserId: userId,
-              canApprove: canApproveRequest(request),
-              canEdit: canEditRequest(request),
-            });
-          }
-
           const showApproveButton = canApproveRequest(request);
           const showEditButton = canEditRequest(request);
           const showDeleteButton = canDeleteRequest(request);
 
           return (
             <div className='flex gap-1.5'>
-              {/* View - Always available */}
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1061,7 +1126,6 @@ export default function InternalFundRequestPage({
                 </Tooltip>
               </TooltipProvider>
 
-              {/* Approve - Only for authorized approvers of pending requests */}
               {showApproveButton ? (
                 <TooltipProvider>
                   <Tooltip>
@@ -1075,7 +1139,7 @@ export default function InternalFundRequestPage({
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className='text-xs'>Approve / Reject</p>
+                      <p className='text-xs'>Quick Approve / Reject</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1101,7 +1165,6 @@ export default function InternalFundRequestPage({
                 </TooltipProvider>
               ) : null}
 
-              {/* Edit - Only for authorized users */}
               {showEditButton ? (
                 <TooltipProvider>
                   <Tooltip>
@@ -1140,7 +1203,6 @@ export default function InternalFundRequestPage({
                 </TooltipProvider>
               ) : null}
 
-              {/* Delete - Only for authorized users */}
               {showDeleteButton && (
                 <TooltipProvider>
                   <Tooltip>
@@ -1185,7 +1247,6 @@ export default function InternalFundRequestPage({
         cell: ({ row }) => {
           const creatorId = row.original.requestorUserId;
 
-          // Normalize user data (handle both camelCase and PascalCase)
           const normalizedUsers = users.map((u) => ({
             userId: u.userId || (u as any).UserId,
             fullName: u.fullName || (u as any).FullName,
@@ -1193,8 +1254,6 @@ export default function InternalFundRequestPage({
           }));
 
           const creator = normalizedUsers.find((u) => u.userId === creatorId);
-
-          console.log(`🔍 Looking for creator ID ${creatorId}:`, creator);
 
           return (
             <div
@@ -1214,7 +1273,6 @@ export default function InternalFundRequestPage({
         cell: ({ row }) => {
           const requestedToId = row.original.requestedTo;
 
-          // Normalize user data (handle both camelCase and PascalCase)
           const normalizedUsers = users.map((u) => ({
             userId: u.userId || (u as any).UserId,
             fullName: u.fullName || (u as any).FullName,
@@ -1223,11 +1281,6 @@ export default function InternalFundRequestPage({
 
           const requestedTo = normalizedUsers.find(
             (u) => u.userId === requestedToId,
-          );
-
-          console.log(
-            `🔍 Looking for requestedTo ID ${requestedToId}:`,
-            requestedTo,
           );
 
           return (
@@ -1298,7 +1351,7 @@ export default function InternalFundRequestPage({
         accessorKey: "approvalStatus",
         header: "Status",
         cell: ({ row }) => {
-          const status = row.original.approvalStatus;
+          const status = displayStatusFor(row.original);
           return (
             <span
               className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getStatusBadge(status)}`}
@@ -1325,7 +1378,7 @@ export default function InternalFundRequestPage({
       rejectedStatus,
       userId,
       isAdmin,
-      users, // Add this
+      users,
       canApproveRequest,
       canEditRequest,
       canDeleteRequest,
@@ -1335,12 +1388,15 @@ export default function InternalFundRequestPage({
       handleDelete,
       getStatusBadge,
       getStatusIcon,
+      displayStatusFor,
     ],
   );
 
   // ── View Details Dialog ─────────────────────────────────────────────────────
   const ViewRequestDialog = useCallback(() => {
     if (!selectedRequestDetails) return null;
+
+    const dialogStatus = displayStatusFor(selectedRequestDetails);
 
     return (
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
@@ -1356,7 +1412,6 @@ export default function InternalFundRequestPage({
           </DialogHeader>
 
           <div className='space-y-4'>
-            {/* Master info */}
             <Card>
               <CardHeader className='py-3 px-4 bg-blue-50'>
                 <CardTitle className='text-sm font-medium flex items-center gap-2'>
@@ -1401,10 +1456,10 @@ export default function InternalFundRequestPage({
                   <div className='flex justify-between'>
                     <span className='text-gray-600'>Status:</span>
                     <span
-                      className={`font-medium inline-flex items-center px-2 py-0.5 rounded text-xs border ${getStatusBadge(selectedRequestDetails.approvalStatus)}`}
+                      className={`font-medium inline-flex items-center px-2 py-0.5 rounded text-xs border ${getStatusBadge(dialogStatus)}`}
                     >
-                      {getStatusIcon(selectedRequestDetails.approvalStatus)}
-                      {selectedRequestDetails.approvalStatus}
+                      {getStatusIcon(dialogStatus)}
+                      {dialogStatus}
                     </span>
                   </div>
                   <div className='flex justify-between'>
@@ -1433,7 +1488,6 @@ export default function InternalFundRequestPage({
               </CardContent>
             </Card>
 
-            {/* Detail lines */}
             <Card>
               <CardHeader className='py-3 px-4 bg-gray-50'>
                 <CardTitle className='text-sm font-medium flex items-center gap-2'>
@@ -1541,7 +1595,13 @@ export default function InternalFundRequestPage({
         </DialogContent>
       </Dialog>
     );
-  }, [viewDialogOpen, selectedRequestDetails, getStatusBadge, getStatusIcon]);
+  }, [
+    viewDialogOpen,
+    selectedRequestDetails,
+    getStatusBadge,
+    getStatusIcon,
+    displayStatusFor,
+  ]);
 
   // ── Statistics tab ──────────────────────────────────────────────────────────
   const RequestStatsPage = useCallback(() => {
@@ -1628,6 +1688,7 @@ export default function InternalFundRequestPage({
             onClick={() => {
               setShowApprovalForm(false);
               setSelectedRequestForApproval(null);
+              setBatchRequestsForApproval(null);
             }}
             className='mb-3 gap-1.5'
           >
@@ -1636,10 +1697,12 @@ export default function InternalFundRequestPage({
           <div className='bg-white rounded-lg shadow-sm border p-4'>
             <InternalFundRequestApprovalForm
               requestData={selectedRequestForApproval}
+              batchRequests={batchRequestsForApproval ?? undefined}
               onApprovalComplete={handleApprovalComplete}
               onCancel={() => {
                 setShowApprovalForm(false);
                 setSelectedRequestForApproval(null);
+                setBatchRequestsForApproval(null);
               }}
             />
           </div>
@@ -1681,7 +1744,7 @@ export default function InternalFundRequestPage({
     <div className='p-4 bg-gray-50 min-h-screen'>
       <div className='max-w-7xl mx-auto'>
         {/* Page header */}
-        <div className='flex items-center justify-between mb-4'>
+        <div className='flex items-center justify-between mb-4 gap-2 flex-wrap'>
           <div>
             <h1 className='text-xl font-bold text-gray-900'>
               Internal Fund Request Management (Cash)
@@ -1690,7 +1753,7 @@ export default function InternalFundRequestPage({
               Master-detail fund requests with per-line approval tracking
             </p>
           </div>
-          <div className='flex gap-2'>
+          <div className='flex gap-2 flex-wrap'>
             <Button
               onClick={fetchFundRequests}
               variant='outline'
@@ -1703,6 +1766,39 @@ export default function InternalFundRequestPage({
               />
               Refresh
             </Button>
+
+            {userHasApprovalPermission && myPendingRequests.length > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleApproveAllPendingClick}
+                      size='sm'
+                      disabled={isLoadingBatch}
+                      className='bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-1.5'
+                    >
+                      <FiCheckSquare className='h-3.5 w-3.5' />
+                      {isLoadingBatch
+                        ? "Loading..."
+                        : "Approve Pending Requests"}
+                      <Badge
+                        variant='secondary'
+                        className='ml-1 bg-white text-purple-700 hover:bg-white px-1.5 py-0 text-xs h-5'
+                      >
+                        {myPendingRequests.length}
+                      </Badge>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className='text-xs'>
+                      Review and approve all {myPendingRequests.length} pending
+                      request(s) sent to you in one screen
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
             <Button
               onClick={() => {
                 setSelectedRequest(null);
@@ -1716,7 +1812,6 @@ export default function InternalFundRequestPage({
           </div>
         </div>
 
-        {/* Error alert */}
         {error && (
           <Alert variant='destructive' className='mb-4'>
             <FiAlertCircle className='h-4 w-4' />
@@ -1882,7 +1977,7 @@ export default function InternalFundRequestPage({
         </Tabs>
       </div>
 
-      {isLoading && <AppLoader />}
+      {(isLoading || isLoadingBatch) && <AppLoader />}
       <ViewRequestDialog />
     </div>
   );
