@@ -52,7 +52,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { version } from "os";
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 const partyChargeSchema = z.object({
@@ -858,16 +857,21 @@ export default function PartiesForm({
         docsRepId: values.docsRepId ?? null,
         accountsRepId: values.accountsRepId ?? null,
 
-        // Charges
+        // ── Charges ──
+        // On PUT, EF Core requires BOTH partyId and partyWiseChargesId on every
+        // detail row. New rows must send partyWiseChargesId: 0 so EF treats them
+        // as new; existing rows send their actual partyWiseChargesId.
+        // Without this, newly-added charges during an edit cause an HTTP 400
+        // because the detail row is orphaned from its parent navigation.
         partyCharges: values.partyCharges.map((pc) => {
           const item: any = {
             chargesId: pc.chargesId,
             isActive: pc.isActive,
-            version: pc.version ?? 0, // send back per-charge version
+            version: pc.version ?? 0, // per-charge version for concurrency
           };
-          if (isUpdate && pc.partyWiseChargesId) {
-            item.partyWiseChargesId = pc.partyWiseChargesId;
+          if (isUpdate) {
             item.partyId = values.partyId;
+            item.partyWiseChargesId = pc.partyWiseChargesId ?? 0;
           }
           return item;
         }),
