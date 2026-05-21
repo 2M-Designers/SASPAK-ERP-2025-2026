@@ -78,12 +78,12 @@ interface ChargesDialogProps {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const chargeTypes = [
+  "Terminal",
+  "Shipping Line",
+  "Collector",
+  "Local Agent",
+  "Transporter",
   "Freight",
-  "Handling",
-  "Customs",
-  "Insurance",
-  "Storage",
-  "Documentation",
   "Other",
 ];
 
@@ -794,7 +794,7 @@ export default function ChargesDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className='text-xs font-semibold text-slate-600 uppercase tracking-wide'>
-                        Charge Type <span className='text-red-400'>*</span>
+                        Paid To <span className='text-red-400'>*</span>
                       </FormLabel>
                       <FormControl>
                         <StyledSelect
