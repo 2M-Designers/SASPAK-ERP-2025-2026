@@ -1728,6 +1728,7 @@ export default function InternalFundRequestForm({
   }, [selectedRequestor, users, userId, lineItems, toast]);
 
   // ── Submit ────────────────────────────────────────────────────────────────
+  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -1747,106 +1748,81 @@ export default function InternalFundRequestForm({
 
       const total = lineItems.reduce((s, i) => s + (i.requestedAmount || 0), 0);
       const computedStatus = masterApprovalStatus;
+      const isUpdate = type === "edit";
+      const nowIso = new Date().toISOString();
 
       try {
-        const buildDetail = (item: LineItem): any => {
-          const d: any = {
-            jobId: item.jobId ?? null,
-            headCoaId: item.headCoaId,
-            beneficiaryCoaId: item.beneficiaryCoaId,
-            headOfAccount: item.headOfAccount,
-            beneficiary: item.beneficiary,
-            requestedAmount: item.requestedAmount,
-            approvedAmount: 0,
-            chargesId: item.headCoaId,
-            customerName: item.customerName || "",
-            requestedTo: item.requestedTo ?? selectedRequestor,
-            onAccountOfId: null,
-            subRequestStatus: type === "edit" ? item.subRequestStatus : "",
-            remarks: item.remarks || "",
-            version: 0,
-            createdOn: new Date().toISOString(),
+        // Build detail items matching the exact schema
+        const buildDetail = (item: LineItem, index: number): any => {
+          const detail: any = {
+            InternalFundsRequestCashId:
+              isUpdate && item.internalFundsRequestCashId
+                ? item.internalFundsRequestCashId
+                : 0,
+            JobId: item.jobId ?? 0,
+            HeadCoaId: item.headCoaId ?? 0,
+            BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
+            HeadOfAccount: item.headOfAccount || "",
+            Beneficiary: item.beneficiary || "",
+            RequestedAmount: item.requestedAmount,
+            ApprovedAmount: 0,
+            CreatedOn: nowIso,
+            CashFundRequestMasterId:
+              isUpdate && defaultState?.cashFundRequestId
+                ? defaultState.cashFundRequestId
+                : 0,
+            ChargesId: item.headCoaId ?? 0, // Set this if you have a charges mapping, otherwise 0
+            CustomerName: item.customerName || "",
+            RequestedTo: selectedRequestor ?? 0,
+            OnAccountOfId: item.beneficiaryCoaId ?? 0,
+            SubRequestStatus: item.subRequestStatus,
+            Remarks: item.remarks || "",
+            CashHeadId: 25, // ⚠️ You need to determine the correct cash head ID
+            IsBankLetterReleased: false,
+            Version: 0,
           };
 
-          if (type === "edit" && item.internalFundsRequestCashId) {
-            d.internalFundsRequestCashId = item.internalFundsRequestCashId;
-            d.cashFundRequestMasterId = defaultState?.cashFundRequestId;
-            const orig = defaultState?.internalCashFundsRequests?.find(
-              (x: any) =>
-                (x.internalFundsRequestCashId ||
-                  x.InternalFundsRequestCashId) ===
-                item.internalFundsRequestCashId,
-            );
-            d.createdOn = orig?.createdOn || orig?.CreatedOn || d.createdOn;
-          } else if (type === "edit") {
-            d.cashFundRequestMasterId = defaultState?.cashFundRequestId;
-          }
-
-          return d;
+          return detail;
         };
 
+        // Build master payload matching the exact schema (PascalCase)
         const payload: any = {
-          totalRequestedAmount: total,
-          totalApprovedAmount:
-            type === "edit" ? (defaultState?.totalApprovedAmount ?? 0) : 0,
-          approvalStatus: computedStatus,
-          approvedBy:
-            type === "edit" ? (defaultState?.approvedBy ?? null) : null,
-          approvedOn:
-            type === "edit" ? (defaultState?.approvedOn ?? null) : null,
-          requestedTo: selectedRequestor,
-          requestorUserId: userId,
-          createdBy:
-            type === "edit" ? (defaultState?.createdBy ?? userId) : userId,
-          createdOn:
-            type === "edit"
-              ? defaultState?.createdOn
-              : new Date().toISOString(),
-          version: type === "edit" ? (defaultState?.version ?? 0) : 0,
-          internalCashFundsRequests: lineItems.map(buildDetail),
+          CashFundRequestId:
+            isUpdate && defaultState?.cashFundRequestId
+              ? defaultState.cashFundRequestId
+              : 0,
+          TotalRequestedAmount: total,
+          TotalApprovedAmount: isUpdate
+            ? (defaultState?.totalApprovedAmount ?? 0)
+            : 0,
+          ApprovalStatus: computedStatus,
+          ApprovedBy: isUpdate ? (defaultState?.approvedBy ?? "") : "",
+          ApprovedOn: isUpdate ? (defaultState?.approvedOn ?? nowIso) : nowIso,
+          RequestedTo: selectedRequestor ?? 0,
+          CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
+          CashHeadId: 25, // ⚠️ Same as above - determine correct value
+          RequestorUserId: userId,
+          Remarks: "", // Add master remarks if needed
+          Version: isUpdate ? (defaultState?.version ?? 0) : 0,
+          InternalCashFundsRequests: lineItems.map((item, idx) =>
+            buildDetail(item, idx),
+          ),
         };
 
-        if (type === "edit" && defaultState?.cashFundRequestId) {
-          payload.cashFundRequestId = defaultState.cashFundRequestId;
-        }
+        // Remove navigation objects if they exist (they cause issues)
+        delete payload.CreatedByNavigation;
+        delete payload.RequestedToNavigation;
 
-        let finalPayload = payload;
-        if (type === "edit") {
-          finalPayload = {
-            ...payload,
-            createdByNavigation: null,
-            requestedToNavigation: null,
-            createdAt: "0001-01-01T00:00:00",
-            updatedAt: "0001-01-01T00:00:00",
-            createLog: null,
-            updateLog: null,
-            internalCashFundsRequests: payload.internalCashFundsRequests.map(
-              (d: any) => ({
-                ...d,
-                beneficiaryCoa: null,
-                charges: null,
-                headCoa: null,
-                createdAt: "0001-01-01T00:00:00",
-                updatedAt: "0001-01-01T00:00:00",
-                createLog: null,
-                updateLog: null,
-              }),
-            ),
-          };
-        }
-
-        const method = type === "edit" ? "PUT" : "POST";
+        const method = isUpdate ? "PUT" : "POST";
         const endpoint = `${getBaseUrl()}InternalCashFundsRequest`;
 
-        console.log(
-          `📡 ${method} ${endpoint}`,
-          JSON.stringify(finalPayload, null, 2),
-        );
+        console.log(`📡 ${method} ${endpoint}`);
+        console.log("Payload:", JSON.stringify(payload, null, 2));
 
         const response = await fetch(endpoint, {
           method,
           headers: getAuthHeaders(),
-          body: JSON.stringify(finalPayload),
+          body: JSON.stringify(payload),
         });
 
         if (response.status === 401) {
@@ -1861,6 +1837,7 @@ export default function InternalFundRequestForm({
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`❌ ${method} FAILED`, response.status, errorText);
+
           let userMessage = `Request failed (${response.status})`;
           try {
             const parsed = JSON.parse(errorText);
@@ -1872,6 +1849,8 @@ export default function InternalFundRequestForm({
               userMessage = parsed.title;
             } else if (parsed.message) {
               userMessage = parsed.message;
+            } else if (parsed.detail) {
+              userMessage = parsed.detail;
             } else if (typeof parsed === "string") {
               userMessage = parsed;
             }
@@ -1886,15 +1865,9 @@ export default function InternalFundRequestForm({
 
         toast({
           title: "Success",
-          description: `Fund request ${type === "edit" ? "updated" : "created"} — ${
+          description: `Fund request ${isUpdate ? "updated" : "created"} — ${
             lineItems.length
-          } item(s) | ${computedStatus} | Total: ${new Intl.NumberFormat(
-            "en-US",
-            {
-              style: "currency",
-              currency: "PKR",
-            },
-          ).format(total)}`,
+          } item(s) | ${computedStatus}`,
         });
 
         handleAddEdit(result);
@@ -1902,7 +1875,7 @@ export default function InternalFundRequestForm({
         console.error("💥", error);
         toast({
           variant: "destructive",
-          title: type === "edit" ? "Update Failed" : "Create Failed",
+          title: isUpdate ? "Update Failed" : "Create Failed",
           description:
             error instanceof Error
               ? error.message

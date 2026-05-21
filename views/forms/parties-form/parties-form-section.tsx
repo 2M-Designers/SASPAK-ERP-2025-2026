@@ -325,7 +325,7 @@ export default function PartiesForm({
           body: JSON.stringify({
             select: "AccountId,AccountCode,AccountName",
             where:
-              "IsHeader==true && ParentAccountId != null && IsActive == true",
+              "IsHeader==false && ParentAccountId != null && IsActive == true",
             sortOn: "AccountCode",
             page: "",
             pageSize: "",
