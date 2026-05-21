@@ -823,10 +823,25 @@ export default function ChargesDialog({
                         Charge Group <span className='text-red-400'>*</span>
                       </FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder='e.g. Transportation'
-                          {...field}
-                          className='rounded-lg border-slate-200 focus:border-blue-400 focus:ring-blue-500/20'
+                        <StyledSelect
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder='Select Charge Group'
+                          options={[
+                            {
+                              value: "Freight Forwarding",
+                              displayName: "Freight Forwarding",
+                            },
+                            {
+                              value: "Clearance",
+                              displayName: "Clearance",
+                            },
+                            {
+                              value: "Transport",
+                              displayName: "Transport",
+                            },
+                            { value: "Other", displayName: "Other" },
+                          ]}
                         />
                       </FormControl>
                       <FormMessage className='text-xs' />
