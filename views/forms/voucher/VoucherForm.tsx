@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, KeyboardEvent } from "react";
+import { generateUUID } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -94,17 +95,6 @@ type VoucherType = {
 };
 
 type StatusOption = { key: string; label: string };
-
-// ─── UUID ─────────────────────────────────────────────────────────────────────
-
-const generateUUID = (): string => {
-  if (typeof crypto !== "undefined" && crypto.randomUUID)
-    return crypto.randomUUID();
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
-  });
-};
 
 // ─── VoucherNo auto-generation ────────────────────────────────────────────────
 

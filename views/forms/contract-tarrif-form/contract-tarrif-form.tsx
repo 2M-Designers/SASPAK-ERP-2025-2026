@@ -8,6 +8,7 @@ import {
   useRef,
   KeyboardEvent,
 } from "react";
+import { getAuthHeaders, getBaseUrl } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -109,25 +110,6 @@ const toDateInput = (v: any): string => {
 const toIso = (v: string): string =>
   v ? new Date(v).toISOString() : new Date().toISOString();
 
-function getAuthHeaders(): HeadersInit {
-  const token =
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("access_token") ||
-    sessionStorage.getItem("token") ||
-    sessionStorage.getItem("authToken");
-  const h: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
-  if (token) h["Authorization"] = `Bearer ${token}`;
-  return h;
-}
-
-function getBaseUrl(): string {
-  const b = process.env.NEXT_PUBLIC_BASE_URL || "";
-  return b.endsWith("/") ? b : `${b}/`;
-}
 
 const useDebounce = <T,>(val: T, delay: number): T => {
   const [d, setD] = useState(val);

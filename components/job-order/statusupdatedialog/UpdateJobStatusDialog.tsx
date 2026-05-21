@@ -3,6 +3,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { getAuthHeaders } from "@/lib/api-client";
 import {
   Dialog,
   DialogContent,
@@ -53,25 +54,6 @@ type UpdateJobStatusDialogProps = {
   apiBaseUrl?: string;
 };
 
-function getAuthHeaders(): HeadersInit {
-  const token =
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("access_token") ||
-    sessionStorage.getItem("token") ||
-    sessionStorage.getItem("authToken");
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  return headers;
-}
 
 const getStatusMeta = (status: string): StatusMeta => {
   const s = (status ?? "").toUpperCase();

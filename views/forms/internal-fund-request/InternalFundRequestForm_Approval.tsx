@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { getAuthHeaders, getBaseUrl } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -85,29 +86,6 @@ type User = {
   fullName: string;
   username: string;
 };
-
-// ─── API helpers ──────────────────────────────────────────────────────────────
-
-function getAuthHeaders(): HeadersInit {
-  const token =
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("access_token") ||
-    sessionStorage.getItem("token") ||
-    sessionStorage.getItem("authToken");
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  return headers;
-}
-
-function getBaseUrl(): string {
-  const base = process.env.NEXT_PUBLIC_BASE_URL || "";
-  return base.endsWith("/") ? base : `${base}/`;
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 

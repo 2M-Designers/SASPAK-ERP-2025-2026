@@ -8,6 +8,11 @@ import {
   useCallback,
   useMemo,
 } from "react";
+import { getAuthHeaders, getBaseUrl, generateUUID } from "@/lib/api-client";
+import type {
+  CashFundRequestPayload,
+  CashFundRequestDetailPayload,
+} from "@/types/fund-request.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -138,45 +143,6 @@ type LoadingState = {
   jobDetail: Record<number, boolean>;
   partyCharges: Record<number, boolean>;
   allPartyCharges: boolean; // true while background batch-load is running
-};
-
-// ─── API Helpers ──────────────────────────────────────────────────────────────
-
-function getAuthHeaders(): HeadersInit {
-  const token =
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("access_token") ||
-    sessionStorage.getItem("token") ||
-    sessionStorage.getItem("authToken");
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  return headers;
-}
-
-function getBaseUrl(): string {
-  const base = process.env.NEXT_PUBLIC_BASE_URL || "";
-  return base.endsWith("/") ? base : `${base}/`;
-}
-
-// ─── UUID Generator ───────────────────────────────────────────────────────────
-
-const generateUUID = (): string => {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
-  });
 };
 
 // ─── Master status derivation ─────────────────────────────────────────────────
@@ -1752,7 +1718,7 @@ export default function InternalFundRequestForm({
       const CASH_HEAD_ID = 25;
 
       try {
-        const buildDetail = (item: LineItem): any => ({
+        const buildDetail = (item: LineItem): CashFundRequestDetailPayload => ({
           InternalFundsRequestCashId:
             isUpdate && item.internalFundsRequestCashId
               ? item.internalFundsRequestCashId
@@ -1780,7 +1746,7 @@ export default function InternalFundRequestForm({
           Version: 0,
         });
 
-        const payload: any = {
+        const payload: CashFundRequestPayload = {
           CashFundRequestId:
             isUpdate && defaultState?.cashFundRequestId
               ? defaultState.cashFundRequestId

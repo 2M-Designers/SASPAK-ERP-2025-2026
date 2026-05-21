@@ -8,6 +8,11 @@ import {
   useCallback,
   useMemo,
 } from "react";
+import { getAuthHeaders, getBaseUrl, generateUUID } from "@/lib/api-client";
+import type {
+  BankFundRequestPayload,
+  BankFundRequestDetailPayload,
+} from "@/types/fund-request.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -144,44 +149,6 @@ type LoadingState = {
   jobDetail: Record<number, boolean>;
   partyCharges: Record<number, boolean>;
   allPartyCharges: boolean;
-};
-
-// ─── API Helpers ──────────────────────────────────────────────────────────────
-
-function getAuthHeaders(): HeadersInit {
-  const token =
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("access_token") ||
-    sessionStorage.getItem("token") ||
-    sessionStorage.getItem("authToken");
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  return headers;
-}
-
-function getBaseUrl(): string {
-  const base = process.env.NEXT_PUBLIC_BASE_URL || "";
-  return base.endsWith("/") ? base : `${base}/`;
-}
-
-// ─── UUID Generator ───────────────────────────────────────────────────────────
-
-const generateUUID = (): string => {
-  if (typeof crypto !== "undefined" && crypto.randomUUID)
-    return crypto.randomUUID();
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
-  });
 };
 
 // ─── Master status derivation ─────────────────────────────────────────────────
@@ -1653,7 +1620,7 @@ export default function InternalBankFundRequestForm({
 
       try {
         // ── Build a single detail line ──────────────────────────────────────
-        const buildDetail = (item: LineItem) => {
+        const buildDetail = (item: LineItem): BankFundRequestDetailPayload => {
           // Find original createdOn for existing records
           const origDetail =
             type === "edit"
@@ -1710,7 +1677,7 @@ export default function InternalBankFundRequestForm({
         };
 
         // ── Build master payload matching the schema exactly ───────────────
-        const masterPayload = {
+        const masterPayload: BankFundRequestPayload = {
           // ── IDs ────────────────────────────────────S────────────────────
           BankFundRequestId:
             type === "edit"
@@ -1764,9 +1731,6 @@ export default function InternalBankFundRequestForm({
 
           // ── Optional master remarks ────────────────────────────────────
           Remarks: "",
-
-          // ── Navigation nulls (schema requires the key present) ─────────
-          RequestedToNavigation: null,
 
           // ── Detail lines ───────────────────────────────────────────────
           InternalBankFundsRequests: lineItems.map(buildDetail),

@@ -3,6 +3,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { getAuthHeaders, getBaseUrl } from "@/lib/api-client";
 import { AppDataTable } from "@/components/app-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -214,28 +215,6 @@ class CacheManager {
 }
 
 const cacheManager = new CacheManager();
-
-// ─── Auth helpers ─────────────────────────────────────────────────────────────
-
-function getAuthHeaders(): HeadersInit {
-  const token =
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("access_token") ||
-    sessionStorage.getItem("token") ||
-    sessionStorage.getItem("authToken");
-  const h: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
-  if (token) h["Authorization"] = `Bearer ${token}`;
-  return h;
-}
-
-function getBaseUrl() {
-  const b = process.env.NEXT_PUBLIC_BASE_URL || "";
-  return b.endsWith("/") ? b : `${b}/`;
-}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
