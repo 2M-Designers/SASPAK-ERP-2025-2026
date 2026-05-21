@@ -1728,7 +1728,6 @@ export default function InternalFundRequestForm({
   }, [selectedRequestor, users, userId, lineItems, toast]);
 
   // ── Submit ────────────────────────────────────────────────────────────────
-  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -1750,42 +1749,37 @@ export default function InternalFundRequestForm({
       const computedStatus = masterApprovalStatus;
       const isUpdate = type === "edit";
       const nowIso = new Date().toISOString();
+      const CASH_HEAD_ID = 25;
 
       try {
-        // Build detail items matching the exact schema
-        const buildDetail = (item: LineItem, index: number): any => {
-          const detail: any = {
-            InternalFundsRequestCashId:
-              isUpdate && item.internalFundsRequestCashId
-                ? item.internalFundsRequestCashId
-                : 0,
-            JobId: item.jobId ?? 0,
-            HeadCoaId: item.headCoaId ?? 0,
-            BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
-            HeadOfAccount: item.headOfAccount || "",
-            Beneficiary: item.beneficiary || "",
-            RequestedAmount: item.requestedAmount,
-            ApprovedAmount: 0,
-            CreatedOn: nowIso,
-            CashFundRequestMasterId:
-              isUpdate && defaultState?.cashFundRequestId
-                ? defaultState.cashFundRequestId
-                : 0,
-            ChargesId: item.headCoaId ?? 0, // Set this if you have a charges mapping, otherwise 0
-            CustomerName: item.customerName || "",
-            RequestedTo: selectedRequestor ?? 0,
-            OnAccountOfId: item.beneficiaryCoaId ?? 0,
-            SubRequestStatus: item.subRequestStatus,
-            Remarks: item.remarks || "",
-            CashHeadId: 25, // ⚠️ You need to determine the correct cash head ID
-            IsBankLetterReleased: false,
-            Version: 0,
-          };
+        const buildDetail = (item: LineItem): any => ({
+          InternalFundsRequestCashId:
+            isUpdate && item.internalFundsRequestCashId
+              ? item.internalFundsRequestCashId
+              : 0,
+          JobId: item.jobId ?? 0,
+          HeadCoaId: item.headCoaId ?? 0,
+          BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
+          HeadOfAccount: item.headOfAccount || "",
+          Beneficiary: item.beneficiary || "",
+          RequestedAmount: item.requestedAmount,
+          ApprovedAmount: 0,
+          CreatedOn: nowIso,
+          CashFundRequestMasterId:
+            isUpdate && defaultState?.cashFundRequestId
+              ? defaultState.cashFundRequestId
+              : 0,
+          ChargesId: item.headCoaId ?? 0,
+          CustomerName: item.customerName || "",
+          RequestedTo: selectedRequestor ?? 0,
+          OnAccountOfId: item.beneficiaryCoaId ?? 0,
+          SubRequestStatus: item.subRequestStatus ?? "",
+          Remarks: item.remarks || "",
+          CashHeadId: CASH_HEAD_ID,
+          IsBankLetterReleased: false,
+          Version: 0,
+        });
 
-          return detail;
-        };
-
-        // Build master payload matching the exact schema (PascalCase)
         const payload: any = {
           CashFundRequestId:
             isUpdate && defaultState?.cashFundRequestId
@@ -1800,24 +1794,17 @@ export default function InternalFundRequestForm({
           ApprovedOn: isUpdate ? (defaultState?.approvedOn ?? nowIso) : nowIso,
           RequestedTo: selectedRequestor ?? 0,
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
-          CashHeadId: 25, // ⚠️ Same as above - determine correct value
+          CashHeadId: CASH_HEAD_ID,
           RequestorUserId: userId,
-          Remarks: "", // Add master remarks if needed
+          Remarks: "",
           Version: isUpdate ? (defaultState?.version ?? 0) : 0,
-          InternalCashFundsRequests: lineItems.map((item, idx) =>
-            buildDetail(item, idx),
-          ),
+          InternalCashFundsRequests: lineItems.map(buildDetail),
         };
-
-        // Remove navigation objects if they exist (they cause issues)
-        delete payload.CreatedByNavigation;
-        delete payload.RequestedToNavigation;
 
         const method = isUpdate ? "PUT" : "POST";
         const endpoint = `${getBaseUrl()}InternalCashFundsRequest`;
 
-        console.log(`📡 ${method} ${endpoint}`);
-        console.log("Payload:", JSON.stringify(payload, null, 2));
+        console.log(`📡 ${method} ${endpoint}`, JSON.stringify(payload, null, 2));
 
         const response = await fetch(endpoint, {
           method,
