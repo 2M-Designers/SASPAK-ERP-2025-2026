@@ -50,15 +50,18 @@ function Field({
   label,
   children,
   className = "",
+  required = false,
 }: {
   label: string;
   children: React.ReactNode;
   className?: string;
+  required?: boolean;
 }) {
   return (
     <div className={`flex flex-col gap-0.5 ${className}`}>
       <span className='text-[11px] font-semibold uppercase tracking-wide text-gray-500 leading-none'>
         {label}
+        {required && <span className='text-red-500 ml-0.5'>*</span>}
       </span>
       {children}
     </div>
@@ -405,7 +408,7 @@ export default function JobMainTab(props: JobMainTabProps) {
             name='shipperPartyId'
             render={({ field }) => (
               <FormItem className='col-span-2'>
-                <Field label='Shipper'>
+                <Field label='Shipper' required>
                   <FormControl>
                     <Select
                       options={shippers}
@@ -431,7 +434,7 @@ export default function JobMainTab(props: JobMainTabProps) {
             name='consigneePartyId'
             render={({ field }) => (
               <FormItem className='col-span-2'>
-                <Field label='Consignee'>
+                <Field label='Consignee' required>
                   <FormControl>
                     <Select
                       options={consignees}

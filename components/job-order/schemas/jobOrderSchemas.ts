@@ -40,8 +40,8 @@ export const jobMasterSchema = z.object({
   processOwnerId: z.number().default(0),
 
   // Party IDs (ALL 10 PARTIES)
-  shipperPartyId: z.number().default(0),
-  consigneePartyId: z.number().default(0),
+  shipperPartyId: z.number().min(1, "Shipper is required"),
+  consigneePartyId: z.number().min(1, "Consignee is required"),
   notifyParty1Id: z.number().default(0),
   notifyParty2Id: z.number().default(0),
   principalId: z.number().default(0),
