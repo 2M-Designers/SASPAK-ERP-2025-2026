@@ -235,6 +235,9 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
   const [updateStatusDialogOpen, setUpdateStatusDialogOpen] = useState(false);
   const [jobForStatusUpdate, setJobForStatusUpdate] =
     useState<JobMaster | null>(null);
+  const [consigneeNames, setConsigneeNames] = useState<Record<number, string>>(
+    {},
+  );
 
   const { toast } = useToast();
 
@@ -297,6 +300,28 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
   useEffect(() => {
     if (!initialData) fetchJobOrders();
   }, [initialData, fetchJobOrders]);
+
+  useEffect(() => {
+    if (!data.length) return;
+    const uniqueIds = [
+      ...new Set(
+        data.map((j) => j.consigneePartyId).filter((id): id is number => !!id),
+      ),
+    ];
+    Promise.all(
+      uniqueIds.map((id) =>
+        cacheManager.getPartyName(id).then((name) => ({ id, name })),
+      ),
+    ).then((results) => {
+      setConsigneeNames((prev) => {
+        const next = { ...prev };
+        results.forEach(({ id, name }) => {
+          next[id] = name;
+        });
+        return next;
+      });
+    });
+  }, [data]);
 
   // ── Filter helpers ────────────────────────────────────────────────────────
   const searchInItem = (item: JobMaster, searchTerm: string) => {
@@ -679,6 +704,15 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
           )}
         </div>
       ),
+    },
+    {
+      accessorKey: "consigneePartyId",
+      header: "Consignee",
+      cell: ({ row }) => {
+        const id = row.original.consigneePartyId;
+        const name = id ? (consigneeNames[id] ?? "…") : "-";
+        return <span className='text-xs text-gray-800'>{name}</span>;
+      },
     },
     {
       accessorKey: "vesselVoyage",
