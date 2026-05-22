@@ -32,7 +32,7 @@ const formSchema = z.object({
   companyId: z.number().optional(),
   chargeCode: z.string().min(1, "Charge Code is required"),
   chargeName: z.string().min(1, "Charge Name is required"),
-  chargeType: z.string().min(1, "Charge Type is required"),
+  chargeType: z.string().min(1, "Paid to is required"),
   chargeGroup: z.string().min(1, "Charge Group is required"),
   revenueGLAccountId: z.number().min(1, "Revenue GL Account is required"),
   costGLAccountId: z.number().min(1, "Cost GL Account is required"),
@@ -78,12 +78,15 @@ interface ChargesDialogProps {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const chargeTypes = [
-  "Terminal",
-  "Shipping Line",
-  "Collector",
   "Local Agent",
+  "Origin Agent",
+  "Carrier",
   "Transporter",
-  "Freight",
+  "Consignee",
+  "Shipper",
+  "Principal",
+  "Terminal",
+  "Bonded Carrier",
   "Other",
 ];
 
