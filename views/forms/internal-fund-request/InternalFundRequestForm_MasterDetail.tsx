@@ -117,6 +117,7 @@ type Party = {
   partyCode: string;
   partyName: string;
   benificiaryFromPO?: string;
+  glAccountId?: number;
 };
 
 type ChargesMaster = {
@@ -978,7 +979,7 @@ export default function InternalFundRequestForm({
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            select: "PartyId, PartyCode, PartyName, BenificiaryNameOfPO",
+            select: "PartyId, PartyCode, PartyName, BenificiaryNameOfPO, GLAccountId",
             where: "",
             search: "",
             sortOn: "PartyName ASC",
@@ -1301,7 +1302,7 @@ export default function InternalFundRequestForm({
                 if (autoParty) {
                   return {
                     ...baseUpdate,
-                    beneficiaryCoaId: autoParty.partyId,
+                    beneficiaryCoaId: autoParty.glAccountId ?? autoParty.partyId,
                     beneficiary: autoParty.benificiaryFromPO || autoParty.partyName,
                     partiesAccount: autoParty.partyName,
                   };
@@ -1313,7 +1314,7 @@ export default function InternalFundRequestForm({
 
             return {
               ...baseUpdate,
-              beneficiaryCoaId: customerParty.partyId,
+              beneficiaryCoaId: customerParty.glAccountId ?? customerParty.partyId,
               beneficiary:
                 customerParty.benificiaryFromPO || customerParty.partyName,
               partiesAccount: customerParty.partyName,
@@ -1369,7 +1370,7 @@ export default function InternalFundRequestForm({
             item.id === id
               ? {
                   ...item,
-                  beneficiaryCoaId: party.partyId,
+                  beneficiaryCoaId: party.glAccountId ?? party.partyId,
                   beneficiary: party.benificiaryFromPO || party.partyName,
                 }
               : item,
@@ -1384,7 +1385,7 @@ export default function InternalFundRequestForm({
     (id: string, partyId: string) => {
       const party = parties.find((p) => p.partyId.toString() === partyId);
       if (!party) return;
-      updateLineItem(id, "beneficiaryCoaId", party.partyId);
+      updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? party.partyId);
       updateLineItem(
         id,
         "beneficiary",
