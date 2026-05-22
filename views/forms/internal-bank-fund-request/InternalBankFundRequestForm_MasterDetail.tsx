@@ -124,6 +124,7 @@ type ChargesMaster = {
   chargesNature: string;
   chargeType: string;
   chargeGroup: string;
+  costGlaccountId: number | null;
 };
 
 type Party = {
@@ -897,7 +898,7 @@ export default function InternalBankFundRequestForm({
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            select: "ChargeId, ChargeCode, ChargeName, ChargesNature, ChargeType, ChargeGroup",
+            select: "ChargeId, ChargeCode, ChargeName, ChargesNature, ChargeType, ChargeGroup, CostGLAccountId",
             where: "IsActive == true",
             search: "",
             sortOn: "ChargeCode ASC",
@@ -916,6 +917,7 @@ export default function InternalBankFundRequestForm({
             chargesNature: c.chargesNature ?? c.ChargesNature ?? "",
             chargeType: c.chargeType ?? c.ChargeType ?? "",
             chargeGroup: c.chargeGroup ?? c.ChargeGroup ?? "",
+            costGlaccountId: c.costGlaccountId ?? c.costGLAccountId ?? c.CostGLAccountId ?? c.costGlAccountId ?? null,
           }))
           .filter((c: ChargesMaster) => c.chargeId > 0);
         setChargesMasters(normalised);
@@ -1561,6 +1563,13 @@ export default function InternalBankFundRequestForm({
           return p?.glAccountId ?? partyId;
         };
 
+        // Resolve chargeId → CostGLAccountId at submit time
+        const getCostGLAccountId = (chargeId: number | null): number => {
+          if (!chargeId) return 0;
+          const c = chargesMasters.find((x) => x.chargeId === chargeId);
+          return c?.costGlaccountId ?? chargeId;
+        };
+
         // ── Build a single detail line ──────────────────────────────────────
         const buildDetail = (item: LineItem): BankFundRequestDetailPayload => {
           // Find original createdOn for existing records
@@ -1584,14 +1593,14 @@ export default function InternalBankFundRequestForm({
 
             // ── Job & amounts ─────────────────────────────────────────────
             JobId: item.jobId ?? null, // ✅ nullable FK → null, not 0
-            HeadCoaId: item.headCoaId ?? 0,
+            HeadCoaId: getCostGLAccountId(item.headCoaId),
             BeneficiaryCoaId: getGLAccountId(item.beneficiaryCoaId),
             HeadOfAccount: item.headOfAccount || "",
             Beneficiary: item.beneficiary || "",
             AccountNo: "",
             RequestedAmount: item.requestedAmount,
             ApprovedAmount: 0,
-            ChargesId: item.headCoaId ?? 0,
+            ChargesId: getCostGLAccountId(item.headCoaId),
             CustomerName: item.customerName || "",
             OnAccountOfId: null, // ✅ nullable FK → null, not 0
 
@@ -1757,6 +1766,7 @@ export default function InternalBankFundRequestForm({
       selectedRequestor,
       pendingStatus,
       parties,
+      chargesMasters,
       toast,
       handleAddEdit,
     ],
