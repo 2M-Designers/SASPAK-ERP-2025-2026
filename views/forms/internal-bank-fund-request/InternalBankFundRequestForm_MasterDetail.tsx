@@ -950,10 +950,10 @@ export default function InternalBankFundRequestForm({
         if (!res.ok) return;
         const d = await res.json();
         const raw = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
-        // Normalize GLAccountId casing (.NET serializes GLAccountId → gLAccountId)
+        // Normalize GLAccountId casing — API returns glaccountId (all lowercase)
         const list = raw.map((p: any) => ({
           ...p,
-          glAccountId: p.glAccountId ?? p.gLAccountId ?? p.GLAccountId ?? null,
+          glAccountId: p.glaccountId ?? p.glAccountId ?? p.gLAccountId ?? p.GLAccountId ?? null,
         }));
         setParties(list);
         setFilteredBeneficiaries(list);
