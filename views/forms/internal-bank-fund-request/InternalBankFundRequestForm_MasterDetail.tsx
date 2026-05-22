@@ -1600,7 +1600,7 @@ export default function InternalBankFundRequestForm({
             AccountNo: "",
             RequestedAmount: item.requestedAmount,
             ApprovedAmount: 0,
-            ChargesId: getCostGLAccountId(item.headCoaId),
+            ChargesId: item.headCoaId ?? 0,
             CustomerName: item.customerName || "",
             OnAccountOfId: null, // ✅ nullable FK → null, not 0
 
