@@ -1785,6 +1785,7 @@ export default function InternalFundRequestForm({
       type,
       defaultState,
       selectedRequestor,
+      parties,
       toast,
       handleAddEdit,
     ],

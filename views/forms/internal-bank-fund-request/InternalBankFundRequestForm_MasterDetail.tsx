@@ -1756,6 +1756,7 @@ export default function InternalBankFundRequestForm({
       selectedBankId,
       selectedRequestor,
       pendingStatus,
+      parties,
       toast,
       handleAddEdit,
     ],
