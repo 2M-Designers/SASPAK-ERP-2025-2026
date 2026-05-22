@@ -1009,7 +1009,12 @@ export default function InternalFundRequestForm({
         }
 
         const d = await res.json();
-        const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+        const raw = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+        // Normalize GLAccountId casing (.NET serializes GLAccountId → gLAccountId)
+        const list = raw.map((p: any) => ({
+          ...p,
+          glAccountId: p.glAccountId ?? p.gLAccountId ?? p.GLAccountId ?? null,
+        }));
         setParties(list);
         setFilteredBeneficiaries(list);
       } catch (e) {
