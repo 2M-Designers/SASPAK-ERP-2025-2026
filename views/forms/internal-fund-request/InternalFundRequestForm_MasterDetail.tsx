@@ -127,6 +127,7 @@ type ChargesMaster = {
   chargesNature: string;
   chargeType: string;
   chargeGroup: string;
+  costGlaccountId: number | null;
 };
 
 type User = {
@@ -912,7 +913,7 @@ export default function InternalFundRequestForm({
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            select: "ChargeId, ChargeCode, ChargeName, ChargesNature, ChargeType, ChargeGroup",
+            select: "ChargeId, ChargeCode, ChargeName, ChargesNature, ChargeType, ChargeGroup, CostGLAccountId",
             where: "IsActive == true",
             search: "",
             sortOn: "ChargeCode ASC",
@@ -951,6 +952,7 @@ export default function InternalFundRequestForm({
             chargesNature: c.chargesNature ?? c.ChargesNature ?? "",
             chargeType: c.chargeType ?? c.ChargeType ?? "",
             chargeGroup: c.chargeGroup ?? c.ChargeGroup ?? "",
+            costGlaccountId: c.costGlaccountId ?? c.costGLAccountId ?? c.CostGLAccountId ?? c.costGlAccountId ?? null,
           }))
           .filter((c: ChargesMaster) => c.chargeId > 0);
 
@@ -1655,13 +1657,20 @@ export default function InternalFundRequestForm({
           return p?.glAccountId ?? partyId;
         };
 
+        // Resolve chargeId → CostGLAccountId at submit time
+        const getCostGLAccountId = (chargeId: number | null): number => {
+          if (!chargeId) return 0;
+          const c = chargesMasters.find((x) => x.chargeId === chargeId);
+          return c?.costGlaccountId ?? chargeId;
+        };
+
         const buildDetail = (item: LineItem): CashFundRequestDetailPayload => ({
           InternalFundsRequestCashId:
             isUpdate && item.internalFundsRequestCashId
               ? item.internalFundsRequestCashId
               : 0,
           JobId: item.jobId ?? 0,
-          HeadCoaId: item.headCoaId ?? 0,
+          HeadCoaId: getCostGLAccountId(item.headCoaId),
           BeneficiaryCoaId: getGLAccountId(item.beneficiaryCoaId),
           HeadOfAccount: item.headOfAccount || "",
           Beneficiary: item.beneficiary || "",
@@ -1672,7 +1681,7 @@ export default function InternalFundRequestForm({
             isUpdate && defaultState?.cashFundRequestId
               ? defaultState.cashFundRequestId
               : 0,
-          ChargesId: item.headCoaId ?? 0,
+          ChargesId: getCostGLAccountId(item.headCoaId),
           CustomerName: item.customerName || "",
           RequestedTo: selectedRequestor ?? 0,
           OnAccountOfId: getGLAccountId(item.beneficiaryCoaId),
@@ -1786,6 +1795,7 @@ export default function InternalFundRequestForm({
       defaultState,
       selectedRequestor,
       parties,
+      chargesMasters,
       toast,
       handleAddEdit,
     ],
