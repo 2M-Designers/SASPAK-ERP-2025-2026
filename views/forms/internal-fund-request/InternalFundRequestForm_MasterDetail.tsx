@@ -1668,6 +1668,7 @@ export default function InternalFundRequestForm({
           CashHeadId: CASH_HEAD_ID,
           IsBankLetterReleased: false,
           Version: 0,
+          CreatedBy: userId,
         });
 
         const payload: CashFundRequestPayload = {
@@ -1684,6 +1685,7 @@ export default function InternalFundRequestForm({
           ApprovedOn: isUpdate ? (defaultState?.approvedOn ?? nowIso) : nowIso,
           RequestedTo: selectedRequestor ?? 0,
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
+          CreatedBy: isUpdate ? (defaultState?.createdBy ?? userId) : userId,
           CashHeadId: CASH_HEAD_ID,
           RequestorUserId: userId,
           Remarks: "",

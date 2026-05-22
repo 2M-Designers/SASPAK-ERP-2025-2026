@@ -10,6 +10,7 @@ export interface CashFundRequestDetailPayload {
   RequestedAmount: number;
   ApprovedAmount: number;
   CreatedOn: string;
+  CreatedBy: number;
   CashFundRequestMasterId: number;
   ChargesId: number;
   CustomerName: string;
@@ -31,6 +32,7 @@ export interface CashFundRequestPayload {
   ApprovedOn: string;
   RequestedTo: number;
   CreatedOn: string;
+  CreatedBy: number;
   CashHeadId: number;
   RequestorUserId: number;
   Remarks: string;
