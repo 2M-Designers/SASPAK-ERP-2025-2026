@@ -1307,7 +1307,7 @@ export default function InternalFundRequestForm({
                 if (autoParty) {
                   return {
                     ...baseUpdate,
-                    beneficiaryCoaId: autoParty.glAccountId ?? autoParty.partyId,
+                    beneficiaryCoaId: autoParty.partyId,
                     beneficiary: autoParty.benificiaryFromPO || autoParty.partyName,
                     partiesAccount: autoParty.partyName,
                   };
@@ -1319,7 +1319,7 @@ export default function InternalFundRequestForm({
 
             return {
               ...baseUpdate,
-              beneficiaryCoaId: customerParty.glAccountId ?? customerParty.partyId,
+              beneficiaryCoaId: customerParty.partyId,
               beneficiary:
                 customerParty.benificiaryFromPO || customerParty.partyName,
               partiesAccount: customerParty.partyName,
@@ -1375,7 +1375,7 @@ export default function InternalFundRequestForm({
             item.id === id
               ? {
                   ...item,
-                  beneficiaryCoaId: party.glAccountId ?? party.partyId,
+                  beneficiaryCoaId: party.partyId,
                   beneficiary: party.benificiaryFromPO || party.partyName,
                 }
               : item,
@@ -1390,7 +1390,7 @@ export default function InternalFundRequestForm({
     (id: string, partyId: string) => {
       const party = parties.find((p) => p.partyId.toString() === partyId);
       if (!party) return;
-      updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? party.partyId);
+      updateLineItem(id, "beneficiaryCoaId", party.partyId);
       updateLineItem(
         id,
         "beneficiary",
@@ -1648,6 +1648,13 @@ export default function InternalFundRequestForm({
       const CASH_HEAD_ID = 25;
 
       try {
+        // Resolve partyId → GLAccountId at submit time (partyId is stored in state for UI)
+        const getGLAccountId = (partyId: number | null): number => {
+          if (!partyId) return 0;
+          const p = parties.find((x) => x.partyId === partyId);
+          return p?.glAccountId ?? partyId;
+        };
+
         const buildDetail = (item: LineItem): CashFundRequestDetailPayload => ({
           InternalFundsRequestCashId:
             isUpdate && item.internalFundsRequestCashId
@@ -1655,7 +1662,7 @@ export default function InternalFundRequestForm({
               : 0,
           JobId: item.jobId ?? 0,
           HeadCoaId: item.headCoaId ?? 0,
-          BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
+          BeneficiaryCoaId: getGLAccountId(item.beneficiaryCoaId),
           HeadOfAccount: item.headOfAccount || "",
           Beneficiary: item.beneficiary || "",
           RequestedAmount: item.requestedAmount,
@@ -1668,7 +1675,7 @@ export default function InternalFundRequestForm({
           ChargesId: item.headCoaId ?? 0,
           CustomerName: item.customerName || "",
           RequestedTo: selectedRequestor ?? 0,
-          OnAccountOfId: item.beneficiaryCoaId ?? 0,
+          OnAccountOfId: getGLAccountId(item.beneficiaryCoaId),
           SubRequestStatus: item.subRequestStatus ?? "",
           Remarks: item.remarks || "",
           CashHeadId: CASH_HEAD_ID,
