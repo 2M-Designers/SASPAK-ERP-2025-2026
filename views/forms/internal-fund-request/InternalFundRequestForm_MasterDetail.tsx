@@ -74,6 +74,7 @@ type LineItem = {
   customerName: string;
   headCoaId: number | null;
   headOfAccount: string;
+  chargeType: string;
   beneficiaryCoaId: number | null;
   beneficiary: string;
   partiesAccount: string;
@@ -96,6 +97,9 @@ type JobDetail = {
   operationType?: string;
   consigneePartyId?: number;
   shipperPartyId?: number;
+  terminalPartyId?: number;
+  carrierPartyId?: number;
+  transporterPartyId?: number;
   consigneeParty?: {
     partyId: number;
     partyName: string;
@@ -120,6 +124,8 @@ type ChargesMaster = {
   chargeCode: string;
   chargeName: string;
   chargesNature: string;
+  chargeType: string;
+  chargeGroup: string;
 };
 
 type User = {
@@ -141,8 +147,6 @@ type LoadingState = {
   users: boolean;
   statuses: boolean;
   jobDetail: Record<number, boolean>;
-  partyCharges: Record<number, boolean>;
-  allPartyCharges: boolean; // true while background batch-load is running
 };
 
 // ─── Master status derivation ─────────────────────────────────────────────────
@@ -208,29 +212,17 @@ const useDebounce = <T,>(value: T, delay: number): T => {
   return debouncedValue;
 };
 
-// ─── Concurrency limiter for batch fetches ────────────────────────────────────
-async function runWithConcurrency<T>(
-  tasks: Array<() => Promise<T>>,
-  concurrency: number,
-): Promise<T[]> {
-  const results: T[] = [];
-  let cursor = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, tasks.length) },
-    async () => {
-      while (cursor < tasks.length) {
-        const idx = cursor++;
-        try {
-          results[idx] = await tasks[idx]();
-        } catch (e) {
-          // swallow individual failures so the batch doesn't abort
-          console.warn("Batch task failed:", e);
-        }
-      }
-    },
-  );
-  await Promise.all(workers);
-  return results;
+// ─── Auto-party helper ────────────────────────────────────────────────────────
+
+function getAutoPartyIdForCharge(
+  chargeType: string,
+  detail: JobDetail,
+): number | null {
+  const t = chargeType?.toLowerCase();
+  if (t === "terminal") return detail.terminalPartyId ?? null;
+  if (t === "shipping line" || t === "shippingline") return detail.carrierPartyId ?? null;
+  if (t === "transporter") return detail.transporterPartyId ?? null;
+  return null;
 }
 
 // ─── Line Item Row Component (Memoized) ───────────────────────────────────────
@@ -251,8 +243,7 @@ const LineItemRow = ({
   filteredBeneficiaries,
   beneficiarySearch,
   setBeneficiarySearch,
-  partyChargesCache,
-  isPartyChargesLoading,
+  chargePartiesCache,
   statusOptions,
   pendingStatus,
   approvedStatus,
@@ -286,17 +277,14 @@ const LineItemRow = ({
   };
 
   // Per-line beneficiary filter:
-  // If a charge is selected for this line, show only parties whose
-  // partyCharges set includes the selected chargeId. If a party is not yet
-  // in the cache, we exclude it (loading indicator is shown separately).
+  // If a charge is selected for this line, show only parties that the
+  // charge's partyIds set includes. Falls back to all parties if not yet loaded.
   const lineFilteredBeneficiaries = React.useMemo(() => {
     if (!item.headCoaId) return filteredBeneficiaries;
-
-    return filteredBeneficiaries.filter((p: Party) => {
-      const charges = partyChargesCache?.[p.partyId];
-      return charges ? charges.has(item.headCoaId) : false;
-    });
-  }, [item.headCoaId, filteredBeneficiaries, partyChargesCache]);
+    const allowed = chargePartiesCache?.[item.headCoaId];
+    if (!allowed) return filteredBeneficiaries; // not yet loaded — show all
+    return filteredBeneficiaries.filter((p: Party) => allowed.has(p.partyId));
+  }, [item.headCoaId, filteredBeneficiaries, chargePartiesCache]);
 
   return (
     <TableRow className={`group ${getRowBg(item.subRequestStatus)}`}>
@@ -478,10 +466,10 @@ const LineItemRow = ({
               </div>
             </div>
             <div className='max-h-[250px] overflow-y-auto'>
-              {item.headCoaId && isPartyChargesLoading ? (
+              {item.headCoaId && !chargePartiesCache?.[item.headCoaId] ? (
                 <div className='p-4 text-center text-gray-500'>
                   <FiLoader className='animate-spin inline mr-2 h-3 w-3' />
-                  Loading party–charge mappings...
+                  Loading charge–party mappings...
                 </div>
               ) : lineFilteredBeneficiaries.length === 0 ? (
                 <div className='p-4 text-center text-gray-500'>
@@ -697,6 +685,7 @@ export default function InternalFundRequestForm({
       customerName: "",
       headCoaId: null,
       headOfAccount: "",
+      chargeType: "",
       beneficiaryCoaId: null,
       beneficiary: "",
       partiesAccount: "",
@@ -719,14 +708,11 @@ export default function InternalFundRequestForm({
   const [chargesMasters, setChargesMasters] = useState<ChargesMaster[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
-  // Maps partyId → Set of chargeIds active for that party.
-  // Built lazily by fetching Party/{id} for every party the first time
-  // any charge is selected on the form.
-  const [partyChargesCache, setPartyChargesCache] = useState<
+  // Maps chargeId → Set of partyIds that have that charge active.
+  // Built lazily by fetching ChargesMaster/{chargeId} when a charge is selected.
+  const [chargePartiesCache, setChargePartiesCache] = useState<
     Record<number, Set<number>>
   >({});
-  const partyChargesLoadedRef = useRef(false);
-  const partyChargesLoadingPromiseRef = useRef<Promise<void> | null>(null);
 
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [filteredCharges, setFilteredCharges] = useState<ChargesMaster[]>([]);
@@ -750,8 +736,6 @@ export default function InternalFundRequestForm({
     users: false,
     statuses: false,
     jobDetail: {},
-    partyCharges: {},
-    allPartyCharges: false,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -927,7 +911,7 @@ export default function InternalFundRequestForm({
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            select: "ChargeId, ChargeCode, ChargeName, ChargesNature",
+            select: "ChargeId, ChargeCode, ChargeName, ChargesNature, ChargeType, ChargeGroup",
             where: "IsActive == true",
             search: "",
             sortOn: "ChargeCode ASC",
@@ -964,6 +948,8 @@ export default function InternalFundRequestForm({
             chargeCode: c.chargeCode ?? c.ChargeCode ?? "",
             chargeName: c.chargeName ?? c.ChargeName ?? "",
             chargesNature: c.chargesNature ?? c.ChargesNature ?? "",
+            chargeType: c.chargeType ?? c.ChargeType ?? "",
+            chargeGroup: c.chargeGroup ?? c.ChargeGroup ?? "",
           }))
           .filter((c: ChargesMaster) => c.chargeId > 0);
 
@@ -1095,103 +1081,32 @@ export default function InternalFundRequestForm({
     fetchUsers();
   }, [toast]);
 
-  // ── Fetch a single party's charges ────────────────────────────────────────
-  const fetchSinglePartyCharges = useCallback(
-    async (partyId: number, maxRetries = 3): Promise<Set<number>> => {
-      let lastError: unknown = null;
-
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-          const res = await fetch(`${getBaseUrl()}Party/${partyId}`, {
-            method: "GET",
-            headers: getAuthHeaders(),
-          });
-
-          if (!res.ok) {
-            // 4xx = don't retry (won't change). 5xx = retry.
-            if (res.status >= 400 && res.status < 500) {
-              return new Set<number>();
-            }
-            lastError = new Error(`HTTP ${res.status}`);
-          } else {
-            const data = await res.json();
-            const ids = new Set<number>(
-              (data.partyCharges ?? [])
-                .filter((pc: any) => pc.isActive)
-                .map((pc: any) => pc.chargesId as number),
-            );
-            return ids;
-          }
-        } catch (e) {
-          lastError = e;
+  // ── Fetch parties linked to a charge (single API call, replaces N+1) ────────
+  const fetchChargeParties = useCallback(
+    async (chargeId: number): Promise<Set<number>> => {
+      if (chargePartiesCache[chargeId]) return chargePartiesCache[chargeId];
+      try {
+        const res = await fetch(`${getBaseUrl()}ChargesMaster/${chargeId}`, {
+          method: "GET",
+          headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const partyIds = new Set<number>(
+            (data.partyCharges ?? [])
+              .filter((pc: any) => pc.isActive)
+              .map((pc: any) => pc.partyId as number),
+          );
+          setChargePartiesCache((prev) => ({ ...prev, [chargeId]: partyIds }));
+          return partyIds;
         }
-
-        // Exponential backoff: 200ms, 400ms, 800ms
-        if (attempt < maxRetries - 1) {
-          await new Promise((r) => setTimeout(r, 200 * Math.pow(2, attempt)));
-        }
+      } catch (e) {
+        console.error("fetchChargeParties error:", e);
       }
-
-      // All retries exhausted — fail silently, will be summarised by caller
       return new Set<number>();
     },
-    [],
+    [chargePartiesCache],
   );
-
-  // ── Lazy-load ALL parties' charges (called once on first charge select) ──
-  const ensureAllPartyChargesLoaded = useCallback(async (): Promise<void> => {
-    if (partyChargesLoadedRef.current) return;
-    if (partyChargesLoadingPromiseRef.current) {
-      return partyChargesLoadingPromiseRef.current;
-    }
-    if (parties.length === 0) return;
-
-    setLoadingState((prev) => ({ ...prev, allPartyCharges: true }));
-
-    const promise = (async () => {
-      let successCount = 0;
-      let failureCount = 0;
-
-      const tasks = parties.map((p) => async () => {
-        const ids = await fetchSinglePartyCharges(p.partyId);
-        // We treat empty set as "loaded but no charges" — same as success
-        // for our purposes. Truly broken responses are rare after retries.
-        setPartyChargesCache((prev) => ({ ...prev, [p.partyId]: ids }));
-        if (ids.size > 0) {
-          successCount++;
-        } else {
-          failureCount++;
-        }
-      });
-
-      // Concurrency reduced to 3 to avoid overwhelming the dev API.
-      // With retries, each task may take longer, so total time stays reasonable.
-      await runWithConcurrency(tasks, 3);
-      partyChargesLoadedRef.current = true;
-
-      console.log(
-        `📦 Party-charges cache built: ${successCount} with charges, ${failureCount} without/failed (out of ${parties.length})`,
-      );
-
-      if (failureCount > parties.length / 2) {
-        toast({
-          variant: "destructive",
-          title: "Some party data could not load",
-          description:
-            "Beneficiary filtering may be incomplete. Try refreshing the page.",
-        });
-      }
-    })();
-
-    partyChargesLoadingPromiseRef.current = promise;
-
-    try {
-      await promise;
-    } finally {
-      setLoadingState((prev) => ({ ...prev, allPartyCharges: false }));
-      partyChargesLoadingPromiseRef.current = null;
-    }
-  }, [parties, fetchSinglePartyCharges, toast]);
 
   // ── Fetch job detail ──────────────────────────────────────────────────────
   const fetchJobDetail = useCallback(
@@ -1376,16 +1291,25 @@ export default function InternalFundRequestForm({
               jobOperationType: job.operationType,
             };
 
-            if (!customerParty) return baseUpdate;
-
-            // If a charge is already selected, only auto-fill beneficiary
-            // when this customer party is allowed for that charge.
-            if (item.headCoaId) {
-              const partyCharges = partyChargesCache[customerParty.partyId];
-              if (partyCharges && !partyCharges.has(item.headCoaId)) {
-                return baseUpdate;
+            // If chargeType maps to a specific job party, use that instead
+            const currentChargeType = item.chargeType || "";
+            const autoTypes = ["terminal", "shipping line", "shippingline", "transporter"];
+            if (currentChargeType && autoTypes.includes(currentChargeType.toLowerCase())) {
+              const autoPartyId = getAutoPartyIdForCharge(currentChargeType, detail);
+              if (autoPartyId) {
+                const autoParty = parties.find((p) => p.partyId === autoPartyId);
+                if (autoParty) {
+                  return {
+                    ...baseUpdate,
+                    beneficiaryCoaId: autoParty.partyId,
+                    beneficiary: autoParty.benificiaryFromPO || autoParty.partyName,
+                    partiesAccount: autoParty.partyName,
+                  };
+                }
               }
             }
+
+            if (!customerParty) return baseUpdate;
 
             return {
               ...baseUpdate,
@@ -1398,10 +1322,10 @@ export default function InternalFundRequestForm({
         );
       }
     },
-    [jobs, parties, fetchJobDetail, partyChargesCache],
+    [jobs, parties, fetchJobDetail],
   );
 
-  // ── Head of Account change: trigger lazy load + validate beneficiary ──────
+  // ── Head of Account change: fetch charge parties + auto-fill beneficiary ──
   const handleHeadOfAccountChange = useCallback(
     async (id: string, chargeIdStr: string) => {
       const charge = chargesMasters.find(
@@ -1409,7 +1333,7 @@ export default function InternalFundRequestForm({
       );
       if (!charge) return;
 
-      // 1. Set the charge first so UI is responsive
+      // 1. Set charge fields + clear beneficiary immediately
       setLineItems((prev) =>
         prev.map((item) =>
           item.id === id
@@ -1417,41 +1341,44 @@ export default function InternalFundRequestForm({
                 ...item,
                 headCoaId: charge.chargeId,
                 headOfAccount: charge.chargeName || charge.chargeCode,
+                chargeType: charge.chargeType || "",
+                beneficiaryCoaId: null,
+                beneficiary: "",
               }
             : item,
         ),
       );
 
-      // 2. Make sure all parties' charges are cached so we can filter.
-      // This runs at most once per session.
-      await ensureAllPartyChargesLoaded();
-      // The cache-update effect below will sweep all lines and clear any
-      // beneficiary that doesn't satisfy its line's charge.
-    },
-    [chargesMasters, ensureAllPartyChargesLoaded],
-  );
+      // 2. Load parties linked to this charge (fast: 1 API call)
+      await fetchChargeParties(charge.chargeId);
 
-  // After partyChargesCache updates, sweep all lines and clear any
-  // beneficiary that doesn't satisfy its line's charge.
-  useEffect(() => {
-    if (!partyChargesLoadedRef.current) return;
-    setLineItems((prev) =>
-      prev.map((item) => {
-        if (!item.headCoaId || !item.beneficiaryCoaId) return item;
-        const charges = partyChargesCache[item.beneficiaryCoaId];
-        if (charges && !charges.has(item.headCoaId)) {
-          return {
-            ...item,
-            beneficiaryCoaId: null,
-            beneficiary: "",
-            partiesAccount: "",
-          };
-        }
-        return item;
-      }),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partyChargesCache]);
+      // 3. If chargeType maps to a job party, auto-fill beneficiary
+      const chargeType = charge.chargeType || "";
+      const autoTypes = ["terminal", "shipping line", "shippingline", "transporter"];
+      if (autoTypes.includes(chargeType.toLowerCase())) {
+        setLineItems((prev) => {
+          const line = prev.find((item) => item.id === id);
+          if (!line?.jobId) return prev;
+          const detail = jobDetailsCache[line.jobId];
+          if (!detail) return prev;
+          const autoPartyId = getAutoPartyIdForCharge(chargeType, detail);
+          if (!autoPartyId) return prev;
+          const party = parties.find((p) => p.partyId === autoPartyId);
+          if (!party) return prev;
+          return prev.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  beneficiaryCoaId: party.partyId,
+                  beneficiary: party.benificiaryFromPO || party.partyName,
+                }
+              : item,
+          );
+        });
+      }
+    },
+    [chargesMasters, fetchChargeParties, jobDetailsCache, parties],
+  );
 
   const handleBeneficiaryChange = useCallback(
     (id: string, partyId: string) => {
@@ -1630,14 +1557,11 @@ export default function InternalFundRequestForm({
             );
           }
         }
+        // Prefetch charge-party mappings for each line that already has a charge
+        if (m.headCoaId) {
+          fetchChargeParties(m.headCoaId);
+        }
       });
-
-      // If any line already has a charge, prefetch all party-charge mappings
-      // so the beneficiary filter works on first dropdown open.
-      const hasCharge = mapped.some((m) => m.headCoaId);
-      if (hasCharge) {
-        ensureAllPartyChargesLoaded();
-      }
     }
   }, [
     type,
@@ -1647,7 +1571,7 @@ export default function InternalFundRequestForm({
     chargesMasters,
     pendingStatus,
     fetchJobDetail,
-    ensureAllPartyChargesLoaded,
+    fetchChargeParties,
     updateLineItem,
   ]);
 
@@ -2163,8 +2087,7 @@ export default function InternalFundRequestForm({
                         filteredBeneficiaries={filteredBeneficiaries}
                         beneficiarySearch={beneficiarySearch}
                         setBeneficiarySearch={setBeneficiarySearch}
-                        partyChargesCache={partyChargesCache}
-                        isPartyChargesLoading={loadingState.allPartyCharges}
+                        chargePartiesCache={chargePartiesCache}
                         statusOptions={statusOptions}
                         pendingStatus={pendingStatus}
                         approvedStatus={approvedStatus}
