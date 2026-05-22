@@ -131,6 +131,7 @@ type Party = {
   partyCode: string;
   partyName: string;
   benificiaryFromPO?: string;
+  glAccountId?: number;
 };
 
 type User = {
@@ -938,7 +939,7 @@ export default function InternalBankFundRequestForm({
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            select: "PartyId, PartyCode, PartyName, BenificiaryNameOfPO",
+            select: "PartyId, PartyCode, PartyName, BenificiaryNameOfPO, GLAccountId",
             where: "",
             search: "",
             sortOn: "PartyName ASC",
@@ -1204,7 +1205,7 @@ export default function InternalBankFundRequestForm({
                 if (autoParty) {
                   return {
                     ...baseUpdate,
-                    beneficiaryCoaId: autoParty.partyId,
+                    beneficiaryCoaId: autoParty.glAccountId ?? autoParty.partyId,
                     beneficiary: autoParty.benificiaryFromPO || autoParty.partyName,
                   };
                 }
@@ -1215,7 +1216,7 @@ export default function InternalBankFundRequestForm({
 
             return {
               ...baseUpdate,
-              beneficiaryCoaId: customerParty.partyId,
+              beneficiaryCoaId: customerParty.glAccountId ?? customerParty.partyId,
               beneficiary:
                 customerParty.benificiaryFromPO || customerParty.partyName,
             };
@@ -1270,7 +1271,7 @@ export default function InternalBankFundRequestForm({
             item.id === id
               ? {
                   ...item,
-                  beneficiaryCoaId: party.partyId,
+                  beneficiaryCoaId: party.glAccountId ?? party.partyId,
                   beneficiary: party.benificiaryFromPO || party.partyName,
                 }
               : item,
@@ -1285,7 +1286,7 @@ export default function InternalBankFundRequestForm({
     (id: string, partyId: string) => {
       const party = parties.find((p) => p.partyId.toString() === partyId);
       if (party) {
-        updateLineItem(id, "beneficiaryCoaId", party.partyId);
+        updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? party.partyId);
         updateLineItem(
           id,
           "beneficiary",
