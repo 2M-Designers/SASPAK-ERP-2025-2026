@@ -9,7 +9,7 @@ export const fetchParties = async (setLoading: (loading: boolean) => void) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         select:
-          "PartyId,PartyCode,PartyName,IsProcessOwner,IsShipper,IsConsignee,IsPrincipal,IsShippingLine,IsTransporter, IsAgent",
+          "PartyId,PartyCode,PartyName,IsProcessOwner,IsShipper,IsConsignee,IsPrincipal,IsShippingLine,IsTransporter,IsAgent,IsTerminal",
         where: "IsActive == true",
         sortOn: "PartyName",
         page: "1",
@@ -20,69 +20,31 @@ export const fetchParties = async (setLoading: (loading: boolean) => void) => {
     if (response.ok) {
       const data = await response.json();
       if (Array.isArray(data)) {
-        // All parties
-        const parties = data.map((p: any) => ({
+        const toOption = (p: any) => ({
           value: p.partyId,
           label: `${p.partyCode} - ${p.partyName}`,
+        });
+
+        // All parties
+        const parties = data.map((p: any) => ({
+          ...toOption(p),
           isProcessOwner: p.isProcessOwner,
           isShipper: p.isShipper,
           isConsignee: p.isConsignee,
           isPrincipal: p.isPrincipal,
           isShippingLine: p.isShippingLine,
           isTransporter: p.isTransporter,
-          isAgent: p.isAgent, // Assuming there's an isAgent flag for local agents
+          isAgent: p.isAgent,
+          isTerminal: p.isTerminal,
         }));
 
-        // Process Owners
-        const processOwners = data
-          .filter((p: any) => p.isProcessOwner)
-          .map((p: any) => ({
-            value: p.partyId,
-            label: `${p.partyCode} - ${p.partyName}`,
-          }));
-
-        // Shippers
-        const shippers = data
-          .filter((p: any) => p.isShipper)
-          .map((p: any) => ({
-            value: p.partyId,
-            label: `${p.partyCode} - ${p.partyName}`,
-          }));
-
-        // Consignees
-        const consignees = data
-          .filter((p: any) => p.isConsignee)
-          .map((p: any) => ({
-            value: p.partyId,
-            label: `${p.partyCode} - ${p.partyName}`,
-          }));
-
-        // Local Agents (Agent)
-        const localAgents = data
-          .filter((p: any) => p.isAgent)
-          .map((p: any) => ({
-            value: p.partyId,
-            label: `${p.partyCode} - ${p.partyName}`,
-          }));
-
-        // Carriers (Shipping Lines)
-        const carriers = data
-          .filter((p: any) => p.isShippingLine)
-          .map((p: any) => ({
-            value: p.partyId,
-            label: `${p.partyCode} - ${p.partyName}`,
-          }));
-
-        // Transporters
-        const transporters = data
-          .filter((p: any) => p.isTransporter)
-          .map((p: any) => ({
-            value: p.partyId,
-            label: `${p.partyCode} - ${p.partyName}`,
-          }));
-
-        // Terminals - All parties can be terminals, no specific flag
-        const terminals = parties; // or you can create specific filtering if needed
+        const shippers = data.filter((p: any) => p.isShipper).map(toOption);
+        const consignees = data.filter((p: any) => p.isConsignee).map(toOption);
+        const localAgents = data.filter((p: any) => p.isAgent).map(toOption);
+        const carriers = data.filter((p: any) => p.isShippingLine).map(toOption);
+        const transporters = data.filter((p: any) => p.isTransporter).map(toOption);
+        const terminals = data.filter((p: any) => p.isTerminal).map(toOption);
+        const processOwners = data.filter((p: any) => p.isProcessOwner).map(toOption);
 
         return {
           parties,

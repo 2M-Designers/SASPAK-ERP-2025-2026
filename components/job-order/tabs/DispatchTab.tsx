@@ -319,7 +319,7 @@ export default function DispatchTab({
     ),
   };
 
-  const transporterOptions = transporters.length > 0 ? transporters : parties;
+  const transporterOptions = transporters;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
