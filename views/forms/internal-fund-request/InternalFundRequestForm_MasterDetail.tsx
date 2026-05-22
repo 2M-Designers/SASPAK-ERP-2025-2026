@@ -1649,6 +1649,13 @@ export default function InternalFundRequestForm({
 
       try {
         // Resolve partyId → GLAccountId at submit time (partyId is stored in state for UI)
+        console.log("🔍 DEBUG parties count:", parties.length);
+        console.log("🔍 DEBUG parties sample (first 3):", parties.slice(0, 3).map(p => ({ partyId: p.partyId, partyName: p.partyName, glAccountId: p.glAccountId })));
+        lineItems.forEach((item, i) => {
+          const raw = parties.find((x) => x.partyId === item.beneficiaryCoaId);
+          console.log(`🔍 DEBUG line[${i}] beneficiaryCoaId=${item.beneficiaryCoaId} → party found=${!!raw} glAccountId=${raw?.glAccountId} raw keys=${raw ? Object.keys(raw).join(",") : "N/A"}`);
+        });
+
         const getGLAccountId = (partyId: number | null): number => {
           if (!partyId) return 0;
           const p = parties.find((x) => x.partyId === partyId);
