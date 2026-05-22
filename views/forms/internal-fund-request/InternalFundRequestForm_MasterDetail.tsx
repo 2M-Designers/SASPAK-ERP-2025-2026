@@ -1681,7 +1681,7 @@ export default function InternalFundRequestForm({
             isUpdate && defaultState?.cashFundRequestId
               ? defaultState.cashFundRequestId
               : 0,
-          ChargesId: getCostGLAccountId(item.headCoaId),
+          ChargesId: item.headCoaId ?? 0,
           CustomerName: item.customerName || "",
           RequestedTo: selectedRequestor ?? 0,
           OnAccountOfId: getGLAccountId(item.beneficiaryCoaId),
