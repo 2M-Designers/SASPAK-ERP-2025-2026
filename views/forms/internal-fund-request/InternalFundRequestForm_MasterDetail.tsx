@@ -2028,7 +2028,71 @@ export default function InternalFundRequestForm({
               </Badge>
               Request Information
             </h3>
-            <div className='grid grid-cols-1 md:grid-cols-1 gap-4 max-w-md'>
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+              <div>
+                <Label className='text-sm font-medium text-gray-700 mb-2 block'>
+                  Cash Account (Head) <span className='text-red-500'>*</span>
+                </Label>
+                <Select
+                  value={selectedCashHeadId?.toString() || ""}
+                  onValueChange={handleCashHeadChange}
+                  disabled={loadingState.glAccounts}
+                >
+                  <SelectTrigger
+                    className='w-full h-10'
+                    aria-label='Select cash account head'
+                  >
+                    <SelectValue placeholder='Select Cash Account'>
+                      {cashHeadName || "Select Cash Account"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent
+                    className='max-h-[300px] w-[400px]'
+                    position='popper'
+                    sideOffset={5}
+                  >
+                    <div className='sticky top-0 bg-white p-2 border-b z-50'>
+                      <div className='relative'>
+                        <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4' />
+                        <Input
+                          placeholder='Search accounts...'
+                          value={cashHeadSearch}
+                          onChange={(e) => setCashHeadSearch(e.target.value)}
+                          className='pl-8 h-8'
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          aria-label='Search cash accounts'
+                        />
+                      </div>
+                    </div>
+                    <div className='max-h-[250px] overflow-y-auto'>
+                      {loadingState.glAccounts ? (
+                        <div className='p-4 text-center text-gray-500'>
+                          <FiLoader className='animate-spin inline mr-2' />
+                          Loading accounts...
+                        </div>
+                      ) : filteredGlAccounts.length === 0 ? (
+                        <div className='p-4 text-center text-gray-500'>
+                          No accounts found
+                        </div>
+                      ) : (
+                        filteredGlAccounts.map((acc) => (
+                          <SelectItem
+                            key={acc.accountId}
+                            value={acc.accountId.toString()}
+                          >
+                            <div className='flex flex-col'>
+                              <span className='font-medium'>
+                                {acc.accountCode} - {acc.accountName}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))
+                      )}
+                    </div>
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label className='text-sm font-medium text-gray-700 mb-2 block'>
                   Request To (User) <span className='text-red-500'>*</span>
