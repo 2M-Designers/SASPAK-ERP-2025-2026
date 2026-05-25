@@ -8,11 +8,11 @@ import { ColumnDef } from "@tanstack/react-table";
 import readXlsxFile from "read-excel-file";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import EmployeeDialog from "@/views/dialogs/hr-dialogs/dialog-employee";
 import AppLoader from "@/components/app-loader";
 import { FiTrash2, FiDownload, FiEdit } from "react-icons/fi";
+import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
-
+import EmployeeForm from "@/views/forms/hr-management/employee-form";
 type EmployeePageProps = {
   initialData: any[];
 };
@@ -153,9 +153,8 @@ const fieldConfig = [
   },
 ];
 
-// Get only displayed fields for the table
 const displayedFields = fieldConfig.filter(
-  (field) => field.isdisplayed && field.isselected
+  (field) => field.isdisplayed && field.isselected,
 );
 
 export default function EmployeePage({ initialData }: EmployeePageProps) {
@@ -163,56 +162,61 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
   const router = useRouter();
+  const [showForm, setShowForm] = useState(false);
+  const [formType, setFormType] = useState<"add" | "edit">("add");
+  const [selectedEmployee, setSelectedEmployee] = useState<any>({});
 
   useEffect(() => {
-    console.log("Initial Data received:", initialData);
     if (initialData && Array.isArray(initialData)) {
       setData(initialData);
     } else {
-      console.warn("Initial data is not an array:", initialData);
       setData([]);
     }
   }, [initialData]);
 
-  // Format date for display
   const formatDate = (dateString: string) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
     return date.toLocaleDateString();
   };
 
-  // Format full name
+  const handleAddEdit = (employee: any) => {
+  if (formType === "add") {
+    setData((prev) => [...prev, employee]);
+  } else {
+    setData((prev) =>
+      prev.map((item) =>
+        item.employeeId === employee.employeeId ? employee : item
+      )
+    );
+  }
+
+  setShowForm(false);
+};
+
   const formatFullName = (firstName: string, lastName: string) => {
     return `${firstName || ""} ${lastName || ""}`.trim() || "-";
   };
 
-  // Generate columns based on the static field configuration
   const columns: ColumnDef<any>[] = [
     {
       accessorKey: "actions",
       header: "Actions",
       cell: ({ row }) => (
-        <div className='flex gap-2'>
-          <EmployeeDialog
-            type='edit'
-            defaultState={row.original}
-            handleAddEdit={(updatedItem: any) => {
-              setData((prev: any) =>
-                prev.map((item: any) =>
-                  item.employeeId === updatedItem.employeeId
-                    ? updatedItem
-                    : item
-                )
-              );
-              router.refresh();
+        <div className="flex gap-2">
+          {/* Navigate to edit form page */}
+          <button
+            className="text-blue-600 hover:text-blue-800"
+            onClick={() => {
+              setFormType("edit");
+              setSelectedEmployee(row.original);
+              setShowForm(true);
             }}
           >
-            <button className='text-blue-600 hover:text-blue-800'>
-              <FiEdit size={16} />
-            </button>
-          </EmployeeDialog>
+            <FiEdit size={16} />
+          </button>
           <button
-            className='text-red-600 hover:text-red-800'
+            className="text-red-600 hover:text-red-800"
             onClick={() => handleDelete(row.original)}
           >
             <FiTrash2 size={16} />
@@ -227,80 +231,70 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
       cell: ({ row }) => parseInt(row.id) + 1,
       enableColumnFilter: false,
     },
-    // Employee Code
     {
       accessorKey: "employeeCode",
       header: "Employee Code",
       cell: ({ row }) => (
-        <span className='font-medium'>
+        <span className="font-medium">
           {row.getValue("employeeCode") || "-"}
         </span>
       ),
       enableColumnFilter: false,
     },
-    // Full Name
     {
       accessorKey: "fullName",
       header: "Full Name",
       cell: ({ row }) => (
-        <span className='font-medium'>
+        <span className="font-medium">
           {formatFullName(row.original.firstName, row.original.lastName)}
         </span>
       ),
       enableColumnFilter: false,
     },
-    // Father Name
     {
       accessorKey: "fatherName",
       header: "Father Name",
       cell: ({ row }) => <span>{row.getValue("fatherName") || "-"}</span>,
       enableColumnFilter: false,
     },
-    // Date of Birth
     {
       accessorKey: "dateOfBirth",
       header: "Date of Birth",
       cell: ({ row }) => <span>{formatDate(row.getValue("dateOfBirth"))}</span>,
       enableColumnFilter: false,
     },
-    // Gender
     {
       accessorKey: "gender",
       header: "Gender",
       cell: ({ row }) => (
-        <span className='capitalize'>{row.getValue("gender") || "-"}</span>
+        <span className="capitalize">{row.getValue("gender") || "-"}</span>
       ),
       enableColumnFilter: false,
     },
-    // National ID
     {
       accessorKey: "nationalIdNumber",
       header: "National ID",
       cell: ({ row }) => <span>{row.getValue("nationalIdNumber") || "-"}</span>,
       enableColumnFilter: false,
     },
-    // Joining Date
     {
       accessorKey: "joiningDate",
       header: "Joining Date",
       cell: ({ row }) => <span>{formatDate(row.getValue("joiningDate"))}</span>,
       enableColumnFilter: false,
     },
-    // Official Email
     {
       accessorKey: "officialEmail",
       header: "Official Email",
       cell: ({ row }) => <span>{row.getValue("officialEmail") || "-"}</span>,
       enableColumnFilter: false,
     },
-    // Mobile Number
     {
       accessorKey: "mobileNumber",
       header: "Mobile Number",
       cell: ({ row }) => <span>{row.getValue("mobileNumber") || "-"}</span>,
       enableColumnFilter: false,
     },
-    // Employment Status
     {
       accessorKey: "employmentStatus",
       header: "Employment Status",
@@ -320,12 +314,9 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
               return "bg-gray-100 text-gray-800";
           }
         };
-
         return (
           <span
-            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
-              status
-            )}`}
+            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(status)}`}
           >
             {status ?? "-"}
           </span>
@@ -333,18 +324,17 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
       },
       enableColumnFilter: false,
     },
-    // Is Active
     {
       accessorKey: "isActive",
       header: "Status",
       cell: ({ row }) => {
         const isActive = row.getValue("isActive");
         return isActive ? (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800'>
+          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
             Active
           </span>
         ) : (
-          <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800'>
+          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
             Inactive
           </span>
         );
@@ -362,39 +352,37 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Employees");
 
-    // Add headers
     const headers = displayedFields.map((field) => field.displayName);
     worksheet.addRow(headers);
 
-    // Add data rows
     data.forEach((employee: any) => {
       const row = displayedFields.map((field) => {
         const value = employee[field.fieldName];
-
-        // Format dates for Excel
         if (
-          field.fieldName === "dateOfBirth" ||
-          field.fieldName === "joiningDate" ||
-          field.fieldName === "confirmationDate" ||
-          field.fieldName === "resignationDate"
+          [
+            "dateOfBirth",
+            "joiningDate",
+            "confirmationDate",
+            "resignationDate",
+          ].includes(field.fieldName)
         ) {
           return value ? new Date(value) : "";
         }
-
         return value || "";
       });
       worksheet.addRow(row);
     });
 
-    // Format date columns
     const dateColumns = displayedFields
       .map((field, index) =>
-        field.fieldName === "dateOfBirth" ||
-        field.fieldName === "joiningDate" ||
-        field.fieldName === "confirmationDate" ||
-        field.fieldName === "resignationDate"
+        [
+          "dateOfBirth",
+          "joiningDate",
+          "confirmationDate",
+          "resignationDate",
+        ].includes(field.fieldName)
           ? index + 1
-          : null
+          : null,
       )
       .filter((index) => index !== null);
 
@@ -411,11 +399,9 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("SampleEmployees");
 
-    // Add headers
     const headers = displayedFields.map((field) => field.displayName);
     worksheet.addRow(headers);
 
-    // Add sample data
     const sampleRow = displayedFields.map((field) => {
       switch (field.fieldName) {
         case "employeeCode":
@@ -453,15 +439,16 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
 
     worksheet.addRow(sampleRow);
 
-    // Format date columns
     const dateColumns = displayedFields
       .map((field, index) =>
-        field.fieldName === "dateOfBirth" ||
-        field.fieldName === "joiningDate" ||
-        field.fieldName === "confirmationDate" ||
-        field.fieldName === "resignationDate"
+        [
+          "dateOfBirth",
+          "joiningDate",
+          "confirmationDate",
+          "resignationDate",
+        ].includes(field.fieldName)
           ? index + 1
-          : null
+          : null,
       )
       .filter((index) => index !== null);
 
@@ -476,54 +463,42 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files?.[0]) return;
-
     readXlsxFile(event.target.files[0]).then((rows: any) => {
       setIsLoading(true);
-      insertData(rows.slice(1)); // Skip header row
+      insertData(rows.slice(1));
     });
   };
 
   const insertData = async (newData: any[]) => {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
     try {
       await Promise.all(
         newData.map(async (row) => {
-          // Create payload object by mapping Excel columns to field names
           const payload: any = {};
           displayedFields.forEach((field, index) => {
             if (index < row.length) {
               let value = row[index];
-
-              // Handle boolean fields
-              if (field.fieldName === "isActive") {
-                value = Boolean(value);
-              }
-
-              // Handle date fields
+              if (field.fieldName === "isActive") value = Boolean(value);
               if (
-                field.fieldName === "dateOfBirth" ||
-                field.fieldName === "joiningDate" ||
-                field.fieldName === "confirmationDate" ||
-                field.fieldName === "resignationDate"
+                [
+                  "dateOfBirth",
+                  "joiningDate",
+                  "confirmationDate",
+                  "resignationDate",
+                ].includes(field.fieldName)
               ) {
-                if (value) {
-                  value = new Date(value).toISOString();
-                }
+                if (value) value = new Date(value).toISOString();
               }
-
               payload[field.fieldName] = value;
             }
           });
-
           await fetch(`${baseUrl}Employee`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
-        })
+        }),
       );
-
       setIsLoading(false);
       alert("Employees imported successfully! Refreshing data...");
       router.refresh();
@@ -537,7 +512,7 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
   const handleDelete = async (item: any) => {
     if (
       confirm(
-        `Are you sure you want to delete "${item.firstName} ${item.lastName}"?`
+        `Are you sure you want to delete "${item.firstName} ${item.lastName}"?`,
       )
     ) {
       try {
@@ -545,10 +520,9 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
         const response = await fetch(`${baseUrl}Employee/${item.employeeId}`, {
           method: "DELETE",
         });
-
         if (response.ok) {
           setData((prev: any) =>
-            prev.filter((record: any) => record.employeeId !== item.employeeId)
+            prev.filter((record: any) => record.employeeId !== item.employeeId),
           );
           alert("Employee deleted successfully.");
         } else {
@@ -563,55 +537,69 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
 
   const filteredData = data?.filter((item: any) =>
     Object.values(item).some((value: any) =>
-      value?.toString().toLowerCase().includes(searchText.toLowerCase())
-    )
+      value?.toString().toLowerCase().includes(searchText.toLowerCase()),
+    ),
   );
 
   return (
-    <div className='p-6 bg-white shadow-md rounded-md'>
-      <h1 className='text-2xl font-bold mb-4'>Employees</h1>
-      <div className='flex justify-between items-center mb-4'>
-        <EmployeeDialog
-          type='add'
-          defaultState={{}}
-          handleAddEdit={(newItem: any) => {
-            setData((prev: any) => [...(prev || []), newItem]);
-            router.refresh();
+  <>
+    {showForm ? (
+      <EmployeeForm
+  type={formType}
+  defaultState={selectedEmployee}
+  handleAddEdit={handleAddEdit}
+  onCancel={() => setShowForm(false)}
+/>
+    ) : (
+      <div className="p-6 bg-white shadow-md rounded-md">
+        <h1 className="text-2xl font-bold mb-4">Employees</h1>
+      <div className="flex justify-between items-center mb-4">
+        {/* Navigate to Add form page instead of opening dialog */}
+        <Button
+          className="flex items-center gap-2"
+          onClick={() => {
+            setFormType("add");
+            setSelectedEmployee({});
+            setShowForm(true);
           }}
-        />
-        <div className='flex gap-3 items-center'>
+        >
+          <Plus size={16} />
+          Add Employee
+        </Button>
+
+        <div className="flex gap-3 items-center">
           <Button
             onClick={downloadSampleExcel}
-            className='flex items-center gap-2'
-            variant='outline'
+            className="flex items-center gap-2"
+            variant="outline"
           >
             <FiDownload />
             Sample File
           </Button>
           <Button
             onClick={downloadExcelWithData}
-            className='flex items-center gap-2'
-            variant='outline'
+            className="flex items-center gap-2"
+            variant="outline"
             disabled={!data || data.length === 0}
           >
             <FiDownload />
             Export to Excel
           </Button>
-          <div className='flex items-center gap-2'>
-            <span className='text-sm text-gray-600'>Import:</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Import:</span>
             <Input
-              type='file'
-              accept='.xlsx'
+              type="file"
+              accept=".xlsx"
               onChange={handleFileUpload}
-              className='w-auto'
+              className="w-auto"
             />
           </div>
           <Input
-            type='text'
-            placeholder='🔍 Search employees...'
+            type="text"
+            placeholder="🔍 Search employees..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            className='min-w-[250px]'
+            className="min-w-[250px]"
           />
         </div>
       </div>
@@ -622,14 +610,14 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
           loading={isLoading}
           columns={columns}
           searchText={searchText}
-          searchBy='fullName'
+          searchBy="fullName"
           isPage
           isMultiSearch
         />
       ) : (
-        <div className='text-center py-8'>
-          <p className='text-gray-500 text-lg'>No employees found</p>
-          <p className='text-gray-400 text-sm mt-2'>
+        <div className="text-center py-8">
+          <p className="text-gray-500 text-lg">No employees found</p>
+          <p className="text-gray-400 text-sm mt-2">
             {initialData === null
               ? "Loading..."
               : "Add your first employee using the button above"}
@@ -638,6 +626,8 @@ export default function EmployeePage({ initialData }: EmployeePageProps) {
       )}
 
       {isLoading && <AppLoader />}
-    </div>
-  );
+      </div>
+    )}
+  </>
+);
 }
