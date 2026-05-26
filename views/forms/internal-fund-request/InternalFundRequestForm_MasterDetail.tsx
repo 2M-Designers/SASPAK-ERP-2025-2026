@@ -434,7 +434,7 @@ const LineItemRow = ({
         </Select>
       </TableCell>
 
-      {/* Beneficiary */}
+      {/* On Account Of */}
       <TableCell>
         <Select
           value={item.beneficiaryCoaId?.toString() || ""}
@@ -442,10 +442,10 @@ const LineItemRow = ({
         >
           <SelectTrigger
             className='h-9 text-sm'
-            aria-label={`Select beneficiary for line ${index + 1}`}
+            aria-label={`Select on account of for line ${index + 1}`}
           >
-            <SelectValue placeholder='Select Beneficiary'>
-              {item.beneficiary || "Select Beneficiary"}
+            <SelectValue placeholder='Select On Account Of'>
+              {item.beneficiary || "Select On Account Of"}
             </SelectValue>
           </SelectTrigger>
           <SelectContent
@@ -457,13 +457,13 @@ const LineItemRow = ({
               <div className='relative'>
                 <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4' />
                 <Input
-                  placeholder='Search beneficiaries...'
+                  placeholder='Search parties...'
                   value={beneficiarySearch}
                   onChange={(e) => setBeneficiarySearch(e.target.value)}
                   className='pl-8 h-8'
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => e.stopPropagation()}
-                  aria-label='Search beneficiaries'
+                  aria-label='Search parties'
                 />
               </div>
             </div>
@@ -1309,7 +1309,7 @@ export default function InternalFundRequestForm({
                 if (autoParty) {
                   return {
                     ...baseUpdate,
-                    beneficiaryCoaId: autoParty.partyId,
+                    beneficiaryCoaId: autoParty.glAccountId ?? autoParty.partyId,
                     beneficiary: autoParty.benificiaryFromPO || autoParty.partyName,
                     partiesAccount: autoParty.partyName,
                   };
@@ -1321,7 +1321,7 @@ export default function InternalFundRequestForm({
 
             return {
               ...baseUpdate,
-              beneficiaryCoaId: customerParty.partyId,
+              beneficiaryCoaId: customerParty.glAccountId ?? customerParty.partyId,
               beneficiary:
                 customerParty.benificiaryFromPO || customerParty.partyName,
               partiesAccount: customerParty.partyName,
@@ -1377,7 +1377,7 @@ export default function InternalFundRequestForm({
             item.id === id
               ? {
                   ...item,
-                  beneficiaryCoaId: party.partyId,
+                  beneficiaryCoaId: party.glAccountId ?? party.partyId,
                   beneficiary: party.benificiaryFromPO || party.partyName,
                 }
               : item,
@@ -1392,7 +1392,7 @@ export default function InternalFundRequestForm({
     (id: string, partyId: string) => {
       const party = parties.find((p) => p.partyId.toString() === partyId);
       if (!party) return;
-      updateLineItem(id, "beneficiaryCoaId", party.partyId);
+      updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? party.partyId);
       updateLineItem(
         id,
         "beneficiary",
@@ -1605,7 +1605,7 @@ export default function InternalFundRequestForm({
         errors.push(`Line ${i + 1}: Head of Account is required`);
       }
       if (!item.beneficiaryCoaId) {
-        errors.push(`Line ${i + 1}: Beneficiary is required`);
+        errors.push(`Line ${i + 1}: On Account Of is required`);
       }
       if (!item.requestedAmount || item.requestedAmount <= 0) {
         errors.push(`Line ${i + 1}: Valid amount is required`);
@@ -1650,13 +1650,6 @@ export default function InternalFundRequestForm({
       const CASH_HEAD_ID = 25;
 
       try {
-        // Resolve partyId → GLAccountId at submit time (partyId is stored in state for UI)
-        const getGLAccountId = (partyId: number | null): number => {
-          if (!partyId) return 0;
-          const p = parties.find((x) => x.partyId === partyId);
-          return p?.glAccountId ?? partyId;
-        };
-
         // Resolve chargeId → CostGLAccountId at submit time
         const getCostGLAccountId = (chargeId: number | null): number => {
           if (!chargeId) return 0;
@@ -1671,7 +1664,7 @@ export default function InternalFundRequestForm({
               : 0,
           JobId: item.jobId ?? 0,
           HeadCoaId: getCostGLAccountId(item.headCoaId),
-          BeneficiaryCoaId: getGLAccountId(item.beneficiaryCoaId),
+          BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
           HeadOfAccount: item.headOfAccount || "",
           Beneficiary: item.beneficiary || "",
           RequestedAmount: item.requestedAmount,
@@ -1684,7 +1677,7 @@ export default function InternalFundRequestForm({
           ChargesId: item.headCoaId ?? 0,
           CustomerName: item.customerName || "",
           RequestedTo: selectedRequestor ?? 0,
-          OnAccountOfId: getGLAccountId(item.beneficiaryCoaId),
+          OnAccountOfId: item.beneficiaryCoaId ?? 0,
           SubRequestStatus: item.subRequestStatus ?? "",
           Remarks: item.remarks || "",
           CashHeadId: CASH_HEAD_ID,
@@ -1926,7 +1919,7 @@ export default function InternalFundRequestForm({
                 admin/vendor expenses • Customer name auto-fills from the
                 selected job •{" "}
                 <strong>
-                  Beneficiary list filters based on Head of Account selection
+                  On Account Of list filters based on Head of Account selection
                 </strong>{" "}
                 • "Requested To" shows only users allowed to approve • All ✓ →
                 Master {approvedStatus} · All ✗ → {rejectedStatus} · Mixed →{" "}
@@ -2079,7 +2072,7 @@ export default function InternalFundRequestForm({
                         Head of Account <span className='text-red-500'>*</span>
                       </TableHead>
                       <TableHead className='min-w-[200px]'>
-                        Beneficiary <span className='text-red-500'>*</span>
+                        On Account Of <span className='text-red-500'>*</span>
                       </TableHead>
                       <TableHead className='min-w-[135px]'>
                         Amount (PKR) <span className='text-red-500'>*</span>
