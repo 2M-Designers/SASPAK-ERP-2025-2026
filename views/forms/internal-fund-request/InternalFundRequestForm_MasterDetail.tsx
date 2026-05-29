@@ -76,12 +76,15 @@ type LineItem = {
   headOfAccount: string;
   chargeType: string;
   beneficiaryCoaId: number | null;
+  onAccountOfPartyId: number | null;
   beneficiary: string;
   partiesAccount: string;
   requestedAmount: number;
   requestedTo: number | null;
   subRequestStatus: SubRequestStatus;
   remarks: string;
+  preservedHeadCoaId: number | null;
+  preservedCashHeadId: number | null;
 };
 
 type Job = {
@@ -705,12 +708,15 @@ export default function InternalFundRequestForm({
       headOfAccount: "",
       chargeType: "",
       beneficiaryCoaId: null,
+      onAccountOfPartyId: null,
       beneficiary: "",
       partiesAccount: "",
       requestedAmount: 0,
       requestedTo: null,
       subRequestStatus: pendingStatus,
       remarks: "",
+      preservedHeadCoaId: null,
+      preservedCashHeadId: null,
     }),
     [pendingStatus],
   );
@@ -1318,6 +1324,7 @@ export default function InternalFundRequestForm({
               jobOperationType: "",
               customerName: "",
               beneficiaryCoaId: null,
+              onAccountOfPartyId: null,
               beneficiary: "",
               partiesAccount: "",
               // Charges remain independent of job — no longer cleared here
@@ -1345,6 +1352,7 @@ export default function InternalFundRequestForm({
                 jobOperationType: job.operationType,
                 customerName: "",
                 beneficiaryCoaId: null,
+                onAccountOfPartyId: null,
                 beneficiary: "",
                 partiesAccount: "",
               }
@@ -1395,6 +1403,7 @@ export default function InternalFundRequestForm({
                     ...baseUpdate,
                     beneficiaryCoaId:
                       autoParty.glAccountId ?? autoParty.partyId,
+                    onAccountOfPartyId: autoParty.partyId,
                     beneficiary:
                       autoParty.benificiaryFromPO || autoParty.partyName,
                     partiesAccount: autoParty.partyName,
@@ -1409,6 +1418,7 @@ export default function InternalFundRequestForm({
               ...baseUpdate,
               beneficiaryCoaId:
                 customerParty.glAccountId ?? customerParty.partyId,
+              onAccountOfPartyId: customerParty.partyId,
               beneficiary:
                 customerParty.benificiaryFromPO || customerParty.partyName,
               partiesAccount: customerParty.partyName,
@@ -1438,6 +1448,7 @@ export default function InternalFundRequestForm({
                 headOfAccount: charge.chargeName || charge.chargeCode,
                 chargeType: charge.chargeType || "",
                 beneficiaryCoaId: null,
+                onAccountOfPartyId: null,
                 beneficiary: "",
               }
             : item,
@@ -1470,6 +1481,7 @@ export default function InternalFundRequestForm({
               ? {
                   ...item,
                   beneficiaryCoaId: party.glAccountId ?? party.partyId,
+                  onAccountOfPartyId: party.partyId,
                   beneficiary: party.benificiaryFromPO || party.partyName,
                 }
               : item,
@@ -1489,6 +1501,7 @@ export default function InternalFundRequestForm({
         "beneficiaryCoaId",
         party.glAccountId ?? party.partyId,
       );
+      updateLineItem(id, "onAccountOfPartyId", party.partyId);
       updateLineItem(
         id,
         "beneficiary",
@@ -1653,9 +1666,11 @@ export default function InternalFundRequestForm({
           jobOperationType:
             job?.operationType || d.operationType || d.OperationType || "",
           customerName: d.customerName || d.CustomerName || "",
-          headCoaId: d.headCoaId || d.HeadCoaId || null,
+          headCoaId: d.chargesId || d.ChargesId || null,
           headOfAccount: d.headOfAccount || d.HeadOfAccount || "",
+          chargeType: d.chargeType || d.ChargeType || "",
           beneficiaryCoaId: d.beneficiaryCoaId || d.BeneficiaryCoaId || null,
+          onAccountOfPartyId: d.onAccountOfId || d.OnAccountOfId || null,
           beneficiary: d.beneficiary || d.Beneficiary || "",
           partiesAccount: d.partiesAccount || d.PartiesAccount || "",
           requestedAmount: d.requestedAmount || d.RequestedAmount || 0,
@@ -1663,6 +1678,8 @@ export default function InternalFundRequestForm({
           subRequestStatus:
             d.subRequestStatus || d.SubRequestStatus || pendingStatus,
           remarks: d.remarks || d.Remarks || "",
+          preservedHeadCoaId: d.headCoaId || d.HeadCoaId || null,
+          preservedCashHeadId: d.cashHeadId || d.CashHeadId || null,
         };
       });
 
@@ -1770,22 +1787,14 @@ export default function InternalFundRequestForm({
       const computedStatus = masterApprovalStatus;
       const isUpdate = type === "edit";
       const nowIso = new Date().toISOString();
-
       try {
-        // Resolve chargeId → CostGLAccountId at submit time
-        const getCostGLAccountId = (chargeId: number | null): number => {
-          if (!chargeId) return 0;
-          const c = chargesMasters.find((x) => x.chargeId === chargeId);
-          return c?.costGlaccountId ?? chargeId;
-        };
-
         const buildDetail = (item: LineItem): CashFundRequestDetailPayload => ({
           InternalFundsRequestCashId:
             isUpdate && item.internalFundsRequestCashId
               ? item.internalFundsRequestCashId
               : 0,
           JobId: item.jobId ?? 0,
-          HeadCoaId: getCostGLAccountId(item.headCoaId),
+          HeadCoaId: isUpdate ? (item.preservedHeadCoaId ?? null) : null,
           BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
           HeadOfAccount: item.headOfAccount || "",
           Beneficiary: item.beneficiary || "",
@@ -1797,12 +1806,12 @@ export default function InternalFundRequestForm({
               ? defaultState.cashFundRequestId
               : 0,
           ChargesId: item.headCoaId ?? 0,
-          CustomerName: item.customerName || "",
+          CustomerName: item.partiesAccount || item.beneficiary || "",
           RequestedTo: selectedRequestor ?? 0,
-          OnAccountOfId: item.beneficiaryCoaId ?? 0,
+          OnAccountOfId: item.onAccountOfPartyId ?? 0,
           SubRequestStatus: item.subRequestStatus ?? "",
           Remarks: item.remarks || "",
-          CashHeadId: selectedCashHeadId ?? 0,
+          CashHeadId: isUpdate ? (item.preservedCashHeadId ?? null) : null,
           IsBankLetterReleased: false,
           Version: 0,
           CreatedBy: userId,
@@ -1823,7 +1832,9 @@ export default function InternalFundRequestForm({
           RequestedTo: selectedRequestor ?? 0,
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
           CreatedBy: isUpdate ? (defaultState?.createdBy ?? userId) : userId,
-          CashHeadId: selectedCashHeadId ?? 0,
+          CashHeadId: isUpdate
+            ? (defaultState?.cashHeadId ?? defaultState?.CashHeadId ?? null)
+            : null,
           RequestorUserId: userId,
           Remarks: "",
           Version: isUpdate ? (defaultState?.version ?? 0) : 0,
