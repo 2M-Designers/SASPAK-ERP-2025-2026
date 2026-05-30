@@ -383,13 +383,13 @@ export default function InternalFundRequestPage({
   // ── Permission check helpers ────────────────────────────────────────────────
   const userHasApprovalPermission = useMemo(() => {
     if (!userId) return false;
-    if (currentUser?.isAllowedRequestApproval === true) return true;
+    if (currentUser?.isAllowedRequestApproval) return true;
     const userFromList = users.find(
       (u) => (u.userId ?? (u as any).UserId) === userId,
     );
-    return (
-      userFromList?.isAllowedRequestApproval === true ||
-      (userFromList as any)?.IsAllowedRequestApproval === true
+    return !!(
+      userFromList?.isAllowedRequestApproval ||
+      (userFromList as any)?.IsAllowedRequestApproval
     );
   }, [currentUser, userId, users]);
 
@@ -594,6 +594,8 @@ export default function InternalFundRequestPage({
         cashHeadId: item.cashHeadId || item.CashHeadId || null,
         requestorUserId: item.requestorUserId || item.RequestorUserId || null,
         createdBy: item.createdBy || item.CreatedBy || null,
+        requestedTo: item.requestedTo ?? item.RequestedTo ?? null,
+        approvalStatus: item.approvalStatus || item.ApprovalStatus || "",
       }));
       setData(processed);
     }

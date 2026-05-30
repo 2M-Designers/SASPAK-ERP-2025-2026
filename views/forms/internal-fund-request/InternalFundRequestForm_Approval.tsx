@@ -640,7 +640,7 @@ export default function InternalFundRequestApprovalForm({
         InternalCashFundsRequests: lineItems.map((item) => ({
           InternalFundsRequestCashId: item.internalFundsRequestCashId,
           JobId: item.jobId,
-          HeadCoaId: item.headCoaId,
+          HeadCoaId: item.cashHeadId,
           BeneficiaryCoaId: item.beneficiaryCoaId,
           HeadOfAccount: item.headOfAccount,
           Beneficiary: item.beneficiary,
