@@ -76,11 +76,14 @@ type LineItem = {
   headOfAccount: string;
   chargeType: string;
   beneficiaryCoaId: number | null;
+  onAccountOfPartyId: number | null;
   beneficiary: string;
+  partiesAccount: string;
   requestedAmount: number;
   requestedTo: number | null;
   subRequestStatus: SubRequestStatus;
   remarks: string;
+  preservedHeadCoaId: number | null;
 };
 
 type Bank = {
@@ -441,10 +444,10 @@ const LineItemRow = ({
         >
           <SelectTrigger
             className='h-9 text-sm'
-            aria-label={`Select beneficiary for line ${index + 1}`}
+            aria-label={`Select on account of for line ${index + 1}`}
           >
-            <SelectValue placeholder='Select Beneficiary'>
-              {item.beneficiary || "Select Beneficiary"}
+            <SelectValue placeholder='Select On Account Of'>
+              {item.beneficiary || "Select On Account Of"}
             </SelectValue>
           </SelectTrigger>
           <SelectContent
@@ -456,7 +459,7 @@ const LineItemRow = ({
               <div className='relative'>
                 <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4' />
                 <Input
-                  placeholder='Search beneficiaries...'
+                  placeholder='Search parties...'
                   value={beneficiarySearch}
                   onChange={(e) => setBeneficiarySearch(e.target.value)}
                   className='pl-8 h-8'
@@ -690,11 +693,14 @@ export default function InternalBankFundRequestForm({
       headOfAccount: "",
       chargeType: "",
       beneficiaryCoaId: null,
+      onAccountOfPartyId: null,
       beneficiary: "",
+      partiesAccount: "",
       requestedAmount: 0,
       requestedTo: null,
       subRequestStatus: pendingStatus,
       remarks: "",
+      preservedHeadCoaId: null,
     }),
     [pendingStatus],
   );
@@ -1154,7 +1160,9 @@ export default function InternalBankFundRequestForm({
               jobOperationType: "",
               customerName: "",
               beneficiaryCoaId: null,
+              onAccountOfPartyId: null,
               beneficiary: "",
+              partiesAccount: "",
               // chargeType remains — it belongs to the charge, not the job
             }
           : item,
@@ -1178,7 +1186,9 @@ export default function InternalBankFundRequestForm({
                 jobOperationType: job.operationType,
                 customerName: "",
                 beneficiaryCoaId: null,
+                onAccountOfPartyId: null,
                 beneficiary: "",
+                partiesAccount: "",
               }
             : item,
         ),
@@ -1212,8 +1222,10 @@ export default function InternalBankFundRequestForm({
                 if (autoParty) {
                   return {
                     ...baseUpdate,
-                    beneficiaryCoaId: autoParty.partyId,
+                    beneficiaryCoaId: autoParty.glAccountId ?? autoParty.partyId,
+                    onAccountOfPartyId: autoParty.partyId,
                     beneficiary: autoParty.benificiaryFromPO || autoParty.partyName,
+                    partiesAccount: autoParty.partyName,
                   };
                 }
               }
@@ -1223,9 +1235,11 @@ export default function InternalBankFundRequestForm({
 
             return {
               ...baseUpdate,
-              beneficiaryCoaId: customerParty.partyId,
+              beneficiaryCoaId: customerParty.glAccountId ?? customerParty.partyId,
+              onAccountOfPartyId: customerParty.partyId,
               beneficiary:
                 customerParty.benificiaryFromPO || customerParty.partyName,
+              partiesAccount: customerParty.partyName,
             };
           }),
         );
@@ -1252,7 +1266,9 @@ export default function InternalBankFundRequestForm({
                 headOfAccount: charge.chargeName || charge.chargeCode,
                 chargeType: charge.chargeType || "",
                 beneficiaryCoaId: null,
+                onAccountOfPartyId: null,
                 beneficiary: "",
+                partiesAccount: "",
               }
             : item,
         ),
@@ -1278,8 +1294,10 @@ export default function InternalBankFundRequestForm({
             item.id === id
               ? {
                   ...item,
-                  beneficiaryCoaId: party.partyId,
+                  beneficiaryCoaId: party.glAccountId ?? party.partyId,
+                  onAccountOfPartyId: party.partyId,
                   beneficiary: party.benificiaryFromPO || party.partyName,
+                  partiesAccount: party.partyName,
                 }
               : item,
           );
@@ -1292,14 +1310,15 @@ export default function InternalBankFundRequestForm({
   const handleBeneficiaryChange = useCallback(
     (id: string, partyId: string) => {
       const party = parties.find((p) => p.partyId.toString() === partyId);
-      if (party) {
-        updateLineItem(id, "beneficiaryCoaId", party.partyId);
-        updateLineItem(
-          id,
-          "beneficiary",
-          party.benificiaryFromPO || party.partyName || party.partyCode,
-        );
-      }
+      if (!party) return;
+      updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? party.partyId);
+      updateLineItem(id, "onAccountOfPartyId", party.partyId);
+      updateLineItem(
+        id,
+        "beneficiary",
+        party.benificiaryFromPO || party.partyName || party.partyCode,
+      );
+      updateLineItem(id, "partiesAccount", party.partyName || party.partyCode);
     },
     [parties, updateLineItem],
   );
@@ -1455,16 +1474,19 @@ export default function InternalBankFundRequestForm({
           jobNumber: job?.jobNumber || d.jobNumber || d.JobNumber || "",
           jobOperationType: job?.operationType || d.operationType || "",
           customerName: d.customerName || d.CustomerName || "",
-          headCoaId: d.headCoaId || d.HeadCoaId || null,
+          headCoaId: d.chargesId || d.ChargesId || null,
           headOfAccount: d.headOfAccount || d.HeadOfAccount || "",
           chargeType: d.chargeType || d.ChargeType || "",
           beneficiaryCoaId: d.beneficiaryCoaId || d.BeneficiaryCoaId || null,
+          onAccountOfPartyId: d.onAccountOfId || d.OnAccountOfId || null,
           beneficiary: d.beneficiary || d.Beneficiary || "",
+          partiesAccount: d.partiesAccount || d.PartiesAccount || "",
           requestedAmount: d.requestedAmount || d.RequestedAmount || 0,
           requestedTo: d.requestedTo || d.RequestedTo || null,
           subRequestStatus:
             d.subRequestStatus || d.SubRequestStatus || pendingStatus,
           remarks: d.remarks || d.Remarks || "",
+          preservedHeadCoaId: d.headCoaId || d.HeadCoaId || null,
         };
       });
 
@@ -1518,7 +1540,7 @@ export default function InternalBankFundRequestForm({
       if (!item.headCoaId)
         errors.push(`Line ${i + 1}: Head of Account is required`);
       if (!item.beneficiaryCoaId)
-        errors.push(`Line ${i + 1}: Beneficiary is required`);
+        errors.push(`Line ${i + 1}: On Account Of is required`);
       if (!item.requestedAmount || item.requestedAmount <= 0)
         errors.push(`Line ${i + 1}: Valid amount is required`);
     });
@@ -1556,19 +1578,6 @@ export default function InternalBankFundRequestForm({
       const total = lineItems.reduce((s, i) => s + (i.requestedAmount || 0), 0);
 
       try {
-        // Resolve partyId → GLAccountId at submit time (partyId is stored in state for UI)
-        const getGLAccountId = (partyId: number | null): number => {
-          if (!partyId) return 0;
-          const p = parties.find((x) => x.partyId === partyId);
-          return p?.glAccountId ?? partyId;
-        };
-
-        // Resolve chargeId → CostGLAccountId at submit time
-        const getCostGLAccountId = (chargeId: number | null): number => {
-          if (!chargeId) return 0;
-          const c = chargesMasters.find((x) => x.chargeId === chargeId);
-          return c?.costGlaccountId ?? chargeId;
-        };
 
         // ── Build a single detail line ──────────────────────────────────────
         const buildDetail = (item: LineItem): BankFundRequestDetailPayload => {
@@ -1592,17 +1601,17 @@ export default function InternalBankFundRequestForm({
             InternalFundsRequestBankId: item.internalFundsRequestBankId ?? 0,
 
             // ── Job & amounts ─────────────────────────────────────────────
-            JobId: item.jobId ?? null, // ✅ nullable FK → null, not 0
-            HeadCoaId: getCostGLAccountId(item.headCoaId),
-            BeneficiaryCoaId: getGLAccountId(item.beneficiaryCoaId),
+            JobId: item.jobId ?? null,
+            HeadCoaId: type === "edit" ? (item.preservedHeadCoaId ?? null) : null,
+            BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
             HeadOfAccount: item.headOfAccount || "",
             Beneficiary: item.beneficiary || "",
             AccountNo: "",
             RequestedAmount: item.requestedAmount,
             ApprovedAmount: 0,
             ChargesId: item.headCoaId ?? 0,
-            CustomerName: item.customerName || "",
-            OnAccountOfId: null, // ✅ nullable FK → null, not 0
+            CustomerName: item.partiesAccount || item.beneficiary || "",
+            OnAccountOfId: item.onAccountOfPartyId ?? 0,
 
             // ── Routing ───────────────────────────────────────────────────
             RequestedTo: item.requestedTo ?? selectedRequestor ?? 0,
@@ -2049,7 +2058,7 @@ export default function InternalBankFundRequestForm({
                         Head of Account <span className='text-red-500'>*</span>
                       </TableHead>
                       <TableHead className='min-w-[200px]'>
-                        Beneficiary <span className='text-red-500'>*</span>
+                        On Account Of <span className='text-red-500'>*</span>
                       </TableHead>
                       <TableHead className='min-w-[135px]'>
                         Amount (PKR) <span className='text-red-500'>*</span>

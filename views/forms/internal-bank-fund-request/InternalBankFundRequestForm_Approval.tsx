@@ -609,7 +609,7 @@ export default function InternalBankFundRequestApprovalForm({
 
       const payload = {
         BankFundRequestId: req.bankFundRequestId || req.BankFundRequestId,
-        BankId: null,
+        BankId: req.bankId ?? req.BankId ?? null,
         TotalRequestedAmount: totals.totalRequested,
         TotalApprovedAmount: totals.totalApproved,
         ApprovalStatus: derivedMasterStatus,
@@ -617,10 +617,10 @@ export default function InternalBankFundRequestApprovalForm({
         ApprovedOn: isApproving ? new Date().toISOString() : null,
         RequestedTo: req.requestedTo || req.RequestedTo,
         CreatedOn: req.createdOn || req.CreatedOn,
+        CreatedBy: req.createdBy || req.CreatedBy || userId,
         RequestorUserId: req.requestorUserId || req.RequestorUserId,
         Remarks: masterRemarks,
         Version: req.version || req.Version || 1,
-        RequestedToNavigation: null,
         InternalBankFundsRequests: lineItems.map((item) => ({
           InternalFundsRequestBankId: item.internalFundsRequestBankId,
           JobId: item.jobId,
