@@ -157,7 +157,6 @@ type LoadingState = {
   parties: boolean;
   users: boolean;
   statuses: boolean;
-  glAccounts: boolean;
   jobDetail: Record<number, boolean>;
 };
 
@@ -680,14 +679,6 @@ export default function InternalFundRequestForm({
   );
   const [requestorName, setRequestorName] = useState("");
   const [requestorSearch, setRequestorSearch] = useState("");
-  const [selectedCashHeadId, setSelectedCashHeadId] = useState<number | null>(
-    null,
-  );
-  const [cashHeadName, setCashHeadName] = useState("");
-  const [cashHeadSearch, setCashHeadSearch] = useState("");
-  const [glAccounts, setGlAccounts] = useState<GlAccount[]>([]);
-  const [filteredGlAccounts, setFilteredGlAccounts] = useState<GlAccount[]>([]);
-  const debouncedCashHeadSearch = useDebounce(cashHeadSearch, 300);
   const [userId, setUserId] = useState<number | null>(null);
 
   // ── Status options ────────────────────────────────────────────────────────
@@ -759,7 +750,6 @@ export default function InternalFundRequestForm({
     parties: false,
     users: false,
     statuses: false,
-    glAccounts: false,
     jobDetail: {},
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1118,39 +1108,10 @@ export default function InternalFundRequestForm({
       }
     };
 
-    const fetchGlAccounts = async () => {
-      setLoadingState((prev) => ({ ...prev, glAccounts: true }));
-      try {
-        const res = await fetch(`${getBaseUrl()}GlAccount/GetList`, {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            select: "AccountId,AccountCode,AccountName",
-            where:
-              "IsHeader==true && ParentAccountId != null && IsActive == true",
-            sortOn: "AccountCode",
-            page: "1",
-            pageSize: "500",
-          }),
-        });
-        if (res.ok) {
-          const d = await res.json();
-          const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
-          setGlAccounts(list);
-          setFilteredGlAccounts(list);
-        }
-      } catch (e) {
-        console.error("GL accounts fetch error:", e);
-      } finally {
-        setLoadingState((prev) => ({ ...prev, glAccounts: false }));
-      }
-    };
-
     fetchJobs();
     fetchChargesMasters();
     fetchParties();
     fetchUsers();
-    fetchGlAccounts();
   }, [toast]);
 
   // ── Fetch parties linked to a charge (single API call, replaces N+1) ────────
@@ -1274,19 +1235,6 @@ export default function InternalFundRequestForm({
     );
   }, [debouncedBeneficiarySearch, parties]);
 
-  useEffect(() => {
-    const q = debouncedCashHeadSearch.toLowerCase();
-    setFilteredGlAccounts(
-      q
-        ? glAccounts.filter(
-            (a) =>
-              a.accountName.toLowerCase().includes(q) ||
-              a.accountCode.toLowerCase().includes(q),
-          )
-        : glAccounts,
-    );
-  }, [debouncedCashHeadSearch, glAccounts]);
-
   // ── Filtered requestors ───────────────────────────────────────────────────
   const filteredRequestors = useMemo(() => {
     const q = debouncedRequestorSearch.toLowerCase();
@@ -1327,7 +1275,6 @@ export default function InternalFundRequestForm({
               onAccountOfPartyId: null,
               beneficiary: "",
               partiesAccount: "",
-              // Charges remain independent of job — no longer cleared here
             }
           : item,
       ),
@@ -1523,17 +1470,6 @@ export default function InternalFundRequestForm({
     [users],
   );
 
-  const handleCashHeadChange = useCallback(
-    (accountId: string) => {
-      const acc = glAccounts.find((a) => a.accountId.toString() === accountId);
-      if (acc) {
-        setSelectedCashHeadId(acc.accountId);
-        setCashHeadName(`${acc.accountCode} - ${acc.accountName}`);
-      }
-    },
-    [glAccounts],
-  );
-
   // ── Per-line approval ─────────────────────────────────────────────────────
   const setLineStatus = useCallback(
     (id: string, status: string) => {
@@ -1640,17 +1576,6 @@ export default function InternalFundRequestForm({
       if (user) setRequestorName(user.fullName || user.username);
     }
 
-    const cashHeadId = defaultState.cashHeadId ?? defaultState.CashHeadId;
-    if (cashHeadId) {
-      setSelectedCashHeadId(cashHeadId);
-      const acc = glAccounts.find((a) => a.accountId === cashHeadId);
-      setCashHeadName(
-        acc
-          ? `${acc.accountCode} - ${acc.accountName}`
-          : `Account #${cashHeadId}`,
-      );
-    }
-
     const details = defaultState.internalCashFundsRequests || [];
     if (details.length > 0) {
       const mapped: LineItem[] = details.map((d: any) => {
@@ -1716,16 +1641,11 @@ export default function InternalFundRequestForm({
     fetchJobDetail,
     fetchChargeParties,
     updateLineItem,
-    glAccounts,
   ]);
 
   // ── Validation ────────────────────────────────────────────────────────────
   const validateForm = useCallback((): boolean => {
     const errors: string[] = [];
-
-    if (!selectedCashHeadId) {
-      errors.push("Cash Account (Head) is required");
-    }
 
     if (!selectedRequestor) {
       errors.push("Requested To (User) is required");
@@ -1763,7 +1683,7 @@ export default function InternalFundRequestForm({
     }
 
     return true;
-  }, [selectedCashHeadId, selectedRequestor, users, userId, lineItems, toast]);
+  }, [selectedRequestor, users, userId, lineItems, toast]);
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(
@@ -1806,12 +1726,12 @@ export default function InternalFundRequestForm({
               ? defaultState.cashFundRequestId
               : 0,
           ChargesId: item.headCoaId ?? 0,
-          CustomerName: item.partiesAccount || item.beneficiary || "",
+          CustomerName: item.customerName || "",
           RequestedTo: selectedRequestor ?? 0,
           OnAccountOfId: item.onAccountOfPartyId ?? 0,
           SubRequestStatus: item.subRequestStatus ?? "",
           Remarks: item.remarks || "",
-          CashHeadId: isUpdate ? (item.preservedCashHeadId ?? null) : null,
+          CashHeadId: isUpdate ? (item.preservedCashHeadId ?? 0) : 0,
           IsBankLetterReleased: false,
           Version: 0,
           CreatedBy: userId,
@@ -1832,9 +1752,7 @@ export default function InternalFundRequestForm({
           RequestedTo: selectedRequestor ?? 0,
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
           CreatedBy: isUpdate ? (defaultState?.createdBy ?? userId) : userId,
-          CashHeadId: isUpdate
-            ? (defaultState?.cashHeadId ?? defaultState?.CashHeadId ?? null)
-            : null,
+          CashHeadId: 0, // Always 0 for new requests
           RequestorUserId: userId,
           Remarks: "",
           Version: isUpdate ? (defaultState?.version ?? 0) : 0,
@@ -1923,10 +1841,6 @@ export default function InternalFundRequestForm({
       type,
       defaultState,
       selectedRequestor,
-      selectedCashHeadId,
-      glAccounts,
-      parties,
-      chargesMasters,
       toast,
       handleAddEdit,
     ],
@@ -2070,7 +1984,7 @@ export default function InternalFundRequestForm({
             </div>
           </div>
 
-          {/* Master Fields */}
+          {/* Master Fields - Only Request To */}
           <div className='mb-4 p-4 border-2 border-blue-300 rounded-lg bg-blue-50'>
             <h3 className='text-sm font-semibold text-blue-900 mb-3 flex items-center gap-2'>
               <Badge variant='default' className='bg-blue-600'>
@@ -2078,71 +1992,7 @@ export default function InternalFundRequestForm({
               </Badge>
               Request Information
             </h3>
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              <div>
-                <Label className='text-sm font-medium text-gray-700 mb-2 block'>
-                  Cash Account (Head) <span className='text-red-500'>*</span>
-                </Label>
-                <Select
-                  value={selectedCashHeadId?.toString() || ""}
-                  onValueChange={handleCashHeadChange}
-                  disabled={loadingState.glAccounts}
-                >
-                  <SelectTrigger
-                    className='w-full h-10'
-                    aria-label='Select cash account head'
-                  >
-                    <SelectValue placeholder='Select Cash Account'>
-                      {cashHeadName || "Select Cash Account"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent
-                    className='max-h-[300px] w-[400px]'
-                    position='popper'
-                    sideOffset={5}
-                  >
-                    <div className='sticky top-0 bg-white p-2 border-b z-50'>
-                      <div className='relative'>
-                        <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4' />
-                        <Input
-                          placeholder='Search accounts...'
-                          value={cashHeadSearch}
-                          onChange={(e) => setCashHeadSearch(e.target.value)}
-                          className='pl-8 h-8'
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          aria-label='Search cash accounts'
-                        />
-                      </div>
-                    </div>
-                    <div className='max-h-[250px] overflow-y-auto'>
-                      {loadingState.glAccounts ? (
-                        <div className='p-4 text-center text-gray-500'>
-                          <FiLoader className='animate-spin inline mr-2' />
-                          Loading accounts...
-                        </div>
-                      ) : filteredGlAccounts.length === 0 ? (
-                        <div className='p-4 text-center text-gray-500'>
-                          No accounts found
-                        </div>
-                      ) : (
-                        filteredGlAccounts.map((acc) => (
-                          <SelectItem
-                            key={acc.accountId}
-                            value={acc.accountId.toString()}
-                          >
-                            <div className='flex flex-col'>
-                              <span className='font-medium'>
-                                {acc.accountCode} - {acc.accountName}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))
-                      )}
-                    </div>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className='grid grid-cols-1 gap-4'>
               <div>
                 <Label className='text-sm font-medium text-gray-700 mb-2 block'>
                   Request To (User) <span className='text-red-500'>*</span>
