@@ -123,12 +123,6 @@ type Party = {
   glAccountId?: number;
 };
 
-type GlAccount = {
-  accountId: number;
-  accountCode: string;
-  accountName: string;
-};
-
 type ChargesMaster = {
   chargeId: number;
   chargeCode: string;
@@ -1731,7 +1725,7 @@ export default function InternalFundRequestForm({
           OnAccountOfId: item.onAccountOfPartyId ?? 0,
           SubRequestStatus: item.subRequestStatus ?? "",
           Remarks: item.remarks || "",
-          CashHeadId: isUpdate ? (item.preservedCashHeadId ?? 0) : 0,
+          CashHeadId: isUpdate ? (item.preservedCashHeadId ?? null) : null,
           IsBankLetterReleased: false,
           Version: 0,
           CreatedBy: userId,
@@ -1752,7 +1746,9 @@ export default function InternalFundRequestForm({
           RequestedTo: selectedRequestor ?? 0,
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
           CreatedBy: isUpdate ? (defaultState?.createdBy ?? userId) : userId,
-          CashHeadId: 0, // Always 0 for new requests
+          CashHeadId: isUpdate
+            ? (defaultState?.cashHeadId ?? defaultState?.CashHeadId ?? null)
+            : null,
           RequestorUserId: userId,
           Remarks: "",
           Version: isUpdate ? (defaultState?.version ?? 0) : 0,
@@ -1841,6 +1837,8 @@ export default function InternalFundRequestForm({
       type,
       defaultState,
       selectedRequestor,
+      parties,
+      chargesMasters,
       toast,
       handleAddEdit,
     ],
@@ -1992,7 +1990,7 @@ export default function InternalFundRequestForm({
               </Badge>
               Request Information
             </h3>
-            <div className='grid grid-cols-1 gap-4'>
+            <div className='grid grid-cols-1 md:grid-cols-1 gap-4 max-w-md'>
               <div>
                 <Label className='text-sm font-medium text-gray-700 mb-2 block'>
                   Request To (User) <span className='text-red-500'>*</span>

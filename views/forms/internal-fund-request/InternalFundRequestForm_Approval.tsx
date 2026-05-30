@@ -633,10 +633,10 @@ export default function InternalFundRequestApprovalForm({
             : null,
         RequestedTo: req.requestedTo || req.RequestedTo,
         CreatedOn: req.createdOn || req.CreatedOn || new Date().toISOString(),
-        CashHeadId: null,
+        CreatedBy: req.createdBy || req.CreatedBy || userId,
+        CashHeadId: req.cashHeadId ?? req.CashHeadId ?? null,
         RequestorUserId: req.requestorUserId || req.RequestorUserId,
         Remarks: masterRemarks,
-        CreatedByNavigation: null,
         InternalCashFundsRequests: lineItems.map((item) => ({
           InternalFundsRequestCashId: item.internalFundsRequestCashId,
           JobId: item.jobId,
