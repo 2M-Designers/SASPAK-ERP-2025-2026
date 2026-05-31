@@ -424,7 +424,7 @@ export default function InternalFundRequestApprovalForm({
         if (it.internalFundsRequestCashId !== itemId) return it;
         return {
           ...it,
-          approvedAmount: Math.min(amount, it.requestedAmount),
+          approvedAmount: Math.max(0, amount),
         };
       }),
     );
@@ -571,8 +571,7 @@ export default function InternalFundRequestApprovalForm({
     () =>
       lineItems.some(
         (it) =>
-          it.subRequestStatus === approvedStatus &&
-          (it.approvedAmount < 0 || it.approvedAmount > it.requestedAmount),
+          it.subRequestStatus === approvedStatus && it.approvedAmount < 0,
       ),
     [lineItems, approvedStatus],
   );
@@ -591,7 +590,7 @@ export default function InternalFundRequestApprovalForm({
       toast({
         variant: "destructive",
         title: "Invalid Amounts",
-        description: "Approved amounts must be between 0 and requested amount",
+        description: "Approved amounts must be 0 or greater",
       });
       return;
     }
@@ -625,8 +624,7 @@ export default function InternalFundRequestApprovalForm({
         TotalRequestedAmount: totals.totalRequested,
         TotalApprovedAmount: totals.totalApproved,
         ApprovalStatus: derivedMasterStatus,
-        ApprovedBy:
-          derivedMasterStatus === approvedStatus ? userId.toString() : "",
+        ApprovedBy: userId.toString(),
         ApprovedOn:
           derivedMasterStatus === approvedStatus
             ? new Date().toISOString()
@@ -963,7 +961,6 @@ export default function InternalFundRequestApprovalForm({
                 <Input
                   type='number'
                   min='0'
-                  max={item.requestedAmount}
                   step='0.01'
                   value={item.approvedAmount || ""}
                   onChange={(e) =>
@@ -1388,19 +1385,6 @@ export default function InternalFundRequestApprovalForm({
           </div>
         )}
 
-        {totals.totalApproved > totals.totalRequested && (
-          <div className='mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2'>
-            <AlertTriangle className='h-5 w-5 text-red-600 flex-shrink-0' />
-            <div>
-              <h4 className='font-semibold text-red-900 text-sm'>
-                Over-Approved Amount
-              </h4>
-              <p className='text-xs text-red-700'>
-                Total approved exceeds requested. Please review before saving.
-              </p>
-            </div>
-          </div>
-        )}
 
         {missingCashHeadItems.length > 0 && (
           <div className='mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-2'>
