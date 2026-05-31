@@ -1660,14 +1660,14 @@ export default function InternalBankFundRequestForm({
           ApprovalStatus: masterApprovalStatus,
           ApprovedBy:
             type === "edit"
-              ? (defaultState?.approvedBy ?? defaultState?.ApprovedBy ?? "")
-              : "",
+              ? (defaultState?.approvedBy ?? defaultState?.ApprovedBy ?? null)
+              : null,
           ApprovedOn:
             type === "edit"
               ? (defaultState?.approvedOn ??
                 defaultState?.ApprovedOn ??
-                new Date().toISOString())
-              : new Date().toISOString(),
+                null)
+              : null,
 
           // ── Routing ────────────────────────────────────────────────────
           RequestedTo: selectedRequestor ?? 0,
