@@ -752,6 +752,7 @@ export default function InternalFundRequestForm({
   const jobSelectRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isSubmittingRef = useRef(false);
 
   const masterApprovalStatus = useMemo(
     () => deriveMasterStatus(lineItems, pendingStatus),
@@ -1647,6 +1648,8 @@ export default function InternalFundRequestForm({
     async (e: React.FormEvent) => {
       e.preventDefault();
 
+      if (isSubmittingRef.current) return;
+
       if (!userId) {
         toast({
           variant: "destructive",
@@ -1658,6 +1661,7 @@ export default function InternalFundRequestForm({
 
       if (!validateForm()) return;
 
+      isSubmittingRef.current = true;
       setIsSubmitting(true);
 
       const total = lineItems.reduce((s, i) => s + (i.requestedAmount || 0), 0);
@@ -1704,8 +1708,8 @@ export default function InternalFundRequestForm({
             ? (defaultState?.totalApprovedAmount ?? 0)
             : 0,
           ApprovalStatus: computedStatus,
-          ApprovedBy: isUpdate ? (defaultState?.approvedBy ?? "") : "",
-          ApprovedOn: isUpdate ? (defaultState?.approvedOn ?? nowIso) : nowIso,
+          ApprovedBy: isUpdate ? (defaultState?.approvedBy ?? null) : null,
+          ApprovedOn: isUpdate ? (defaultState?.approvedOn ?? null) : null,
           RequestedTo: selectedRequestor ?? 0,
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
           CreatedBy: isUpdate ? (defaultState?.createdBy ?? userId) : userId,
@@ -1784,6 +1788,7 @@ export default function InternalFundRequestForm({
               : "An unknown error occurred",
         });
       } finally {
+        isSubmittingRef.current = false;
         setIsSubmitting(false);
       }
     },

@@ -3,7 +3,7 @@
 export interface CashFundRequestDetailPayload {
   InternalFundsRequestCashId: number;
   JobId: number;
-  HeadCoaId: number;
+  HeadCoaId: number | null;
   BeneficiaryCoaId: number;
   HeadOfAccount: string;
   Beneficiary: string;
@@ -18,7 +18,7 @@ export interface CashFundRequestDetailPayload {
   OnAccountOfId: number;
   SubRequestStatus: string;
   Remarks: string;
-  CashHeadId: number;
+  CashHeadId: number | null;
   IsBankLetterReleased: boolean;
   Version: number;
 }
@@ -28,12 +28,12 @@ export interface CashFundRequestPayload {
   TotalRequestedAmount: number;
   TotalApprovedAmount: number;
   ApprovalStatus: string;
-  ApprovedBy: string;
-  ApprovedOn: string;
+  ApprovedBy: string | null;
+  ApprovedOn: string | null;
   RequestedTo: number;
   CreatedOn: string;
   CreatedBy: number;
-  CashHeadId: number;
+  CashHeadId: number | null;
   RequestorUserId: number;
   Remarks: string;
   Version: number;

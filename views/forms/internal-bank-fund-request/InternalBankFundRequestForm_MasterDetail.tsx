@@ -756,6 +756,7 @@ export default function InternalBankFundRequestForm({
   const jobSelectRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isSubmittingRef = useRef(false);
 
   const masterApprovalStatus = useMemo(
     () => deriveMasterStatus(lineItems, pendingStatus),
@@ -1562,6 +1563,8 @@ export default function InternalBankFundRequestForm({
     async (e: React.FormEvent) => {
       e.preventDefault();
 
+      if (isSubmittingRef.current) return;
+
       if (!userId) {
         toast({
           variant: "destructive",
@@ -1573,6 +1576,7 @@ export default function InternalBankFundRequestForm({
 
       if (!validateForm()) return;
 
+      isSubmittingRef.current = true;
       setIsSubmitting(true);
 
       const total = lineItems.reduce((s, i) => s + (i.requestedAmount || 0), 0);
@@ -1761,6 +1765,7 @@ export default function InternalBankFundRequestForm({
               : "An unknown error occurred",
         });
       } finally {
+        isSubmittingRef.current = false;
         setIsSubmitting(false);
       }
     },
