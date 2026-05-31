@@ -178,8 +178,7 @@ export default function InternalFundRequestApprovalForm({
           headers: getAuthHeaders(),
           body: JSON.stringify({
             select: "AccountId,AccountCode,AccountName",
-            where:
-              "IsHeader==true && ParentAccountId != null && IsActive == true",
+            where: "IsActive == true ",
             sortOn: "AccountCode",
             search: "",
             page: "1",
