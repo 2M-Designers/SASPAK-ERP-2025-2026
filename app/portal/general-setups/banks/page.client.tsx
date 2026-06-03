@@ -59,13 +59,13 @@ const fieldConfig = [
     fieldName: "glAccountId",
     displayName: "GL Account ID",
     isdisplayed: false,
-    isselected: true,
+    isselected: false,
   },
   {
     fieldName: "glAccountName",
     displayName: "Chart of Account",
-    isdisplayed: true,
-    isselected: true,
+    isdisplayed: false,
+    isselected: false,
   },
   {
     fieldName: "website",
