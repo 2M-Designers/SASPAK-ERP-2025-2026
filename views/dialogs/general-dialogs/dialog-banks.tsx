@@ -19,8 +19,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Plus } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Loader2, Plus, Search } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -41,6 +41,7 @@ const formSchema = z.object({
     .url("Please enter a valid URL")
     .optional()
     .or(z.literal("")),
+  glAccountId: z.number().nullable().optional(),
   isActive: z.boolean().default(true),
   version: z.number().optional(),
 });
@@ -63,6 +64,11 @@ export default function BankDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [countries, setCountries] = useState<any[]>([]);
   const [loadingCountries, setLoadingCountries] = useState(false);
+  const [glAccounts, setGlAccounts] = useState<
+    { accountId: number; accountCode: string; accountName: string }[]
+  >([]);
+  const [loadingGlAccounts, setLoadingGlAccounts] = useState(false);
+  const [glAccountSearch, setGlAccountSearch] = useState("");
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -73,6 +79,8 @@ export default function BankDialog({
       swiftCode: defaultState.swiftCode || "",
       countryId: defaultState.countryId || "",
       website: defaultState.website || "",
+      glAccountId:
+        defaultState.glAccountId ?? defaultState.GlAccountId ?? null,
       isActive:
         defaultState.isActive !== undefined ? defaultState.isActive : true,
       version: defaultState.version || 0,
@@ -127,9 +135,43 @@ export default function BankDialog({
       }
     };
 
-    // Only fetch countries if dialog is open
+    const fetchGlAccounts = async () => {
+      setLoadingGlAccounts(true);
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        const response = await fetch(`${baseUrl}GlAccount/GetList`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            select: "AccountId, AccountCode, AccountName",
+            where: "IsActive == true",
+            sortOn: "AccountCode ASC",
+            page: "1",
+            pageSize: "500",
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const list = Array.isArray(data) ? data : (data?.data ?? data?.items ?? []);
+          setGlAccounts(
+            list.map((a: any) => ({
+              accountId: a.accountId ?? a.AccountId ?? 0,
+              accountCode: a.accountCode ?? a.AccountCode ?? "",
+              accountName: a.accountName ?? a.AccountName ?? "",
+            })),
+          );
+        }
+      } catch (error) {
+        console.error("Error fetching GL accounts:", error);
+      } finally {
+        setLoadingGlAccounts(false);
+      }
+    };
+
+    // Only fetch when dialog is open
     if (open) {
       fetchCountries();
+      fetchGlAccounts();
     }
   }, [open, toast]);
 
@@ -197,14 +239,30 @@ export default function BankDialog({
         swiftCode: defaultState.swiftCode || "",
         countryId: parseNumeric(defaultState.countryId),
         website: defaultState.website || "",
+        glAccountId:
+          parseNumeric(defaultState.glAccountId ?? defaultState.GlAccountId) ??
+          null,
         isActive:
           defaultState.isActive !== undefined
             ? Boolean(defaultState.isActive)
             : true,
         version: defaultState.version || 0,
       });
+      setGlAccountSearch("");
     }
   }, [open, type, defaultState, form]);
+
+  // Filtered GL accounts for the searchable dropdown
+  const filteredGlAccounts = useMemo(() => {
+    const q = glAccountSearch.toLowerCase();
+    return q
+      ? glAccounts.filter(
+          (a) =>
+            a.accountCode.toLowerCase().includes(q) ||
+            a.accountName.toLowerCase().includes(q),
+        )
+      : glAccounts;
+  }, [glAccountSearch, glAccounts]);
 
   // Format SWIFT code to uppercase and validate
   const formatSwiftCode = (value: string) => {
@@ -250,6 +308,7 @@ export default function BankDialog({
       BankName: values.bankName,
       SwiftCode: formattedSwiftCode,
       CountryId: values.countryId,
+      GlAccountId: values.glAccountId ?? null,
       Website: values.website || "",
       IsActive: values.isActive,
       CompanyId: companyId,
@@ -319,6 +378,9 @@ export default function BankDialog({
       );
 
       // Prepare the response data to include in handleAddEdit
+      const selectedGlAccount = glAccounts.find(
+        (a) => a.accountId === payload.GlAccountId,
+      );
       const responseItem = {
         bankId: jsonData?.bankId || jsonData?.BankId || payload.BankId,
         bankCode: payload.BankCode,
@@ -326,6 +388,9 @@ export default function BankDialog({
         swiftCode: payload.SwiftCode,
         countryId: payload.CountryId,
         countryName: selectedCountry?.countryName || "",
+        glAccountId:
+          jsonData?.glAccountId ?? jsonData?.GlAccountId ?? payload.GlAccountId ?? null,
+        glAccountName: selectedGlAccount?.accountName || "",
         website: payload.Website,
         isActive: payload.IsActive,
         companyId: payload.CompanyId,
@@ -546,6 +611,56 @@ export default function BankDialog({
                   </FormControl>
                   <div className='text-xs text-gray-500'>
                     Optional. Include http:// or https://
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* GL Account (Chart of Account) */}
+            <FormField
+              control={form.control}
+              name='glAccountId'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Chart of Account (GL Account)</FormLabel>
+                  <div className='flex flex-col gap-1'>
+                    <div className='relative'>
+                      <Search className='absolute left-2 top-2.5 h-4 w-4 text-gray-400' />
+                      <Input
+                        placeholder='Search GL accounts...'
+                        value={glAccountSearch}
+                        onChange={(e) => setGlAccountSearch(e.target.value)}
+                        className='pl-8'
+                        disabled={loadingGlAccounts}
+                      />
+                    </div>
+                    <FormControl>
+                      <select
+                        className='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value ? parseInt(e.target.value) : null,
+                          )
+                        }
+                        disabled={loadingGlAccounts}
+                      >
+                        <option value=''>
+                          {loadingGlAccounts
+                            ? "Loading accounts..."
+                            : "Select GL Account (Optional)"}
+                        </option>
+                        {filteredGlAccounts.map((account) => (
+                          <option
+                            key={account.accountId}
+                            value={account.accountId}
+                          >
+                            {account.accountCode} - {account.accountName}
+                          </option>
+                        ))}
+                      </select>
+                    </FormControl>
                   </div>
                   <FormMessage />
                 </FormItem>
