@@ -80,7 +80,7 @@ export default function BankDialog({
       countryId: defaultState.countryId || "",
       website: defaultState.website || "",
       glAccountId:
-        defaultState.glAccountId ?? defaultState.GlAccountId ?? null,
+        defaultState.glAccountId ?? defaultState.GlAccountId ?? defaultState.bankGlcoaid ?? defaultState.BankGlcoaid ?? null,
       isActive:
         defaultState.isActive !== undefined ? defaultState.isActive : true,
       version: defaultState.version || 0,
@@ -240,8 +240,12 @@ export default function BankDialog({
         countryId: parseNumeric(defaultState.countryId),
         website: defaultState.website || "",
         glAccountId:
-          parseNumeric(defaultState.glAccountId ?? defaultState.GlAccountId) ??
-          null,
+          parseNumeric(
+            defaultState.glAccountId ??
+              defaultState.GlAccountId ??
+              defaultState.bankGlcoaid ??
+              defaultState.BankGlcoaid,
+          ) ?? null,
         isActive:
           defaultState.isActive !== undefined
             ? Boolean(defaultState.isActive)
@@ -308,10 +312,9 @@ export default function BankDialog({
       BankName: values.bankName,
       SwiftCode: formattedSwiftCode,
       CountryId: values.countryId,
-      GlAccountId: values.glAccountId ?? null,
+      BankGlcoaid: values.glAccountId ?? 0,
       Website: values.website || "",
       IsActive: values.isActive,
-      CompanyId: companyId,
       Version: values.version || 0,
       CreatedBy: userID,
       UpdatedBy: userID,
@@ -379,7 +382,7 @@ export default function BankDialog({
 
       // Prepare the response data to include in handleAddEdit
       const selectedGlAccount = glAccounts.find(
-        (a) => a.accountId === payload.GlAccountId,
+        (a) => a.accountId === payload.BankGlcoaid,
       );
       const responseItem = {
         bankId: jsonData?.bankId || jsonData?.BankId || payload.BankId,
@@ -388,12 +391,10 @@ export default function BankDialog({
         swiftCode: payload.SwiftCode,
         countryId: payload.CountryId,
         countryName: selectedCountry?.countryName || "",
-        glAccountId:
-          jsonData?.glAccountId ?? jsonData?.GlAccountId ?? payload.GlAccountId ?? null,
+        glAccountId: payload.BankGlcoaid || null,
         glAccountName: selectedGlAccount?.accountName || "",
         website: payload.Website,
         isActive: payload.IsActive,
-        companyId: payload.CompanyId,
         version: payload.Version,
         createdBy: payload.CreatedBy,
         updatedBy: payload.UpdatedBy,
