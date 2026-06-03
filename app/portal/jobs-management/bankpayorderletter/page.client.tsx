@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-} from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { getAuthHeaders, getBaseUrl } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,12 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   FiSearch,
   FiLoader,
@@ -148,8 +137,9 @@ export default function BankPayOrderLetterClient() {
     filteredItems.length > 0 &&
     filteredItems.every((it) => selectedIds.has(it.internalFundsRequestBankId));
   const someFilteredSelected =
-    filteredItems.some((it) => selectedIds.has(it.internalFundsRequestBankId)) &&
-    !allFilteredSelected;
+    filteredItems.some((it) =>
+      selectedIds.has(it.internalFundsRequestBankId),
+    ) && !allFilteredSelected;
 
   // ── Totals ─────────────────────────────────────────────────────────────────
   const totals = useMemo(() => {
@@ -211,10 +201,11 @@ export default function BankPayOrderLetterClient() {
             method: "POST",
             headers: getAuthHeaders(),
             body: JSON.stringify({
-              select: "*",
-              where: `ApprovalStatus == "Approved"`,
-              search: "",
+              select:
+                "bankFundRequestId, TotalRequestedAmount, TotalApprovedAmount, ApprovalStatus, ApprovedBy, ApprovedOn, RequestedTo, CreatedOn, CreatedBy, version, requestorUserId, remarks",
+              where: "",
               sortOn: "BankFundRequestId DESC",
+
               page: "1",
               pageSize: "500",
             }),
@@ -417,9 +408,7 @@ export default function BankPayOrderLetterClient() {
         variant: "destructive",
         title: "Create Failed",
         description:
-          error instanceof Error
-            ? error.message
-            : "An unknown error occurred",
+          error instanceof Error ? error.message : "An unknown error occurred",
       });
     } finally {
       isSubmittingRef.current = false;
@@ -445,7 +434,6 @@ export default function BankPayOrderLetterClient() {
   return (
     <div className='p-4 bg-gray-50 min-h-screen'>
       <div className='max-w-7xl mx-auto space-y-4'>
-
         {/* ── Page Header ─────────────────────────────────────────────── */}
         <div className='flex items-center justify-between'>
           <div>
@@ -634,7 +622,9 @@ export default function BankPayOrderLetterClient() {
             {allItems.length === 0 && !isLoadingItems ? (
               <div className='flex flex-col items-center justify-center py-16 text-gray-400'>
                 <AlertCircle className='h-10 w-10 mb-3 text-gray-300' />
-                <p className='text-sm font-medium'>No approved requests found</p>
+                <p className='text-sm font-medium'>
+                  No approved requests found
+                </p>
                 <p className='text-xs mt-1'>
                   {selectedBankId
                     ? "Try selecting a different bank or clear the filter."
@@ -658,17 +648,31 @@ export default function BankPayOrderLetterClient() {
                             : {})}
                         />
                       </TableHead>
-                      <TableHead className='w-8 text-center text-xs'>#</TableHead>
-                      <TableHead className='text-xs min-w-[90px]'>Request ID</TableHead>
-                      <TableHead className='text-xs min-w-[110px]'>Job Number</TableHead>
-                      <TableHead className='text-xs min-w-[200px]'>Head of Account</TableHead>
-                      <TableHead className='text-xs min-w-[180px]'>On Account Of</TableHead>
-                      <TableHead className='text-xs min-w-[130px]'>Account No</TableHead>
+                      <TableHead className='w-8 text-center text-xs'>
+                        #
+                      </TableHead>
+                      <TableHead className='text-xs min-w-[90px]'>
+                        Request ID
+                      </TableHead>
+                      <TableHead className='text-xs min-w-[110px]'>
+                        Job Number
+                      </TableHead>
+                      <TableHead className='text-xs min-w-[200px]'>
+                        Head of Account
+                      </TableHead>
+                      <TableHead className='text-xs min-w-[180px]'>
+                        On Account Of
+                      </TableHead>
+                      <TableHead className='text-xs min-w-[130px]'>
+                        Account No
+                      </TableHead>
                       <TableHead className='text-xs min-w-[130px] text-right'>
                         Approved Amount
                       </TableHead>
                       {!selectedBankId && (
-                        <TableHead className='text-xs min-w-[130px]'>Bank</TableHead>
+                        <TableHead className='text-xs min-w-[130px]'>
+                          Bank
+                        </TableHead>
                       )}
                     </TableRow>
                   </TableHeader>
@@ -750,7 +754,9 @@ export default function BankPayOrderLetterClient() {
                             </TableCell>
 
                             <TableCell className='text-xs text-gray-700'>
-                              <div>{item.beneficiary || item.customerName || "—"}</div>
+                              <div>
+                                {item.beneficiary || item.customerName || "—"}
+                              </div>
                               {item.accountNo && (
                                 <div className='text-gray-400 text-[10px] mt-0.5'>
                                   A/C: {item.accountNo}
@@ -771,7 +777,9 @@ export default function BankPayOrderLetterClient() {
                             {!selectedBankId && (
                               <TableCell className='text-xs text-gray-600'>
                                 {item.bankName || (
-                                  <span className='text-gray-400 italic'>—</span>
+                                  <span className='text-gray-400 italic'>
+                                    —
+                                  </span>
                                 )}
                               </TableCell>
                             )}
