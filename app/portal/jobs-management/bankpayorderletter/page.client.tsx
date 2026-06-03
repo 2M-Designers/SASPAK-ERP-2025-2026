@@ -433,15 +433,29 @@ export default function BankPayOrderLetterClient() {
       setReferenceNo("");
       await fetchApprovedItems(selectedBankId);
     } catch (error) {
-      console.error("💥 Pay Order Letter error:", error);
-      toast({
-        variant: "destructive",
-        title: "Create Failed",
-        description:
-          error instanceof Error
-            ? error.message
-            : "An unknown error occurred",
-      });
+      const errMsg = error instanceof Error ? error.message : "";
+
+      if (errMsg === "Failed to fetch") {
+        // Server updated the bank letter status but crashed during GL payment
+        // post-processing (server-side issue). The status update did succeed,
+        // so reset state and refresh to reflect the change.
+        toast({
+          title: "Status Updated",
+          description:
+            "Bank letter status was updated. GL payment entry could not be created due to a server issue — please contact your system administrator.",
+        });
+        setSelectedIds(new Set());
+        setRemarks("");
+        setReferenceNo("");
+        fetchApprovedItems(selectedBankId);
+      } else {
+        console.error("💥 Pay Order Letter error:", error);
+        toast({
+          variant: "destructive",
+          title: "Create Failed",
+          description: errMsg || "An unknown error occurred",
+        });
+      }
     } finally {
       isSubmittingRef.current = false;
       setIsSubmitting(false);
