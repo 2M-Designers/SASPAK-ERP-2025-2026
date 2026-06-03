@@ -78,6 +78,7 @@ type Bank = {
   bankId: number;
   bankCode: string;
   bankName: string;
+  bankGlcoaid: number | null;
 };
 
 type StatusOption = { key: string; label: string };
@@ -177,7 +178,7 @@ export default function InternalBankFundRequestApprovalForm({
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            select: "BankId, BankCode, BankName",
+            select: "BankId, BankCode, BankName, BankGlcoaid",
             where: "",
             search: "",
             sortOn: "BankName ASC",
@@ -212,6 +213,7 @@ export default function InternalBankFundRequestApprovalForm({
           bankId: b.bankId ?? b.BankId,
           bankCode: b.bankCode ?? b.BankCode,
           bankName: b.bankName ?? b.BankName,
+          bankGlcoaid: b.bankGlcoaid ?? b.BankGlcoaid ?? null,
         }));
         setBanks(normalized);
         setFilteredBanks(normalized);
@@ -362,6 +364,22 @@ export default function InternalBankFundRequestApprovalForm({
     setLineItems(allItems);
   }, [sourceRequests, isBatchMode, pendingStatus, users]);
 
+  // ── Backfill headCoaId from bank's bankGlcoaid when both lists are ready ──
+  useEffect(() => {
+    if (!banks.length || !lineItems.length) return;
+    setLineItems((prev) =>
+      prev.map((item) => {
+        if (item.headCoaId || !item.bankId) return item;
+        const bank = banks.find((b) => b.bankId === item.bankId);
+        if (bank?.bankGlcoaid) {
+          return { ...item, headCoaId: bank.bankGlcoaid };
+        }
+        return item;
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [banks]);
+
   // ── Group items by requestor (batch mode) ─────────────────────────────────
   const groupedByRequestor = useMemo(() => {
     const groups = new Map<
@@ -422,10 +440,14 @@ export default function InternalBankFundRequestApprovalForm({
   const updateBank = useCallback(
     (itemId: number, bankIdStr: string) => {
       const selected = banks.find((b) => b.bankId.toString() === bankIdStr);
-      updateLineByItemId(itemId, {
+      const patch: Partial<LineItemApproval> = {
         bankId: parseInt(bankIdStr, 10),
         bankName: selected?.bankName || "",
-      });
+      };
+      if (selected?.bankGlcoaid) {
+        patch.headCoaId = selected.bankGlcoaid;
+      }
+      updateLineByItemId(itemId, patch);
     },
     [banks, updateLineByItemId],
   );
