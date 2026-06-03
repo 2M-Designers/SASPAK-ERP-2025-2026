@@ -16,7 +16,7 @@ export default async function BanksPage() {
 
   const requestBody: GetListRequest = {
     select:
-      "BankId, BankCode, BankName, SwiftCode, CountryId, Website, IsActive, CreatedAt, CreatedBy, UpdatedAt, UpdatedBy, Version",
+      "BankId, BankCode, BankName, SwiftCode, CountryId, BankGlcoaid, Website, IsActive, CreatedAt, CreatedBy, UpdatedAt, UpdatedBy, Version",
     where: "",
     sortOn: "BankName",
     page: "1",

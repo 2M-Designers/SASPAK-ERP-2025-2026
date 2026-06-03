@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AppDataTable } from "@/components/app-data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import readXlsxFile from "read-excel-file";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import BankDialog from "@/views/dialogs/general-dialogs/dialog-banks"; // Updated path
+import BankDialog from "@/views/dialogs/general-dialogs/dialog-banks";
 import AppLoader from "@/components/app-loader";
 import { FiTrash2, FiDownload, FiEdit, FiExternalLink } from "react-icons/fi";
 import { useRouter } from "next/navigation";
@@ -120,17 +120,57 @@ export default function SetupBanksPage({ initialData }: BanksPageProps) {
   const [data, setData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [glAccounts, setGlAccounts] = useState<
+    { accountId: number; accountCode: string; accountName: string }[]
+  >([]);
   const router = useRouter();
 
   useEffect(() => {
-    console.log("Initial Bank Data received:", initialData);
     if (initialData && Array.isArray(initialData)) {
       setData(initialData);
     } else {
-      console.warn("Initial data is not an array:", initialData);
       setData([]);
     }
   }, [initialData]);
+
+  useEffect(() => {
+    const fetchGlAccounts = async () => {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        const response = await fetch(`${baseUrl}GlAccount/GetList`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            select: "AccountId, AccountCode, AccountName",
+            where: "IsActive == true",
+            sortOn: "AccountCode ASC",
+            page: "1",
+            pageSize: "500",
+          }),
+        });
+        if (response.ok) {
+          const raw = await response.json();
+          const list = Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
+          setGlAccounts(
+            list.map((a: any) => ({
+              accountId: a.accountId ?? a.AccountId ?? 0,
+              accountCode: a.accountCode ?? a.AccountCode ?? "",
+              accountName: a.accountName ?? a.AccountName ?? "",
+            })),
+          );
+        }
+      } catch {
+        // non-critical — table still works without account names
+      }
+    };
+    fetchGlAccounts();
+  }, []);
+
+  const glAccountMap = useMemo(() => {
+    const m = new Map<number, string>();
+    glAccounts.forEach((a) => m.set(a.accountId, `${a.accountCode} - ${a.accountName}`));
+    return m;
+  }, [glAccounts]);
 
   // Format date for display
   const formatDate = (dateString: string) => {
@@ -227,6 +267,17 @@ export default function SetupBanksPage({ initialData }: BanksPageProps) {
           {row.getValue("countryId") || row.getValue("countryId") || "-"}
         </span>
       ),
+      enableColumnFilter: false,
+    },
+    // Chart of Account
+    {
+      accessorKey: "bankGlcoaid",
+      header: "Chart of Account",
+      cell: ({ row }) => {
+        const id = row.original.bankGlcoaid;
+        const label = id ? glAccountMap.get(id) : null;
+        return <span className='text-sm'>{label || (id ? `ID: ${id}` : "-")}</span>;
+      },
       enableColumnFilter: false,
     },
     // Website
