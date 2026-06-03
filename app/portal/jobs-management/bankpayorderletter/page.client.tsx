@@ -199,99 +199,12 @@ export default function BankPayOrderLetterClient() {
     fetchBanks();
   }, []);
 
-  // ── Fetch approved detail items ────────────────────────────────────────────
+  // ── Fetch approved items from master list, filter by bank client-side ────────
   const fetchApprovedItems = useCallback(
     async (bankId: number | null) => {
       setIsLoadingItems(true);
       setSelectedIds(new Set());
       try {
-        // Build where clause for detail-level fetch
-        const bankFilter = bankId ? ` && BankId == ${bankId}` : "";
-        const whereClause = `SubRequestStatus == "Approved"${bankFilter}`;
-
-        const res = await fetch(
-          `${getBaseUrl()}InternalBankFundsRequestDetail/GetList`,
-          {
-            method: "POST",
-            headers: getAuthHeaders(),
-            body: JSON.stringify({
-              select: "*",
-              where: whereClause,
-              search: "",
-              sortOn: "InternalFundsRequestBankId DESC",
-              page: "1",
-              pageSize: "1000",
-            }),
-          },
-        );
-
-        if (!res.ok) {
-          // Fallback: fetch via master GetList and flatten
-          await fetchViaMainList(bankId);
-          return;
-        }
-
-        const d = await res.json();
-        const raw: any[] = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
-
-        if (raw.length === 0 && !bankId) {
-          // Detail endpoint might not exist — fall back to master + flatten
-          await fetchViaMainList(bankId);
-          return;
-        }
-
-        const bankMap = new Map(banks.map((b) => [b.bankId, b.bankName]));
-
-        const items: ApprovedDetailItem[] = raw.map((r: any) => {
-          const bId =
-            r.bankId ?? r.BankId ?? null;
-          return {
-            internalFundsRequestBankId:
-              r.internalFundsRequestBankId ??
-              r.InternalFundsRequestBankId ??
-              0,
-            bankFundRequestMasterId:
-              r.bankFundRequestMasterId ??
-              r.BankFundRequestMasterId ??
-              r.bankFundRequestId ??
-              r.BankFundRequestId ??
-              0,
-            jobId: r.jobId ?? r.JobId ?? null,
-            jobNumber: r.jobNumber ?? r.JobNumber ?? "",
-            headOfAccount: r.headOfAccount ?? r.HeadOfAccount ?? "",
-            beneficiary: r.beneficiary ?? r.Beneficiary ?? "",
-            accountNo: r.accountNo ?? r.AccountNo ?? "",
-            approvedAmount: r.approvedAmount ?? r.ApprovedAmount ?? 0,
-            requestedAmount: r.requestedAmount ?? r.RequestedAmount ?? 0,
-            bankId: bId,
-            bankName:
-              bankMap.get(bId) ?? r.bankName ?? r.BankName ?? "",
-            customerName: r.customerName ?? r.CustomerName ?? "",
-            chargesId: r.chargesId ?? r.ChargesId ?? 0,
-            onAccountOfId: r.onAccountOfId ?? r.OnAccountOfId ?? null,
-            remarks: r.remarks ?? r.Remarks ?? "",
-          };
-        });
-
-        setAllItems(items);
-      } catch (e) {
-        console.error("Approved items fetch error:", e);
-        // On any network error also try the master fallback
-        await fetchViaMainList(bankId);
-      } finally {
-        setIsLoadingItems(false);
-      }
-    },
-    [banks], // eslint-disable-line
-  );
-
-  // Fallback: fetch master records and flatten their approved detail lines
-  const fetchViaMainList = useCallback(
-    async (bankId: number | null) => {
-      try {
-        const bankFilter = bankId ? ` && BankId == ${bankId}` : "";
-        const whereClause = `ApprovalStatus == "Approved"${bankFilter}`;
-
         const res = await fetch(
           `${getBaseUrl()}InternalBankFundsRequest/GetList`,
           {
@@ -299,7 +212,7 @@ export default function BankPayOrderLetterClient() {
             headers: getAuthHeaders(),
             body: JSON.stringify({
               select: "*",
-              where: whereClause,
+              where: `ApprovalStatus == "Approved"`,
               search: "",
               sortOn: "BankFundRequestId DESC",
               page: "1",
@@ -307,7 +220,15 @@ export default function BankPayOrderLetterClient() {
             }),
           },
         );
-        if (!res.ok) return;
+
+        if (!res.ok) {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: `Failed to load approved requests (${res.status})`,
+          });
+          return;
+        }
 
         const d = await res.json();
         const masters: any[] = Array.isArray(d)
@@ -327,11 +248,14 @@ export default function BankPayOrderLetterClient() {
             [];
 
           for (const r of details) {
-            const status =
-              r.subRequestStatus ?? r.SubRequestStatus ?? "";
+            const status = r.subRequestStatus ?? r.SubRequestStatus ?? "";
             if (status.toLowerCase() !== "approved") continue;
 
             const bId = r.bankId ?? r.BankId ?? masterBankId;
+
+            // Client-side bank filter — only apply when a bank is selected
+            if (bankId !== null && bId !== bankId) continue;
+
             items.push({
               internalFundsRequestBankId:
                 r.internalFundsRequestBankId ??
@@ -346,7 +270,7 @@ export default function BankPayOrderLetterClient() {
               approvedAmount: r.approvedAmount ?? r.ApprovedAmount ?? 0,
               requestedAmount: r.requestedAmount ?? r.RequestedAmount ?? 0,
               bankId: bId,
-              bankName: bankMap.get(bId) ?? "",
+              bankName: bankMap.get(bId) ?? r.bankName ?? r.BankName ?? "",
               customerName: r.customerName ?? r.CustomerName ?? "",
               chargesId: r.chargesId ?? r.ChargesId ?? 0,
               onAccountOfId: r.onAccountOfId ?? r.OnAccountOfId ?? null,
@@ -357,15 +281,22 @@ export default function BankPayOrderLetterClient() {
 
         setAllItems(items);
       } catch (e) {
-        console.error("Master fallback fetch error:", e);
+        console.error("Fetch approved items error:", e);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load approved items. Please try again.",
+        });
+      } finally {
+        setIsLoadingItems(false);
       }
     },
-    [banks],
+    [banks, toast],
   );
 
-  // Re-fetch when bank selection or banks list changes
+  // Re-fetch when bank selection changes or banks list first loads
   useEffect(() => {
-    if (banks.length > 0 || selectedBankId !== null) {
+    if (banks.length > 0) {
       fetchApprovedItems(selectedBankId);
     }
   }, [selectedBankId, banks.length]); // eslint-disable-line
