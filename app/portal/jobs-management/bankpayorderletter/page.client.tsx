@@ -189,21 +189,22 @@ export default function BankPayOrderLetterClient() {
     fetchBanks();
   }, []);
 
-  // ── Fetch approved items from master list, filter by bank client-side ────────
+  // ── Fetch approved items: get master IDs then fetch each record individually ─
   const fetchApprovedItems = useCallback(
     async (bankId: number | null) => {
       setIsLoadingItems(true);
       setSelectedIds(new Set());
       try {
-        const res = await fetch(
+        // Step 1: get list of approved master IDs
+        const listRes = await fetch(
           `${getBaseUrl()}InternalBankFundsRequest/GetList`,
           {
             method: "POST",
             headers: getAuthHeaders(),
             body: JSON.stringify({
-              select:
-                "bankFundRequestId, TotalRequestedAmount, TotalApprovedAmount, ApprovalStatus, ApprovedBy, ApprovedOn, RequestedTo, CreatedOn, CreatedBy, version, requestorUserId, remarks",
-              where: "",
+              select: "BankFundRequestId",
+              where: `ApprovalStatus == "Approved"`,
+              search: "",
               sortOn: "BankFundRequestId DESC",
 
               page: "1",
@@ -212,24 +213,44 @@ export default function BankPayOrderLetterClient() {
           },
         );
 
-        if (!res.ok) {
+        if (!listRes.ok) {
           toast({
             variant: "destructive",
             title: "Error",
-            description: `Failed to load approved requests (${res.status})`,
+            description: `Failed to load approved requests (${listRes.status})`,
           });
           return;
         }
 
-        const d = await res.json();
-        const masters: any[] = Array.isArray(d)
-          ? d
-          : (d?.data ?? d?.items ?? []);
+        const listData = await listRes.json();
+        const masterSummaries: any[] = Array.isArray(listData)
+          ? listData
+          : (listData?.data ?? listData?.items ?? []);
+
+        const ids: number[] = masterSummaries
+          .map((m) => m.bankFundRequestId ?? m.BankFundRequestId)
+          .filter(Boolean);
+
+        if (ids.length === 0) {
+          setAllItems([]);
+          return;
+        }
+
+        // Step 2: fetch each master individually to get nested detail lines
+        const fullRecords = await Promise.all(
+          ids.map((id) =>
+            fetch(`${getBaseUrl()}InternalBankFundsRequest/${id}`, {
+              method: "GET",
+              headers: getAuthHeaders(),
+            }).then((r) => (r.ok ? r.json() : null)),
+          ),
+        );
 
         const bankMap = new Map(banks.map((b) => [b.bankId, b.bankName]));
         const items: ApprovedDetailItem[] = [];
 
-        for (const master of masters) {
+        for (const master of fullRecords) {
+          if (!master) continue;
           const masterId =
             master.bankFundRequestId ?? master.BankFundRequestId ?? 0;
           const masterBankId = master.bankId ?? master.BankId ?? null;
