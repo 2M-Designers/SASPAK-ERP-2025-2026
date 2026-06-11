@@ -178,6 +178,10 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
   const [statusOptions, setStatusOptions] = useState<StatusOption[]>([]);
   const printAreaRef = useRef<HTMLDivElement>(null);
 
+  // Lookup maps used by view + print to resolve account/cost-center names
+  const [accountsMap, setAccountsMap] = useState<Map<number, Account>>(new Map());
+  const [costCentersMap, setCostCentersMap] = useState<Map<number, CostCenter>>(new Map());
+
   const { toast } = useToast();
 
   // ── Inject print styles once ──────────────────────────────────────────────
@@ -224,6 +228,80 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
     ],
     [statusOptions],
   );
+
+  // ── Fetch accounts + cost-centers for view/print lookup ───────────────────
+  useEffect(() => {
+    const fetchLookupMaps = async () => {
+      try {
+        const base = getBaseUrl();
+        const hdr = getAuthHeaders();
+        const body = (sel: string) =>
+          JSON.stringify({
+            select: sel,
+            where: "",
+            search: "",
+            sortOn: "",
+            page: "1",
+            pageSize: "2000",
+          });
+
+        const [acctRes, ccRes] = await Promise.all([
+          fetch(`${base}GlAccount/GetList`, { method: "POST", headers: hdr, body: body("AccountId, AccountCode, AccountName") }),
+          fetch(`${base}CostCenter/GetList`, { method: "POST", headers: hdr, body: body("CostCenterId, CostCenterCode, CostCenterName") }),
+        ]);
+
+        if (acctRes.ok) {
+          const raw = await acctRes.json();
+          const list: any[] = Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
+          const map = new Map<number, Account>();
+          list.forEach((a: any) => {
+            const id = a.accountId ?? a.AccountId ?? 0;
+            if (id) {
+              map.set(id, {
+                accountId: id,
+                companyId: a.companyId ?? a.CompanyId ?? 0,
+                parentAccountId: a.parentAccountId ?? a.ParentAccountId ?? 0,
+                accountCode: a.accountCode ?? a.AccountCode ?? "",
+                accountName: a.accountName ?? a.AccountName ?? "",
+                description: a.description ?? a.Description ?? "",
+                accountLevel: a.accountLevel ?? a.AccountLevel ?? 0,
+                accountType: a.accountType ?? a.AccountType ?? "",
+                accountNature: a.accountNature ?? a.AccountNature ?? "",
+                isHeader: a.isHeader ?? a.IsHeader ?? false,
+                isActive: a.isActive ?? a.IsActive ?? true,
+                version: a.version ?? a.Version ?? 0,
+              });
+            }
+          });
+          setAccountsMap(map);
+        }
+
+        if (ccRes.ok) {
+          const raw = await ccRes.json();
+          const list: any[] = Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
+          const map = new Map<number, CostCenter>();
+          list.forEach((c: any) => {
+            const id = c.costCenterId ?? c.CostCenterId ?? 0;
+            if (id) {
+              map.set(id, {
+                costCenterId: id,
+                companyId: c.companyId ?? c.CompanyId ?? 0,
+                costCenterCode: c.costCenterCode ?? c.CostCenterCode ?? "",
+                costCenterName: c.costCenterName ?? c.CostCenterName ?? "",
+                description: c.description ?? c.Description ?? "",
+                isActive: c.isActive ?? c.IsActive ?? true,
+                version: c.version ?? c.Version ?? 0,
+              });
+            }
+          });
+          setCostCentersMap(map);
+        }
+      } catch (e) {
+        console.error("Lookup map fetch error:", e);
+      }
+    };
+    fetchLookupMaps();
+  }, []); // eslint-disable-line
 
   // ── Fetch list ────────────────────────────────────────────────────────────
   const fetchVouchers = useCallback(async () => {
@@ -289,119 +367,61 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
   };
 
   // ── Fetch full voucher with account + cost-center joins ───────────────────
-  // The API returns only accountId/costCenterId in details, not nested objects.
-  // This helper fetches them individually and stitches them together.
+  // Uses the pre-loaded accountsMap/costCentersMap (populated from GetList on
+  // mount with auth) so we avoid individual GET requests that lack auth headers.
   const fetchFullVoucherWithDetails = useCallback(
     async (id: number): Promise<Voucher | null> => {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        const baseUrl = getBaseUrl();
 
         const vRes = await fetch(`${baseUrl}GLVoucher/${id}`, {
           method: "GET",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(),
         });
         if (!vRes.ok) throw new Error(`${vRes.status}`);
         const raw = await vRes.json();
 
         const rawDetails: any[] = raw.voucherDetails || [];
 
-        const accountIds = [
-          ...new Set(
-            rawDetails.map((d: any) => d.accountId).filter(Boolean),
-          ),
-        ] as number[];
-        const costCenterIds = [
-          ...new Set(
-            rawDetails.map((d: any) => d.costCenterId).filter(Boolean),
-          ),
-        ] as number[];
-
-        const accountMap: Record<number, Account> = {};
-        await Promise.all(
-          accountIds.map(async (aid) => {
-            try {
-              const ar = await fetch(`${baseUrl}GlAccount/${aid}`, {
-                method: "GET",
-                headers: { "Content-Type": "application/json" },
-              });
-              if (ar.ok) {
-                const acc = await ar.json();
-                accountMap[aid] = {
-                  accountId: acc.accountId ?? aid,
-                  companyId: acc.companyId ?? 0,
-                  parentAccountId: acc.parentAccountId ?? 0,
-                  accountCode: acc.accountCode ?? "",
-                  accountName: acc.accountName ?? "",
-                  description: acc.description ?? "",
-                  accountLevel: acc.accountLevel ?? 0,
-                  accountType: acc.accountType ?? "",
-                  accountNature: acc.accountNature ?? "",
-                  isHeader: acc.isHeader ?? false,
-                  isActive: acc.isActive ?? true,
-                  version: acc.version ?? 0,
-                };
-              }
-            } catch {}
-          }),
-        );
-
-        const costCenterMap: Record<number, CostCenter> = {};
-        await Promise.all(
-          costCenterIds.map(async (ccid) => {
-            try {
-              const cr = await fetch(`${baseUrl}CostCenter/${ccid}`, {
-                method: "GET",
-                headers: { "Content-Type": "application/json" },
-              });
-              if (cr.ok) {
-                const cc = await cr.json();
-                costCenterMap[ccid] = {
-                  costCenterId: cc.costCenterId ?? ccid,
-                  companyId: cc.companyId ?? 0,
-                  costCenterCode: cc.costCenterCode ?? "",
-                  costCenterName: cc.costCenterName ?? "",
-                  description: cc.description ?? "",
-                  isActive: cc.isActive ?? true,
-                  version: cc.version ?? 0,
-                };
-              }
-            } catch {}
-          }),
-        );
-
-        const normalizedDetails: VoucherDetail[] = rawDetails.map((d: any) => ({
-          voucherDetailId: d.voucherDetailId ?? 0,
-          voucherId: d.voucherId ?? raw.voucherId ?? 0,
-          accountId: d.accountId ?? 0,
-          debitAmount: d.debitAmount ?? 0,
-          creditAmount: d.creditAmount ?? 0,
-          description: d.description ?? "",
-          costCenterId: d.costCenterId ?? 0,
-          version: d.version ?? 0,
-          account: accountMap[d.accountId] ?? {
-            accountId: d.accountId ?? 0,
-            accountCode: "",
-            accountName: d.accountId ? `Account #${d.accountId}` : "",
-            companyId: 0,
-            parentAccountId: 0,
-            description: "",
-            accountLevel: 0,
-            accountType: "",
-            accountNature: "",
-            isHeader: false,
-            isActive: true,
-            version: 0,
-          },
-          costCenter: costCenterMap[d.costCenterId] ?? {
-            costCenterId: d.costCenterId ?? 0,
-            costCenterCode: "",
-            costCenterName: d.costCenterId ? `CC #${d.costCenterId}` : "",
-            companyId: 0,
-            description: "",
-            isActive: true,
-            version: 0,
-          },
-        }));
+        const normalizedDetails: VoucherDetail[] = rawDetails.map((d: any) => {
+          const aid = d.accountId ?? d.AccountId ?? 0;
+          const ccid = d.costCenterId ?? d.CostCenterId ?? 0;
+          const acct = accountsMap.get(aid);
+          const cc = costCentersMap.get(ccid);
+          return {
+            voucherDetailId: d.voucherDetailId ?? d.VoucherDetailId ?? 0,
+            voucherId: d.voucherId ?? d.VoucherId ?? raw.voucherId ?? 0,
+            accountId: aid,
+            debitAmount: d.debitAmount ?? d.DebitAmount ?? 0,
+            creditAmount: d.creditAmount ?? d.CreditAmount ?? 0,
+            description: d.description ?? d.Description ?? "",
+            costCenterId: ccid,
+            version: d.version ?? d.Version ?? 0,
+            account: acct ?? {
+              accountId: aid,
+              accountCode: "",
+              accountName: aid ? `Account #${aid}` : "",
+              companyId: 0,
+              parentAccountId: 0,
+              description: "",
+              accountLevel: 0,
+              accountType: "",
+              accountNature: "",
+              isHeader: false,
+              isActive: true,
+              version: 0,
+            },
+            costCenter: cc ?? {
+              costCenterId: ccid,
+              costCenterCode: "",
+              costCenterName: ccid ? `CC #${ccid}` : "",
+              companyId: 0,
+              description: "",
+              isActive: true,
+              version: 0,
+            },
+          };
+        });
 
         const ap = raw.accountingPeriod ?? null;
         return {
@@ -449,7 +469,7 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
         return null;
       }
     },
-    [toast],
+    [toast, accountsMap, costCentersMap],
   );
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
