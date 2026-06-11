@@ -513,11 +513,7 @@ const LineItemRow = ({
         >
           <SelectTrigger className='h-9 text-sm' aria-label={`Select on account of for line ${index + 1}`}>
             <SelectValue placeholder='Select party'>
-              {item.onAccountOfName || (
-                item.onAccountOfPartyId === -1 ? "SASPAK CARGO" :
-                item.onAccountOfPartyId === -2 ? "SASPAK LOGISTICS" :
-                undefined
-              )}
+              {item.onAccountOfName || undefined}
             </SelectValue>
           </SelectTrigger>
           <SelectContent className='max-h-[300px] w-[280px]' position='popper' sideOffset={5}>
@@ -711,10 +707,7 @@ const MemoizedLineItemRow = React.memo(LineItemRow);
 
 // ─── Pinned On Account Of parties ────────────────────────────────────────────
 
-const PINNED_ON_ACCOUNT_PARTIES: Party[] = [
-  { partyId: -1, partyCode: "SC", partyName: "SASPAK CARGO", benificiaryFromPO: "SASPAK CARGO" },
-  { partyId: -2, partyCode: "SL", partyName: "SASPAK LOGISTICS", benificiaryFromPO: "SASPAK LOGISTICS" },
-];
+const PINNED_ON_ACCOUNT_PARTIES: Party[] = [];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -1409,12 +1402,6 @@ export default function InternalBankFundRequestForm({
   const handleOnAccountOfChange = useCallback(
     (id: string, partyIdStr: string) => {
       const partyId = parseInt(partyIdStr, 10);
-      const pinned = PINNED_ON_ACCOUNT_PARTIES.find((p) => p.partyId === partyId);
-      if (pinned) {
-        updateLineItem(id, "onAccountOfPartyId", pinned.partyId);
-        updateLineItem(id, "onAccountOfName", pinned.partyName);
-        return;
-      }
       const party = parties.find((p) => p.partyId === partyId);
       if (party) {
         updateLineItem(id, "onAccountOfPartyId", party.partyId);
@@ -1583,8 +1570,6 @@ export default function InternalBankFundRequestForm({
           onAccountOfName: (() => {
             const savedId = d.onAccountOfId || d.OnAccountOfId || null;
             if (!savedId) return "";
-            const pinned = PINNED_ON_ACCOUNT_PARTIES.find((p) => p.partyId === savedId);
-            if (pinned) return pinned.partyName;
             const fromParties = parties.find((p) => p.partyId === savedId);
             return fromParties?.partyName || d.onAccountOfName || d.OnAccountOfName || "";
           })(),
