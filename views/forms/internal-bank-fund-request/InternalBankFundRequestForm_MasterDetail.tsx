@@ -77,6 +77,7 @@ type LineItem = {
   chargeType: string;
   beneficiaryCoaId: number | null;
   onAccountOfPartyId: number | null;
+  onAccountOfName: string;
   beneficiary: string;
   partiesAccount: string;
   requestedAmount: number;
@@ -251,6 +252,10 @@ const LineItemRow = ({
   filteredBeneficiaries,
   beneficiarySearch,
   setBeneficiarySearch,
+  onAccountOfSearch,
+  setOnAccountOfSearch,
+  onAccountOfParties,
+  onAccountOfChange,
   chargePartiesCache,
   statusOptions,
   pendingStatus,
@@ -446,8 +451,8 @@ const LineItemRow = ({
             className='h-9 text-sm'
             aria-label={`Select on account of for line ${index + 1}`}
           >
-            <SelectValue placeholder='Select On Account Of'>
-              {item.beneficiary || "Select On Account Of"}
+            <SelectValue placeholder='Select Beneficiary'>
+              {item.beneficiary || "Select Beneficiary"}
             </SelectValue>
           </SelectTrigger>
           <SelectContent
@@ -657,6 +662,13 @@ const LineItemRow = ({
 
 const MemoizedLineItemRow = React.memo(LineItemRow);
 
+// ─── Pinned On Account Of parties ────────────────────────────────────────────
+
+const PINNED_ON_ACCOUNT_PARTIES: Party[] = [
+  { partyId: -1, partyCode: "SC", partyName: "SASPAK CARGO", benificiaryFromPO: "SASPAK CARGO" },
+  { partyId: -2, partyCode: "SL", partyName: "SASPAK LOGISTICS", benificiaryFromPO: "SASPAK LOGISTICS" },
+];
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function InternalBankFundRequestForm({
@@ -694,6 +706,7 @@ export default function InternalBankFundRequestForm({
       chargeType: "",
       beneficiaryCoaId: null,
       onAccountOfPartyId: null,
+      onAccountOfName: "",
       beneficiary: "",
       partiesAccount: "",
       requestedAmount: 0,
@@ -733,6 +746,8 @@ export default function InternalBankFundRequestForm({
   const [jobSearch, setJobSearch] = useState("");
   const [chargeSearch, setChargeSearch] = useState("");
   const [beneficiarySearch, setBeneficiarySearch] = useState("");
+  const [onAccountOfSearch, setOnAccountOfSearch] = useState("");
+  const debouncedOnAccountOfSearch = useDebounce(onAccountOfSearch, 300);
 
   const debouncedBankSearch = useDebounce(bankSearch, 300);
   const debouncedJobSearch = useDebounce(jobSearch, 300);
@@ -1124,6 +1139,22 @@ export default function InternalBankFundRequestForm({
     );
   }, [debouncedBeneficiarySearch, parties]);
 
+  const filteredOnAccountOfParties = useMemo(() => {
+    const q = debouncedOnAccountOfSearch.toLowerCase();
+    const all = [...PINNED_ON_ACCOUNT_PARTIES, ...parties];
+    if (!q) return all;
+    return [
+      ...PINNED_ON_ACCOUNT_PARTIES.filter(
+        (p) => p.partyName.toLowerCase().includes(q),
+      ),
+      ...parties.filter(
+        (p) =>
+          p.partyName.toLowerCase().includes(q) ||
+          p.partyCode.toLowerCase().includes(q),
+      ),
+    ];
+  }, [debouncedOnAccountOfSearch, parties]);
+
   // ── Filtered requestors ───────────────────────────────────────────────────
   const filteredRequestors = useMemo(() => {
     const q = debouncedRequestorSearch.toLowerCase();
@@ -1162,6 +1193,7 @@ export default function InternalBankFundRequestForm({
               customerName: "",
               beneficiaryCoaId: null,
               onAccountOfPartyId: null,
+              onAccountOfName: "",
               beneficiary: "",
               partiesAccount: "",
               // chargeType remains — it belongs to the charge, not the job
@@ -1188,6 +1220,7 @@ export default function InternalBankFundRequestForm({
                 customerName: "",
                 beneficiaryCoaId: null,
                 onAccountOfPartyId: null,
+                onAccountOfName: "",
                 beneficiary: "",
                 partiesAccount: "",
               }
@@ -1268,6 +1301,7 @@ export default function InternalBankFundRequestForm({
                 chargeType: charge.chargeType || "",
                 beneficiaryCoaId: null,
                 onAccountOfPartyId: null,
+                onAccountOfName: "",
                 beneficiary: "",
                 partiesAccount: "",
               }
@@ -1319,7 +1353,26 @@ export default function InternalBankFundRequestForm({
         "beneficiary",
         party.benificiaryFromPO || party.partyName || party.partyCode,
       );
+      updateLineItem(id, "onAccountOfName", party.partyName || party.partyCode || "");
       updateLineItem(id, "partiesAccount", party.partyName || party.partyCode);
+    },
+    [parties, updateLineItem],
+  );
+
+  const handleOnAccountOfChange = useCallback(
+    (id: string, partyIdStr: string) => {
+      const partyId = parseInt(partyIdStr, 10);
+      const pinned = PINNED_ON_ACCOUNT_PARTIES.find((p) => p.partyId === partyId);
+      if (pinned) {
+        updateLineItem(id, "onAccountOfPartyId", pinned.partyId);
+        updateLineItem(id, "onAccountOfName", pinned.partyName);
+        return;
+      }
+      const party = parties.find((p) => p.partyId === partyId);
+      if (party) {
+        updateLineItem(id, "onAccountOfPartyId", party.partyId);
+        updateLineItem(id, "onAccountOfName", party.partyName);
+      }
     },
     [parties, updateLineItem],
   );
@@ -1480,6 +1533,14 @@ export default function InternalBankFundRequestForm({
           chargeType: d.chargeType || d.ChargeType || "",
           beneficiaryCoaId: d.beneficiaryCoaId || d.BeneficiaryCoaId || null,
           onAccountOfPartyId: d.onAccountOfId || d.OnAccountOfId || null,
+          onAccountOfName: (() => {
+            const savedId = d.onAccountOfId || d.OnAccountOfId || null;
+            if (!savedId) return "";
+            const pinned = PINNED_ON_ACCOUNT_PARTIES.find((p) => p.partyId === savedId);
+            if (pinned) return pinned.partyName;
+            const fromParties = parties.find((p) => p.partyId === savedId);
+            return fromParties?.partyName || d.onAccountOfName || d.OnAccountOfName || "";
+          })(),
           beneficiary: d.beneficiary || d.Beneficiary || "",
           partiesAccount: d.partiesAccount || d.PartiesAccount || "",
           requestedAmount: d.requestedAmount || d.RequestedAmount || 0,
@@ -1615,7 +1676,10 @@ export default function InternalBankFundRequestForm({
             ApprovedAmount: 0,
             ChargesId: item.headCoaId ?? 0,
             CustomerName: item.partiesAccount || item.beneficiary || "",
-            OnAccountOfId: item.onAccountOfPartyId ?? 0,
+            OnAccountOfId:
+              item.onAccountOfPartyId && item.onAccountOfPartyId > 0
+                ? item.onAccountOfPartyId
+                : 0,
 
             // ── Routing ───────────────────────────────────────────────────
             RequestedTo: item.requestedTo ?? selectedRequestor ?? 0,
@@ -2063,7 +2127,10 @@ export default function InternalBankFundRequestForm({
                         Head of Account <span className='text-red-500'>*</span>
                       </TableHead>
                       <TableHead className='min-w-[200px]'>
-                        On Account Of <span className='text-red-500'>*</span>
+                        Beneficiary <span className='text-red-500'>*</span>
+                      </TableHead>
+                      <TableHead className='min-w-[200px]'>
+                        On Account Of
                       </TableHead>
                       <TableHead className='min-w-[135px]'>
                         Amount (PKR) <span className='text-red-500'>*</span>
@@ -2094,6 +2161,10 @@ export default function InternalBankFundRequestForm({
                         filteredBeneficiaries={filteredBeneficiaries}
                         beneficiarySearch={beneficiarySearch}
                         setBeneficiarySearch={setBeneficiarySearch}
+                        onAccountOfSearch={onAccountOfSearch}
+                        setOnAccountOfSearch={setOnAccountOfSearch}
+                        onAccountOfParties={filteredOnAccountOfParties}
+                        onAccountOfChange={handleOnAccountOfChange}
                         chargePartiesCache={chargePartiesCache}
                         statusOptions={statusOptions}
                         pendingStatus={pendingStatus}
