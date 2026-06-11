@@ -117,6 +117,12 @@ type BankDetailLineItem = {
 
 type StatusOption = { key: string; label: string };
 
+type Bank = {
+  bankId: number;
+  bankCode?: string;
+  bankName: string;
+};
+
 type User = {
   userId: number;
   username: string;
@@ -240,6 +246,9 @@ export default function InternalBankFundRequestPage({
   const [users, setUsers] = useState<User[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // Banks lookup
+  const [banks, setBanks] = useState<Bank[]>([]);
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
 
@@ -317,6 +326,44 @@ export default function InternalBankFundRequestPage({
     };
 
     fetchUsers();
+  }, []);
+
+  // ── Fetch banks list ────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchBanks = async () => {
+      try {
+        const base = process.env.NEXT_PUBLIC_BASE_URL;
+        if (!base) return;
+
+        const res = await fetch(`${base}Banks/GetList`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            select: "BankId, BankCode, BankName",
+            where: "",
+            sortOn: "BankName ASC",
+            page: "1",
+            pageSize: "200",
+          }),
+        });
+
+        if (res.ok) {
+          const raw = await res.json();
+          const list = Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
+          setBanks(
+            list.map((b: any) => ({
+              bankId: b.bankId ?? b.BankId,
+              bankCode: b.bankCode ?? b.BankCode,
+              bankName: b.bankName ?? b.BankName ?? "",
+            })),
+          );
+        }
+      } catch (e) {
+        console.error("Banks fetch error:", e);
+      }
+    };
+
+    fetchBanks();
   }, []);
 
   // ── Fetch status options ────────────────────────────────────────────────────
@@ -1373,6 +1420,23 @@ export default function InternalBankFundRequestPage({
 
     const dialogStatus = displayStatusFor(selectedRequestDetails);
 
+    const masterBankName =
+      banks.find((b) => b.bankId === selectedRequestDetails.bankId)?.bankName ||
+      selectedRequestDetails.bankName ||
+      "-";
+
+    const resolveRequestedTo = (val: number | null | undefined): string => {
+      if (!val) return "—";
+      if (typeof val === "string") return val as string;
+      const u = users.find((x) => (x.userId ?? (x as any).UserId) === val);
+      return u?.fullName || u?.username || `User #${val}`;
+    };
+
+    const resolveApprovedBy = (val: string | null | undefined): string | null => {
+      if (!val || val === "0" || val === 0 as any) return null;
+      return val;
+    };
+
     return (
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
         <DialogContent className='max-w-5xl max-h-[90vh] overflow-y-auto'>
@@ -1383,7 +1447,7 @@ export default function InternalBankFundRequestPage({
             </DialogTitle>
             <DialogDescription>
               Request ID: #{selectedRequestDetails.bankFundRequestId} | Bank:{" "}
-              {selectedRequestDetails.bankName || "-"}
+              {masterBankName}
             </DialogDescription>
           </DialogHeader>
 
@@ -1408,8 +1472,8 @@ export default function InternalBankFundRequestPage({
                   </div>
                   <div className='flex justify-between'>
                     <span className='text-gray-600'>Bank:</span>
-                    <span className='font-medium'>
-                      {selectedRequestDetails.bankName || "-"}
+                    <span className='font-medium text-blue-700'>
+                      {masterBankName}
                     </span>
                   </div>
                   <div className='flex justify-between'>
@@ -1450,27 +1514,14 @@ export default function InternalBankFundRequestPage({
                   <div className='flex justify-between'>
                     <span className='text-gray-600'>Requested To:</span>
                     <span className='font-medium'>
-                      {(() => {
-                        const u = users.find(
-                          (x) =>
-                            (x.userId ?? (x as any).UserId) ===
-                            selectedRequestDetails.requestedTo,
-                        );
-                        return (
-                          u?.fullName ||
-                          u?.username ||
-                          (selectedRequestDetails.requestedTo
-                            ? `User #${selectedRequestDetails.requestedTo}`
-                            : "—")
-                        );
-                      })()}
+                      {resolveRequestedTo(selectedRequestDetails.requestedTo)}
                     </span>
                   </div>
-                  {selectedRequestDetails.approvedBy && (
+                  {resolveApprovedBy(selectedRequestDetails.approvedBy) && (
                     <div className='flex justify-between'>
                       <span className='text-gray-600'>Approved By:</span>
                       <span className='font-medium'>
-                        {selectedRequestDetails.approvedBy}
+                        {resolveApprovedBy(selectedRequestDetails.approvedBy)}
                       </span>
                     </div>
                   )}
@@ -1563,8 +1614,13 @@ export default function InternalBankFundRequestPage({
                               </TableCell>
                               <TableCell className='text-sm font-medium text-blue-700'>
                                 {detail.bankName ||
-                                  selectedRequestDetails.bankName ||
-                                  "-"}
+                                  banks.find(
+                                    (b) =>
+                                      b.bankId ===
+                                      (detail.bankId ||
+                                        selectedRequestDetails.bankId),
+                                  )?.bankName ||
+                                  masterBankName}
                               </TableCell>
                               <TableCell className='text-sm'>
                                 {detail.headOfAccount || "-"}
@@ -1632,6 +1688,7 @@ export default function InternalBankFundRequestPage({
     getStatusIcon,
     displayStatusFor,
     users,
+    banks,
   ]);
 
   // ── Statistics tab ──────────────────────────────────────────────────────────
