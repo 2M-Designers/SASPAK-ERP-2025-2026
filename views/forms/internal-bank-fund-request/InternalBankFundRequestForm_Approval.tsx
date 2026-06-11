@@ -731,7 +731,7 @@ export default function InternalBankFundRequestApprovalForm({
 
     const endpoint = `${getBaseUrl()}InternalBankFundsRequestDetail/BulkApprove`;
 
-    type BatchKey = { status: string; headId: number; remarks: string };
+    type BatchKey = { status: string; headId: number; remarks: string; bulkIds: number[] };
     const groupMap = new Map<string, { key: BatchKey; ids: number[] }>();
 
     lineItems.forEach((item) => {
@@ -750,11 +750,15 @@ export default function InternalBankFundRequestApprovalForm({
 
       if (!groupMap.has(groupKey)) {
         groupMap.set(groupKey, {
-          key: { status, headId, remarks },
+          key: { status, headId, remarks, bulkIds: [] },
           ids: [],
         });
       }
-      groupMap.get(groupKey)!.ids.push(item.internalFundsRequestBankId);
+      const group = groupMap.get(groupKey)!;
+      group.ids.push(item.internalFundsRequestBankId);
+      if (!group.key.bulkIds.includes(item.bankFundRequestMasterId)) {
+        group.key.bulkIds.push(item.bankFundRequestMasterId);
+      }
     });
 
     if (groupMap.size === 0) {
@@ -777,8 +781,10 @@ export default function InternalBankFundRequestApprovalForm({
           headers: getAuthHeaders(),
           body: JSON.stringify({
             fundRequestDetailIds: ids,
+            bulkIds: key.bulkIds,
             status: key.status,
             headId: key.headId,
+            anyString: "",
             remarks: key.remarks,
           }),
         });
