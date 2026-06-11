@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
 } from "react";
+import { useRouter } from "next/navigation";
 import { getAuthHeaders, getBaseUrl } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -115,6 +116,7 @@ export default function BankPayOrderLetterClient() {
   const isSubmittingRef = useRef(false);
 
   const { toast } = useToast();
+  const router = useRouter();
 
   // ── Filtered banks for dropdown ────────────────────────────────────────────
   const filteredBanks = useMemo(() => {
@@ -431,6 +433,7 @@ export default function BankPayOrderLetterClient() {
       setSelectedIds(new Set());
       setRemarks("");
       setReferenceNo("");
+      setTimeout(() => router.push("/portal/jobs-management/bankletter"), 1500);
       await fetchApprovedItems(selectedBankId);
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : "";
@@ -447,6 +450,7 @@ export default function BankPayOrderLetterClient() {
         setSelectedIds(new Set());
         setRemarks("");
         setReferenceNo("");
+        setTimeout(() => router.push("/portal/jobs-management/bankletter"), 1500);
         fetchApprovedItems(selectedBankId);
       } else {
         console.error("💥 Pay Order Letter error:", error);
