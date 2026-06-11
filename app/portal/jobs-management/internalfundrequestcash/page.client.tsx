@@ -1405,6 +1405,19 @@ export default function InternalFundRequestPage({
 
     const dialogStatus = displayStatusFor(selectedRequestDetails);
 
+    const resolveRequestedTo = (val: number | null | undefined): string => {
+      if (!val) return "—";
+      if (typeof val === "string") return val as string;
+      const u = users.find((x) => (x.userId ?? (x as any).UserId) === val);
+      return u?.fullName || u?.username || `User #${val}`;
+    };
+
+    const resolveApprovedBy = (val: number | null | undefined): string | null => {
+      if (!val || val === 0) return null;
+      const u = users.find((x) => (x.userId ?? (x as any).UserId) === val);
+      return u?.fullName || u?.username || `User #${val}`;
+    };
+
     return (
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
         <DialogContent className='max-w-5xl max-h-[90vh] overflow-y-auto'>
@@ -1480,38 +1493,14 @@ export default function InternalFundRequestPage({
                   <div className='flex justify-between'>
                     <span className='text-gray-600'>Requested To:</span>
                     <span className='font-medium'>
-                      {(() => {
-                        const u = users.find(
-                          (x) =>
-                            (x.userId ?? (x as any).UserId) ===
-                            selectedRequestDetails.requestedTo,
-                        );
-                        return (
-                          u?.fullName ||
-                          u?.username ||
-                          (selectedRequestDetails.requestedTo
-                            ? `User #${selectedRequestDetails.requestedTo}`
-                            : "—")
-                        );
-                      })()}
+                      {resolveRequestedTo(selectedRequestDetails.requestedTo)}
                     </span>
                   </div>
-                  {selectedRequestDetails.approvedBy && (
+                  {resolveApprovedBy(selectedRequestDetails.approvedBy) && (
                     <div className='flex justify-between'>
                       <span className='text-gray-600'>Approved By:</span>
                       <span className='font-medium'>
-                        {(() => {
-                          const u = users.find(
-                            (x) =>
-                              (x.userId ?? (x as any).UserId) ===
-                              (selectedRequestDetails.approvedBy as number),
-                          );
-                          return (
-                            u?.fullName ||
-                            u?.username ||
-                            `User #${selectedRequestDetails.approvedBy}`
-                          );
-                        })()}
+                        {resolveApprovedBy(selectedRequestDetails.approvedBy)}
                       </span>
                     </div>
                   )}
