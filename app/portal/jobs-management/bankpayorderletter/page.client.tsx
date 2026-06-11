@@ -60,6 +60,7 @@ type ApprovedDetailItem = {
   chargesId: number;
   onAccountOfId: number | null;
   remarks: string;
+  isBankLetterReleased: boolean | number | null;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -119,11 +120,21 @@ export default function BankPayOrderLetterClient() {
       : banks;
   }, [debouncedBankSearch, banks]);
 
-  // ── Filtered table rows ────────────────────────────────────────────────────
+  // ── Split into pending (not yet released) and released ────────────────────
+  const pendingItems = useMemo(
+    () => allItems.filter((it) => !it.isBankLetterReleased),
+    [allItems],
+  );
+  const releasedItems = useMemo(
+    () => allItems.filter((it) => !!it.isBankLetterReleased),
+    [allItems],
+  );
+
+  // ── Filtered table rows (only from pending) ────────────────────────────────
   const filteredItems = useMemo(() => {
     const q = debouncedTableSearch.toLowerCase();
-    if (!q) return allItems;
-    return allItems.filter(
+    if (!q) return pendingItems;
+    return pendingItems.filter(
       (it) =>
         it.headOfAccount.toLowerCase().includes(q) ||
         it.beneficiary.toLowerCase().includes(q) ||
@@ -132,7 +143,22 @@ export default function BankPayOrderLetterClient() {
         it.accountNo.toLowerCase().includes(q) ||
         it.bankFundRequestMasterId.toString().includes(q),
     );
-  }, [allItems, debouncedTableSearch]);
+  }, [pendingItems, debouncedTableSearch]);
+
+  // ── Released items filtered by search ─────────────────────────────────────
+  const filteredReleasedItems = useMemo(() => {
+    const q = debouncedTableSearch.toLowerCase();
+    if (!q) return releasedItems;
+    return releasedItems.filter(
+      (it) =>
+        it.headOfAccount.toLowerCase().includes(q) ||
+        it.beneficiary.toLowerCase().includes(q) ||
+        it.customerName.toLowerCase().includes(q) ||
+        it.jobNumber.toLowerCase().includes(q) ||
+        it.accountNo.toLowerCase().includes(q) ||
+        it.bankFundRequestMasterId.toString().includes(q),
+    );
+  }, [releasedItems, debouncedTableSearch]);
 
   // ── Derived selection state ────────────────────────────────────────────────
   const allFilteredSelected =
@@ -289,6 +315,8 @@ export default function BankPayOrderLetterClient() {
               chargesId: r.chargesId ?? r.ChargesId ?? 0,
               onAccountOfId: r.onAccountOfId ?? r.OnAccountOfId ?? null,
               remarks: r.remarks ?? r.Remarks ?? "",
+              isBankLetterReleased:
+                r.isBankLetterReleased ?? r.IsBankLetterReleased ?? null,
             });
           }
         }
@@ -590,12 +618,22 @@ export default function BankPayOrderLetterClient() {
                     Loading...
                   </Badge>
                 ) : (
-                  <Badge
-                    variant='outline'
-                    className='bg-green-50 border-green-200 text-green-700'
-                  >
-                    {allItems.length} approved item(s)
-                  </Badge>
+                  <>
+                    <Badge
+                      variant='outline'
+                      className='bg-green-50 border-green-200 text-green-700'
+                    >
+                      {pendingItems.length} pending
+                    </Badge>
+                    {releasedItems.length > 0 && (
+                      <Badge
+                        variant='outline'
+                        className='bg-amber-50 border-amber-200 text-amber-700'
+                      >
+                        {releasedItems.length} released
+                      </Badge>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -742,94 +780,177 @@ export default function BankPayOrderLetterClient() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredItems.map((item, idx) => {
-                        const isChecked = selectedIds.has(
-                          item.internalFundsRequestBankId,
-                        );
-                        return (
-                          <TableRow
-                            key={item.internalFundsRequestBankId}
-                            className={`cursor-pointer transition-colors ${
-                              isChecked
-                                ? "bg-purple-50 hover:bg-purple-100/70"
-                                : "hover:bg-gray-50"
-                            }`}
-                            onClick={() =>
-                              handleSelectItem(
-                                item.internalFundsRequestBankId,
-                                !isChecked,
-                              )
-                            }
-                          >
-                            <TableCell
-                              className='pl-4'
-                              onClick={(e) => e.stopPropagation()}
+                      <>
+                        {filteredItems.map((item, idx) => {
+                          const isChecked = selectedIds.has(
+                            item.internalFundsRequestBankId,
+                          );
+                          return (
+                            <TableRow
+                              key={item.internalFundsRequestBankId}
+                              className={`cursor-pointer transition-colors ${
+                                isChecked
+                                  ? "bg-purple-50 hover:bg-purple-100/70"
+                                  : "hover:bg-gray-50"
+                              }`}
+                              onClick={() =>
+                                handleSelectItem(
+                                  item.internalFundsRequestBankId,
+                                  !isChecked,
+                                )
+                              }
                             >
-                              <Checkbox
-                                checked={isChecked}
-                                onCheckedChange={(checked) =>
-                                  handleSelectItem(
-                                    item.internalFundsRequestBankId,
-                                    checked === true,
-                                  )
-                                }
-                                aria-label={`Select item ${item.internalFundsRequestBankId}`}
-                              />
-                            </TableCell>
+                              <TableCell
+                                className='pl-4'
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Checkbox
+                                  checked={isChecked}
+                                  onCheckedChange={(checked) =>
+                                    handleSelectItem(
+                                      item.internalFundsRequestBankId,
+                                      checked === true,
+                                    )
+                                  }
+                                  aria-label={`Select item ${item.internalFundsRequestBankId}`}
+                                />
+                              </TableCell>
 
-                            <TableCell className='text-center text-xs text-gray-400'>
-                              {idx + 1}
-                            </TableCell>
+                              <TableCell className='text-center text-xs text-gray-400'>
+                                {idx + 1}
+                              </TableCell>
 
-                            <TableCell className='text-xs font-mono text-purple-700'>
-                              #{item.bankFundRequestMasterId}
-                            </TableCell>
+                              <TableCell className='text-xs font-mono text-purple-700'>
+                                #{item.bankFundRequestMasterId}
+                              </TableCell>
 
-                            <TableCell className='text-xs'>
-                              {item.jobNumber || (
-                                <span className='text-gray-400 italic'>—</span>
-                              )}
-                            </TableCell>
-
-                            <TableCell className='text-xs font-medium text-gray-800'>
-                              {item.headOfAccount || (
-                                <span className='text-gray-400'>—</span>
-                              )}
-                            </TableCell>
-
-                            <TableCell className='text-xs text-gray-700'>
-                              <div>
-                                {item.beneficiary || item.customerName || "—"}
-                              </div>
-                              {item.accountNo && (
-                                <div className='text-gray-400 text-[10px] mt-0.5'>
-                                  A/C: {item.accountNo}
-                                </div>
-                              )}
-                            </TableCell>
-
-                            <TableCell className='text-xs font-mono text-gray-600'>
-                              {item.accountNo || (
-                                <span className='text-gray-400 italic'>—</span>
-                              )}
-                            </TableCell>
-
-                            <TableCell className='text-xs text-right font-semibold text-green-700'>
-                              {fmt(item.approvedAmount)}
-                            </TableCell>
-
-                            {!selectedBankId && (
-                              <TableCell className='text-xs text-gray-600'>
-                                {item.bankName || (
+                              <TableCell className='text-xs'>
+                                {item.jobNumber || (
                                   <span className='text-gray-400 italic'>
                                     —
                                   </span>
                                 )}
                               </TableCell>
-                            )}
-                          </TableRow>
-                        );
-                      })
+
+                              <TableCell className='text-xs font-medium text-gray-800'>
+                                {item.headOfAccount || (
+                                  <span className='text-gray-400'>—</span>
+                                )}
+                              </TableCell>
+
+                              <TableCell className='text-xs text-gray-700'>
+                                <div>
+                                  {item.beneficiary || item.customerName || "—"}
+                                </div>
+                                {item.accountNo && (
+                                  <div className='text-gray-400 text-[10px] mt-0.5'>
+                                    A/C: {item.accountNo}
+                                  </div>
+                                )}
+                              </TableCell>
+
+                              <TableCell className='text-xs font-mono text-gray-600'>
+                                {item.accountNo || (
+                                  <span className='text-gray-400 italic'>
+                                    —
+                                  </span>
+                                )}
+                              </TableCell>
+
+                              <TableCell className='text-xs text-right font-semibold text-green-700'>
+                                {fmt(item.approvedAmount)}
+                              </TableCell>
+
+                              {!selectedBankId && (
+                                <TableCell className='text-xs text-gray-600'>
+                                  {item.bankName || (
+                                    <span className='text-gray-400 italic'>
+                                      —
+                                    </span>
+                                  )}
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          );
+                        })}
+
+                        {/* ── Released items separator + rows ──────────── */}
+                        {filteredReleasedItems.length > 0 && (
+                          <>
+                            <TableRow className='bg-amber-50/60 border-y border-amber-200'>
+                              <TableCell
+                                colSpan={selectedBankId ? 8 : 9}
+                                className='py-1.5 px-4'
+                              >
+                                <span className='text-[11px] font-semibold text-amber-700 flex items-center gap-1.5'>
+                                  <FiCheckSquare className='h-3.5 w-3.5' />
+                                  Already Released (
+                                  {filteredReleasedItems.length}) — Bank Letter
+                                  Generated
+                                </span>
+                              </TableCell>
+                            </TableRow>
+
+                            {filteredReleasedItems.map((item, idx) => (
+                              <TableRow
+                                key={`rel-${item.internalFundsRequestBankId}`}
+                                className='bg-amber-50/30 opacity-60 cursor-not-allowed'
+                              >
+                                <TableCell className='pl-4'>
+                                  <Checkbox disabled checked={false} />
+                                </TableCell>
+
+                                <TableCell className='text-center text-xs text-gray-400'>
+                                  {filteredItems.length + idx + 1}
+                                </TableCell>
+
+                                <TableCell className='text-xs font-mono text-amber-700'>
+                                  <div className='flex items-center gap-1.5'>
+                                    #{item.bankFundRequestMasterId}
+                                    <Badge className='text-[9px] px-1 py-0 h-4 bg-amber-100 text-amber-700 border border-amber-300 font-normal'>
+                                      Released
+                                    </Badge>
+                                  </div>
+                                </TableCell>
+
+                                <TableCell className='text-xs text-gray-500'>
+                                  {item.jobNumber || (
+                                    <span className='italic'>—</span>
+                                  )}
+                                </TableCell>
+
+                                <TableCell className='text-xs text-gray-500'>
+                                  {item.headOfAccount || (
+                                    <span className='italic'>—</span>
+                                  )}
+                                </TableCell>
+
+                                <TableCell className='text-xs text-gray-500'>
+                                  {item.beneficiary || item.customerName || "—"}
+                                </TableCell>
+
+                                <TableCell className='text-xs font-mono text-gray-400'>
+                                  {item.accountNo || (
+                                    <span className='italic'>—</span>
+                                  )}
+                                </TableCell>
+
+                                <TableCell className='text-xs text-right text-gray-500 line-through'>
+                                  {fmt(item.approvedAmount)}
+                                </TableCell>
+
+                                {!selectedBankId && (
+                                  <TableCell className='text-xs text-gray-400'>
+                                    {item.bankName || (
+                                      <span className='italic'>—</span>
+                                    )}
+                                  </TableCell>
+                                )}
+                              </TableRow>
+                            ))}
+                          </>
+                        )}
+                      </>
                     )}
                   </TableBody>
                 </Table>
