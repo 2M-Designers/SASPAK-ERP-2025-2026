@@ -104,6 +104,7 @@ type DetailLineItem = {
   cashFundRequestMasterId: number;
   chargesId: number;
   onAccountOfId?: number | null;
+  onAccountOfName?: string;
   subRequestStatus?: string;
   remarks?: string;
   version: number;
@@ -453,7 +454,11 @@ export default function InternalFundRequestPage({
           internalCashFundsRequests: Array.isArray(
             fullData.internalCashFundsRequests,
           )
-            ? fullData.internalCashFundsRequests
+            ? fullData.internalCashFundsRequests.map((d: any) => ({
+                ...d,
+                onAccountOfName:
+                  d.onAccountOf?.partyName || d.onAccountOfName || "",
+              }))
             : [],
           totalRequestedAmount: Number(fullData.totalRequestedAmount) || 0,
           totalApprovedAmount: Number(fullData.totalApprovedAmount) || 0,
@@ -1472,6 +1477,44 @@ export default function InternalFundRequestPage({
                       items
                     </span>
                   </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-600'>Requested To:</span>
+                    <span className='font-medium'>
+                      {(() => {
+                        const u = users.find(
+                          (x) =>
+                            (x.userId ?? (x as any).UserId) ===
+                            selectedRequestDetails.requestedTo,
+                        );
+                        return (
+                          u?.fullName ||
+                          u?.username ||
+                          (selectedRequestDetails.requestedTo
+                            ? `User #${selectedRequestDetails.requestedTo}`
+                            : "—")
+                        );
+                      })()}
+                    </span>
+                  </div>
+                  {selectedRequestDetails.approvedBy && (
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Approved By:</span>
+                      <span className='font-medium'>
+                        {(() => {
+                          const u = users.find(
+                            (x) =>
+                              (x.userId ?? (x as any).UserId) ===
+                              (selectedRequestDetails.approvedBy as number),
+                          );
+                          return (
+                            u?.fullName ||
+                            u?.username ||
+                            `User #${selectedRequestDetails.approvedBy}`
+                          );
+                        })()}
+                      </span>
+                    </div>
+                  )}
                   {selectedRequestDetails.approvedOn && (
                     <div className='flex justify-between'>
                       <span className='text-gray-600'>Approved On:</span>
@@ -1513,6 +1556,7 @@ export default function InternalFundRequestPage({
                           <TableHead>Customer Name</TableHead>
                           <TableHead>Head of Account</TableHead>
                           <TableHead>Beneficiary</TableHead>
+                          <TableHead>On Account Of</TableHead>
                           <TableHead className='text-right'>
                             Requested
                           </TableHead>
@@ -1552,6 +1596,12 @@ export default function InternalFundRequestPage({
                               </TableCell>
                               <TableCell className='text-sm'>
                                 {detail.beneficiary || "-"}
+                              </TableCell>
+                              <TableCell className='text-sm'>
+                                {detail.onAccountOfName ||
+                                  (detail.onAccountOfId
+                                    ? `Party #${detail.onAccountOfId}`
+                                    : "—")}
                               </TableCell>
                               <TableCell className='text-sm font-medium text-right'>
                                 {formatCurrency(detail.requestedAmount)}
@@ -1603,6 +1653,7 @@ export default function InternalFundRequestPage({
     getStatusBadge,
     getStatusIcon,
     displayStatusFor,
+    users,
   ]);
 
   // ── Statistics tab ──────────────────────────────────────────────────────────
