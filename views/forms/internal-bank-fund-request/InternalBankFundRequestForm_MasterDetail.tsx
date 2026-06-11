@@ -505,6 +505,53 @@ const LineItemRow = ({
         </Select>
       </TableCell>
 
+      {/* On Account Of */}
+      <TableCell>
+        <Select
+          value={item.onAccountOfPartyId?.toString() || ""}
+          onValueChange={(v) => onAccountOfChange(item.id, v)}
+        >
+          <SelectTrigger className='h-9 text-sm' aria-label={`Select on account of for line ${index + 1}`}>
+            <SelectValue placeholder='Select party'>
+              {item.onAccountOfName || (
+                item.onAccountOfPartyId === -1 ? "SASPAK CARGO" :
+                item.onAccountOfPartyId === -2 ? "SASPAK LOGISTICS" :
+                undefined
+              )}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent className='max-h-[300px] w-[280px]' position='popper' sideOffset={5}>
+            <div className='sticky top-0 bg-white p-2 border-b z-50'>
+              <div className='relative'>
+                <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4' />
+                <Input
+                  placeholder='Search parties...'
+                  value={onAccountOfSearch}
+                  onChange={(e) => setOnAccountOfSearch(e.target.value)}
+                  className='pl-8 h-8'
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                />
+              </div>
+            </div>
+            <div className='max-h-[250px] overflow-y-auto'>
+              {onAccountOfParties.length === 0 ? (
+                <div className='p-4 text-center text-gray-500'>No parties found</div>
+              ) : (
+                onAccountOfParties.map((party) => (
+                  <SelectItem key={party.partyId} value={party.partyId.toString()}>
+                    <div className='flex flex-col'>
+                      <span className='font-medium'>{party.partyName}</span>
+                      <span className='text-xs text-gray-400'>{party.partyCode}</span>
+                    </div>
+                  </SelectItem>
+                ))
+              )}
+            </div>
+          </SelectContent>
+        </Select>
+      </TableCell>
+
       {/* Amount */}
       <TableCell>
         <div className='relative'>
