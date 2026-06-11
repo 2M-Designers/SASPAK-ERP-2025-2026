@@ -364,17 +364,18 @@ export default function InternalBankFundRequestApprovalForm({
     setLineItems(allItems);
   }, [sourceRequests, isBatchMode, pendingStatus, users]);
 
-  // ── Backfill headCoaId from bank's bankGlcoaid when both lists are ready ──
+  // ── Backfill bankName + headCoaId from banks list when both are ready ────────
   useEffect(() => {
     if (!banks.length || !lineItems.length) return;
     setLineItems((prev) =>
       prev.map((item) => {
-        if (item.headCoaId || !item.bankId) return item;
+        if (!item.bankId) return item;
         const bank = banks.find((b) => b.bankId === item.bankId);
-        if (bank?.bankGlcoaid) {
-          return { ...item, headCoaId: bank.bankGlcoaid };
-        }
-        return item;
+        if (!bank) return item;
+        const patch: Partial<typeof item> = {};
+        if (!item.bankName) patch.bankName = bank.bankName;
+        if (!item.headCoaId && bank.bankGlcoaid) patch.headCoaId = bank.bankGlcoaid;
+        return Object.keys(patch).length ? { ...item, ...patch } : item;
       }),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
