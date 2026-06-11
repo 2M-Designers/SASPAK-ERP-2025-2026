@@ -268,7 +268,7 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
     }
   }, [toast]);
 
-  // ── Fetch single voucher ──────────────────────────────────────────────────
+  // ── Fetch single voucher (raw, used for edit form) ───────────────────────
   const fetchVoucherById = async (id: number): Promise<Voucher | null> => {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -287,6 +287,170 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
       return null;
     }
   };
+
+  // ── Fetch full voucher with account + cost-center joins ───────────────────
+  // The API returns only accountId/costCenterId in details, not nested objects.
+  // This helper fetches them individually and stitches them together.
+  const fetchFullVoucherWithDetails = useCallback(
+    async (id: number): Promise<Voucher | null> => {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+        const vRes = await fetch(`${baseUrl}GLVoucher/${id}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!vRes.ok) throw new Error(`${vRes.status}`);
+        const raw = await vRes.json();
+
+        const rawDetails: any[] = raw.voucherDetails || [];
+
+        const accountIds = [
+          ...new Set(
+            rawDetails.map((d: any) => d.accountId).filter(Boolean),
+          ),
+        ] as number[];
+        const costCenterIds = [
+          ...new Set(
+            rawDetails.map((d: any) => d.costCenterId).filter(Boolean),
+          ),
+        ] as number[];
+
+        const accountMap: Record<number, Account> = {};
+        await Promise.all(
+          accountIds.map(async (aid) => {
+            try {
+              const ar = await fetch(`${baseUrl}GlAccount/${aid}`, {
+                method: "GET",
+                headers: { "Content-Type": "application/json" },
+              });
+              if (ar.ok) {
+                const acc = await ar.json();
+                accountMap[aid] = {
+                  accountId: acc.accountId ?? aid,
+                  companyId: acc.companyId ?? 0,
+                  parentAccountId: acc.parentAccountId ?? 0,
+                  accountCode: acc.accountCode ?? "",
+                  accountName: acc.accountName ?? "",
+                  description: acc.description ?? "",
+                  accountLevel: acc.accountLevel ?? 0,
+                  accountType: acc.accountType ?? "",
+                  accountNature: acc.accountNature ?? "",
+                  isHeader: acc.isHeader ?? false,
+                  isActive: acc.isActive ?? true,
+                  version: acc.version ?? 0,
+                };
+              }
+            } catch {}
+          }),
+        );
+
+        const costCenterMap: Record<number, CostCenter> = {};
+        await Promise.all(
+          costCenterIds.map(async (ccid) => {
+            try {
+              const cr = await fetch(`${baseUrl}CostCenter/${ccid}`, {
+                method: "GET",
+                headers: { "Content-Type": "application/json" },
+              });
+              if (cr.ok) {
+                const cc = await cr.json();
+                costCenterMap[ccid] = {
+                  costCenterId: cc.costCenterId ?? ccid,
+                  companyId: cc.companyId ?? 0,
+                  costCenterCode: cc.costCenterCode ?? "",
+                  costCenterName: cc.costCenterName ?? "",
+                  description: cc.description ?? "",
+                  isActive: cc.isActive ?? true,
+                  version: cc.version ?? 0,
+                };
+              }
+            } catch {}
+          }),
+        );
+
+        const normalizedDetails: VoucherDetail[] = rawDetails.map((d: any) => ({
+          voucherDetailId: d.voucherDetailId ?? 0,
+          voucherId: d.voucherId ?? raw.voucherId ?? 0,
+          accountId: d.accountId ?? 0,
+          debitAmount: d.debitAmount ?? 0,
+          creditAmount: d.creditAmount ?? 0,
+          description: d.description ?? "",
+          costCenterId: d.costCenterId ?? 0,
+          version: d.version ?? 0,
+          account: accountMap[d.accountId] ?? {
+            accountId: d.accountId ?? 0,
+            accountCode: "",
+            accountName: d.accountId ? `Account #${d.accountId}` : "",
+            companyId: 0,
+            parentAccountId: 0,
+            description: "",
+            accountLevel: 0,
+            accountType: "",
+            accountNature: "",
+            isHeader: false,
+            isActive: true,
+            version: 0,
+          },
+          costCenter: costCenterMap[d.costCenterId] ?? {
+            costCenterId: d.costCenterId ?? 0,
+            costCenterCode: "",
+            costCenterName: d.costCenterId ? `CC #${d.costCenterId}` : "",
+            companyId: 0,
+            description: "",
+            isActive: true,
+            version: 0,
+          },
+        }));
+
+        const ap = raw.accountingPeriod ?? null;
+        return {
+          voucherId: raw.voucherId ?? id,
+          companyId: raw.companyId ?? 0,
+          branchId: raw.branchId ?? 0,
+          voucherTypeId: raw.voucherTypeId ?? 0,
+          voucherNumber: raw.voucherNumber ?? "",
+          voucherDate: raw.voucherDate ?? "",
+          accountingPeriodId: raw.accountingPeriodId ?? 0,
+          narration: raw.narration ?? "",
+          referenceNumber: raw.referenceNumber ?? "",
+          status: raw.status ?? "",
+          postedBy: raw.postedBy ?? 0,
+          postedAt: raw.postedAt ?? "",
+          accountingPeriod: ap
+            ? {
+                accountingPeriodId: ap.accountingPeriodId ?? 0,
+                fiscalYearId: ap.fiscalYearId ?? 0,
+                periodName: ap.periodName ?? "",
+                startDate: ap.startDate ?? "",
+                endDate: ap.endDate ?? "",
+                status: ap.status ?? "",
+                version: ap.version ?? 0,
+              }
+            : {
+                accountingPeriodId: 0,
+                fiscalYearId: 0,
+                periodName: "",
+                startDate: "",
+                endDate: "",
+                status: "",
+                version: 0,
+              },
+          voucherDetails: normalizedDetails,
+          version: raw.version ?? 0,
+        };
+      } catch (err) {
+        console.error("fetchFullVoucherWithDetails error:", err);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load voucher details",
+        });
+        return null;
+      }
+    },
+    [toast],
+  );
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -410,213 +574,30 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
   };
 
   const handleViewDetails = async (voucher: Voucher) => {
-    if (!voucher.voucherDetails?.length) {
-      setIsLoading(true);
-      const full = await fetchVoucherById(voucher.voucherId);
-      setIsLoading(false);
-      setSelectedVoucherDetails(full || voucher);
-      if (full) {
-        setData((prev) =>
-          prev.map((v) =>
-            v.voucherId === full.voucherId
-              ? { ...v, voucherDetails: full.voucherDetails || [] }
-              : v,
-          ),
-        );
-      }
+    setIsLoading(true);
+    const full = await fetchFullVoucherWithDetails(voucher.voucherId);
+    setIsLoading(false);
+    if (full) {
+      setSelectedVoucherDetails(full);
+      setData((prev) =>
+        prev.map((v) => (v.voucherId === full.voucherId ? { ...v, ...full } : v)),
+      );
     } else {
       setSelectedVoucherDetails(voucher);
     }
     setViewDialogOpen(true);
   };
 
-  // ── Fix 1+2+3: handlePrintClick with robust field mapping ────────────────────
   const handlePrintClick = async (voucher: Voucher) => {
     setIsLoading(true);
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
-      // ── Step 1: Fetch the full voucher ────────────────────────────────────────
-      const voucherRes = await fetch(
-        `${baseUrl}GLVoucher/${voucher.voucherId}`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-      if (!voucherRes.ok)
-        throw new Error(`Voucher fetch failed: ${voucherRes.status}`);
-      const raw = await voucherRes.json();
-
-      const rawDetails: any[] = raw.voucherDetails || [];
-
-      // ── Step 2: Collect unique accountIds and costCenterIds from details ──────
-      const accountIds = [
-        ...new Set(rawDetails.map((d: any) => d.accountId).filter(Boolean)),
-      ];
-      const costCenterIds = [
-        ...new Set(rawDetails.map((d: any) => d.costCenterId).filter(Boolean)),
-      ];
-
-      // ── Step 3: Fetch accounts by ID (parallel) ───────────────────────────────
-      const accountMap: Record<number, Account> = {};
-      await Promise.all(
-        accountIds.map(async (id) => {
-          try {
-            const res = await fetch(`${baseUrl}GlAccount/${id}`, {
-              method: "GET",
-              headers: { "Content-Type": "application/json" },
-            });
-            if (res.ok) {
-              const acc = await res.json();
-              accountMap[id] = {
-                accountId: acc.accountId ?? id,
-                companyId: acc.companyId ?? 0,
-                parentAccountId: acc.parentAccountId ?? 0,
-                accountCode: acc.accountCode ?? "",
-                accountName: acc.accountName ?? "",
-                description: acc.description ?? "",
-                accountLevel: acc.accountLevel ?? 0,
-                accountType: acc.accountType ?? "",
-                accountNature: acc.accountNature ?? "",
-                isHeader: acc.isHeader ?? false,
-                isActive: acc.isActive ?? true,
-                version: acc.version ?? 0,
-              };
-            }
-          } catch (e) {
-            console.error(`Account fetch failed for id ${id}:`, e);
-          }
-        }),
-      );
-
-      // ── Step 4: Fetch cost centers by ID (parallel) ───────────────────────────
-      const costCenterMap: Record<number, CostCenter> = {};
-      await Promise.all(
-        costCenterIds.map(async (id) => {
-          try {
-            const res = await fetch(`${baseUrl}CostCenter/${id}`, {
-              method: "GET",
-              headers: { "Content-Type": "application/json" },
-            });
-            if (res.ok) {
-              const cc = await res.json();
-              costCenterMap[id] = {
-                costCenterId: cc.costCenterId ?? id,
-                companyId: cc.companyId ?? 0,
-                costCenterCode: cc.costCenterCode ?? "",
-                costCenterName: cc.costCenterName ?? "",
-                description: cc.description ?? "",
-                isActive: cc.isActive ?? true,
-                version: cc.version ?? 0,
-              };
-            }
-          } catch (e) {
-            console.error(`CostCenter fetch failed for id ${id}:`, e);
-          }
-        }),
-      );
-
-      console.log("📦 accountMap:", accountMap);
-      console.log("📦 costCenterMap:", costCenterMap);
-
-      // ── Step 5: Build normalized details with joined account/costCenter ────────
-      const normalizedDetails: VoucherDetail[] = rawDetails.map((d: any) => ({
-        voucherDetailId: d.voucherDetailId ?? 0,
-        voucherId: d.voucherId ?? raw.voucherId ?? 0,
-        accountId: d.accountId ?? 0,
-        debitAmount: d.debitAmount ?? 0,
-        creditAmount: d.creditAmount ?? 0,
-        description: d.description ?? "",
-        costCenterId: d.costCenterId ?? 0,
-        version: d.version ?? 0,
-        // Join from maps — this is where account/costCenter come from
-        account: accountMap[d.accountId] ?? {
-          accountId: d.accountId,
-          accountCode: "",
-          accountName: `Account #${d.accountId}`,
-          companyId: 0,
-          parentAccountId: 0,
-          description: "",
-          accountLevel: 0,
-          accountType: "",
-          accountNature: "",
-          isHeader: false,
-          isActive: true,
-          version: 0,
-        },
-        costCenter: costCenterMap[d.costCenterId] ?? {
-          costCenterId: d.costCenterId,
-          costCenterCode: "",
-          costCenterName: d.costCenterId ? `CC #${d.costCenterId}` : "",
-          companyId: 0,
-          description: "",
-          isActive: true,
-          version: 0,
-        },
-      }));
-
-      // ── Step 6: Build normalized period ──────────────────────────────────────
-      const ap = raw.accountingPeriod ?? null;
-      const normalizedPeriod: AccountingPeriod = ap
-        ? {
-            accountingPeriodId: ap.accountingPeriodId ?? 0,
-            fiscalYearId: ap.fiscalYearId ?? 0,
-            periodName: ap.periodName ?? "",
-            startDate: ap.startDate ?? "",
-            endDate: ap.endDate ?? "",
-            status: ap.status ?? "",
-            version: ap.version ?? 0,
-          }
-        : (voucher.accountingPeriod ?? {
-            accountingPeriodId: 0,
-            fiscalYearId: 0,
-            periodName: "",
-            startDate: "",
-            endDate: "",
-            status: "",
-            version: 0,
-          });
-
-      // ── Step 7: Assemble full voucher ─────────────────────────────────────────
-      const full: Voucher = {
-        voucherId: raw.voucherId ?? voucher.voucherId,
-        companyId: raw.companyId ?? 0,
-        branchId: raw.branchId ?? 0,
-        voucherTypeId: raw.voucherTypeId ?? 0,
-        voucherNumber: raw.voucherNumber ?? voucher.voucherNumber ?? "",
-        voucherDate: raw.voucherDate ?? voucher.voucherDate ?? "",
-        accountingPeriodId: raw.accountingPeriodId ?? 0,
-        narration: raw.narration ?? "",
-        referenceNumber: raw.referenceNumber ?? "",
-        status: raw.status ?? voucher.status ?? "",
-        postedBy: raw.postedBy ?? 0,
-        postedAt: raw.postedAt ?? "",
-        accountingPeriod: normalizedPeriod,
-        voucherDetails: normalizedDetails,
-        version: raw.version ?? 0,
-      };
-
-      console.log("✅ Full voucher for print:", full);
-
-      // Update local cache
-      setData((prev) =>
-        prev.map((v) =>
-          v.voucherId === full.voucherId ? { ...v, ...full } : v,
-        ),
-      );
-      setVoucherToPrint(full);
-      setPrintDialogOpen(true);
-    } catch (err) {
-      console.error("Print fetch error:", err);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Could not load voucher details for printing",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    const full = await fetchFullVoucherWithDetails(voucher.voucherId);
+    setIsLoading(false);
+    if (!full) return;
+    setData((prev) =>
+      prev.map((v) => (v.voucherId === full.voucherId ? { ...v, ...full } : v)),
+    );
+    setVoucherToPrint(full);
+    setPrintDialogOpen(true);
   };
 
   // ── Browser print ─────────────────────────────────────────────────────────
