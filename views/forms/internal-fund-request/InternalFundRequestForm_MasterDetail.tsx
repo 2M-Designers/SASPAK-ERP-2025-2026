@@ -226,7 +226,8 @@ function getAutoPartyIdForCharge(
 ): number | null {
   const t = chargeType?.toLowerCase();
   if (t === "terminal") return detail.terminalPartyId ?? null;
-  if (t === "shipping line" || t === "shippingline") return detail.carrierPartyId ?? null;
+  if (t === "shipping line" || t === "shippingline")
+    return detail.carrierPartyId ?? null;
   if (t === "transporter") return detail.transporterPartyId ?? null;
   return null;
 }
@@ -517,12 +518,19 @@ const LineItemRow = ({
           value={item.onAccountOfPartyId?.toString() || ""}
           onValueChange={(v) => onAccountOfChange(item.id, v)}
         >
-          <SelectTrigger className='h-9 text-sm' aria-label={`Select on account of for line ${index + 1}`}>
+          <SelectTrigger
+            className='h-9 text-sm'
+            aria-label={`Select on account of for line ${index + 1}`}
+          >
             <SelectValue placeholder='Select party'>
               {item.onAccountOfName || undefined}
             </SelectValue>
           </SelectTrigger>
-          <SelectContent className='max-h-[300px] w-[280px]' position='popper' sideOffset={5}>
+          <SelectContent
+            className='max-h-[300px] w-[280px]'
+            position='popper'
+            sideOffset={5}
+          >
             <div className='sticky top-0 bg-white p-2 border-b z-50'>
               <div className='relative'>
                 <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4' />
@@ -538,13 +546,20 @@ const LineItemRow = ({
             </div>
             <div className='max-h-[250px] overflow-y-auto'>
               {onAccountOfParties.length === 0 ? (
-                <div className='p-4 text-center text-gray-500'>No parties found</div>
+                <div className='p-4 text-center text-gray-500'>
+                  No parties found
+                </div>
               ) : (
-                onAccountOfParties.map((party) => (
-                  <SelectItem key={party.partyId} value={party.partyId.toString()}>
+                onAccountOfParties.map((party: Party) => (
+                  <SelectItem
+                    key={party.partyId}
+                    value={party.partyId.toString()}
+                  >
                     <div className='flex flex-col'>
                       <span className='font-medium'>{party.partyName}</span>
-                      <span className='text-xs text-gray-400'>{party.partyCode}</span>
+                      <span className='text-xs text-gray-400'>
+                        {party.partyCode}
+                      </span>
                     </div>
                   </SelectItem>
                 ))
@@ -975,7 +990,8 @@ export default function InternalFundRequestForm({
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            select: "ChargeId, ChargeCode, ChargeName, ChargesNature, ChargeType, ChargeGroup, CostGLAccountId",
+            select:
+              "ChargeId, ChargeCode, ChargeName, ChargesNature, ChargeType, ChargeGroup, CostGLAccountId",
             where: "IsActive == true",
             search: "",
             sortOn: "ChargeCode ASC",
@@ -1014,7 +1030,12 @@ export default function InternalFundRequestForm({
             chargesNature: c.chargesNature ?? c.ChargesNature ?? "",
             chargeType: c.chargeType ?? c.ChargeType ?? "",
             chargeGroup: c.chargeGroup ?? c.ChargeGroup ?? "",
-            costGlaccountId: c.costGlaccountId ?? c.costGLAccountId ?? c.CostGLAccountId ?? c.costGlAccountId ?? null,
+            costGlaccountId:
+              c.costGlaccountId ??
+              c.costGLAccountId ??
+              c.CostGLAccountId ??
+              c.costGlAccountId ??
+              null,
           }))
           .filter((c: ChargesMaster) => c.chargeId > 0);
 
@@ -1043,7 +1064,8 @@ export default function InternalFundRequestForm({
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            select: "PartyId, PartyCode, PartyName, BenificiaryNameOfPO, GLAccountId",
+            select:
+              "PartyId, PartyCode, PartyName, BenificiaryNameOfPO, GLAccountId",
             where: "",
             search: "",
             sortOn: "PartyName ASC",
@@ -1077,7 +1099,12 @@ export default function InternalFundRequestForm({
         // Normalize GLAccountId casing — API returns glaccountId (all lowercase)
         const list = raw.map((p: any) => ({
           ...p,
-          glAccountId: p.glaccountId ?? p.glAccountId ?? p.gLAccountId ?? p.GLAccountId ?? null,
+          glAccountId:
+            p.glaccountId ??
+            p.glAccountId ??
+            p.gLAccountId ??
+            p.GLAccountId ??
+            null,
         }));
         setParties(list);
         setFilteredBeneficiaries(list);
@@ -1291,8 +1318,8 @@ export default function InternalFundRequestForm({
     const all = [...PINNED_ON_ACCOUNT_PARTIES, ...parties];
     if (!q) return all;
     return [
-      ...PINNED_ON_ACCOUNT_PARTIES.filter(
-        (p) => p.partyName.toLowerCase().includes(q),
+      ...PINNED_ON_ACCOUNT_PARTIES.filter((p) =>
+        p.partyName.toLowerCase().includes(q),
       ),
       ...parties.filter(
         (p) =>
@@ -1383,17 +1410,32 @@ export default function InternalFundRequestForm({
 
             // If chargeType maps to a specific job party, use that instead
             const currentChargeType = item.chargeType || "";
-            const autoTypes = ["terminal", "shipping line", "shippingline", "transporter"];
-            if (currentChargeType && autoTypes.includes(currentChargeType.toLowerCase())) {
-              const autoPartyId = getAutoPartyIdForCharge(currentChargeType, detail);
+            const autoTypes = [
+              "terminal",
+              "shipping line",
+              "shippingline",
+              "transporter",
+            ];
+            if (
+              currentChargeType &&
+              autoTypes.includes(currentChargeType.toLowerCase())
+            ) {
+              const autoPartyId = getAutoPartyIdForCharge(
+                currentChargeType,
+                detail,
+              );
               if (autoPartyId) {
-                const autoParty = parties.find((p) => p.partyId === autoPartyId);
+                const autoParty = parties.find(
+                  (p) => p.partyId === autoPartyId,
+                );
                 if (autoParty) {
                   return {
                     ...baseUpdate,
-                    beneficiaryCoaId: autoParty.glAccountId ?? autoParty.partyId,
+                    beneficiaryCoaId:
+                      autoParty.glAccountId ?? autoParty.partyId,
                     onAccountOfPartyId: autoParty.partyId,
-                    beneficiary: autoParty.benificiaryFromPO || autoParty.partyName,
+                    beneficiary:
+                      autoParty.benificiaryFromPO || autoParty.partyName,
                     partiesAccount: autoParty.partyName,
                   };
                 }
@@ -1404,7 +1446,8 @@ export default function InternalFundRequestForm({
 
             return {
               ...baseUpdate,
-              beneficiaryCoaId: customerParty.glAccountId ?? customerParty.partyId,
+              beneficiaryCoaId:
+                customerParty.glAccountId ?? customerParty.partyId,
               onAccountOfPartyId: customerParty.partyId,
               beneficiary:
                 customerParty.benificiaryFromPO || customerParty.partyName,
@@ -1448,7 +1491,12 @@ export default function InternalFundRequestForm({
 
       // 3. If chargeType maps to a job party, auto-fill beneficiary
       const chargeType = charge.chargeType || "";
-      const autoTypes = ["terminal", "shipping line", "shippingline", "transporter"];
+      const autoTypes = [
+        "terminal",
+        "shipping line",
+        "shippingline",
+        "transporter",
+      ];
       if (autoTypes.includes(chargeType.toLowerCase())) {
         setLineItems((prev) => {
           const line = prev.find((item) => item.id === id);
@@ -1479,14 +1527,22 @@ export default function InternalFundRequestForm({
     (id: string, partyId: string) => {
       const party = parties.find((p) => p.partyId.toString() === partyId);
       if (!party) return;
-      updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? party.partyId);
+      updateLineItem(
+        id,
+        "beneficiaryCoaId",
+        party.glAccountId ?? party.partyId,
+      );
       updateLineItem(id, "onAccountOfPartyId", party.partyId);
       updateLineItem(
         id,
         "beneficiary",
         party.benificiaryFromPO || party.partyName || party.partyCode,
       );
-      updateLineItem(id, "onAccountOfName", party.partyName || party.partyCode || "");
+      updateLineItem(
+        id,
+        "onAccountOfName",
+        party.partyName || party.partyCode || "",
+      );
       updateLineItem(id, "partiesAccount", party.partyName || party.partyCode);
     },
     [parties, updateLineItem],
@@ -1645,7 +1701,12 @@ export default function InternalFundRequestForm({
             const savedId = d.onAccountOfId || d.OnAccountOfId || null;
             if (!savedId) return "";
             const fromParties = parties.find((p) => p.partyId === savedId);
-            return fromParties?.partyName || d.onAccountOfName || d.OnAccountOfName || "";
+            return (
+              fromParties?.partyName ||
+              d.onAccountOfName ||
+              d.OnAccountOfName ||
+              ""
+            );
           })(),
           beneficiary: d.beneficiary || d.Beneficiary || "",
           partiesAccount: d.partiesAccount || d.PartiesAccount || "",
@@ -1784,9 +1845,9 @@ export default function InternalFundRequestForm({
           CustomerName: item.partiesAccount || item.beneficiary || "",
           RequestedTo: selectedRequestor ?? 0,
           OnAccountOfId:
-              item.onAccountOfPartyId && item.onAccountOfPartyId > 0
-                ? item.onAccountOfPartyId
-                : 0,
+            item.onAccountOfPartyId && item.onAccountOfPartyId > 0
+              ? item.onAccountOfPartyId
+              : 0,
           SubRequestStatus: item.subRequestStatus ?? "",
           Remarks: item.remarks || "",
           CashHeadId: isUpdate ? (item.preservedCashHeadId ?? null) : null,
@@ -1810,7 +1871,9 @@ export default function InternalFundRequestForm({
           RequestedTo: selectedRequestor ?? 0,
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
           CreatedBy: isUpdate ? (defaultState?.createdBy ?? userId) : userId,
-          CashHeadId: isUpdate ? (defaultState?.cashHeadId ?? defaultState?.CashHeadId ?? null) : null,
+          CashHeadId: isUpdate
+            ? (defaultState?.cashHeadId ?? defaultState?.CashHeadId ?? null)
+            : null,
           RequestorUserId: userId,
           Remarks: "",
           Version: isUpdate ? (defaultState?.version ?? 0) : 0,
@@ -1820,7 +1883,10 @@ export default function InternalFundRequestForm({
         const method = isUpdate ? "PUT" : "POST";
         const endpoint = `${getBaseUrl()}InternalCashFundsRequest`;
 
-        console.log(`📡 ${method} ${endpoint}`, JSON.stringify(payload, null, 2));
+        console.log(
+          `📡 ${method} ${endpoint}`,
+          JSON.stringify(payload, null, 2),
+        );
 
         const response = await fetch(endpoint, {
           method,

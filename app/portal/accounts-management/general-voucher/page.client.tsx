@@ -62,6 +62,7 @@ import autoTable from "jspdf-autotable";
 import moment from "moment";
 import { useToast } from "@/hooks/use-toast";
 import VoucherForm from "@/views/forms/voucher/VoucherForm";
+import { getAuthHeaders, getBaseUrl } from "@/lib/api-client";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -179,8 +180,12 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
   const printAreaRef = useRef<HTMLDivElement>(null);
 
   // Lookup maps used by view + print to resolve account/cost-center names
-  const [accountsMap, setAccountsMap] = useState<Map<number, Account>>(new Map());
-  const [costCentersMap, setCostCentersMap] = useState<Map<number, CostCenter>>(new Map());
+  const [accountsMap, setAccountsMap] = useState<Map<number, Account>>(
+    new Map(),
+  );
+  const [costCentersMap, setCostCentersMap] = useState<Map<number, CostCenter>>(
+    new Map(),
+  );
 
   const { toast } = useToast();
 
@@ -246,13 +251,23 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
           });
 
         const [acctRes, ccRes] = await Promise.all([
-          fetch(`${base}GlAccount/GetList`, { method: "POST", headers: hdr, body: body("AccountId, AccountCode, AccountName") }),
-          fetch(`${base}CostCenter/GetList`, { method: "POST", headers: hdr, body: body("CostCenterId, CostCenterCode, CostCenterName") }),
+          fetch(`${base}GlAccount/GetList`, {
+            method: "POST",
+            headers: hdr,
+            body: body("AccountId, AccountCode, AccountName"),
+          }),
+          fetch(`${base}CostCenter/GetList`, {
+            method: "POST",
+            headers: hdr,
+            body: body("CostCenterId, CostCenterCode, CostCenterName"),
+          }),
         ]);
 
         if (acctRes.ok) {
           const raw = await acctRes.json();
-          const list: any[] = Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
+          const list: any[] = Array.isArray(raw)
+            ? raw
+            : (raw?.data ?? raw?.items ?? []);
           const map = new Map<number, Account>();
           list.forEach((a: any) => {
             const id = a.accountId ?? a.AccountId ?? 0;
@@ -278,7 +293,9 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
 
         if (ccRes.ok) {
           const raw = await ccRes.json();
-          const list: any[] = Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
+          const list: any[] = Array.isArray(raw)
+            ? raw
+            : (raw?.data ?? raw?.items ?? []);
           const map = new Map<number, CostCenter>();
           list.forEach((c: any) => {
             const id = c.costCenterId ?? c.CostCenterId ?? 0;
@@ -600,7 +617,9 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
     if (full) {
       setSelectedVoucherDetails(full);
       setData((prev) =>
-        prev.map((v) => (v.voucherId === full.voucherId ? { ...v, ...full } : v)),
+        prev.map((v) =>
+          v.voucherId === full.voucherId ? { ...v, ...full } : v,
+        ),
       );
     } else {
       setSelectedVoucherDetails(voucher);
