@@ -101,6 +101,7 @@ type BankDetailLineItem = {
   beneficiary: string;
   accountNo: string;
   onAccountOfId?: number | null;
+  onAccountOfName?: string;
   requestedAmount: number;
   approvedAmount: number;
   requestedTo?: number;
@@ -110,6 +111,7 @@ type BankDetailLineItem = {
   bankFundRequestMasterId: number;
   chargesId: number;
   bankId?: number;
+  bankName?: string;
   version: number;
 };
 
@@ -441,13 +443,20 @@ export default function InternalBankFundRequestPage({
 
         const fullData = await response.json();
 
+        const masterBankName = fullData.bank?.bankName || fullData.bankName || "-";
+
         return {
           ...fullData,
-          bankName: fullData.bank?.bankName || fullData.bankName || "-",
+          bankName: masterBankName,
           internalBankFundsRequests: Array.isArray(
             fullData.internalBankFundsRequests,
           )
-            ? fullData.internalBankFundsRequests
+            ? fullData.internalBankFundsRequests.map((d: any) => ({
+                ...d,
+                bankName: d.bank?.bankName || masterBankName,
+                onAccountOfName:
+                  d.onAccountOf?.partyName || d.onAccountOfName || "",
+              }))
             : [],
           totalRequestedAmount: Number(fullData.totalRequestedAmount) || 0,
           totalApprovedAmount: Number(fullData.totalApprovedAmount) || 0,
@@ -1438,6 +1447,33 @@ export default function InternalBankFundRequestPage({
                       items
                     </span>
                   </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-600'>Requested To:</span>
+                    <span className='font-medium'>
+                      {(() => {
+                        const u = users.find(
+                          (x) =>
+                            (x.userId ?? (x as any).UserId) ===
+                            selectedRequestDetails.requestedTo,
+                        );
+                        return (
+                          u?.fullName ||
+                          u?.username ||
+                          (selectedRequestDetails.requestedTo
+                            ? `User #${selectedRequestDetails.requestedTo}`
+                            : "—")
+                        );
+                      })()}
+                    </span>
+                  </div>
+                  {selectedRequestDetails.approvedBy && (
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Approved By:</span>
+                      <span className='font-medium'>
+                        {selectedRequestDetails.approvedBy}
+                      </span>
+                    </div>
+                  )}
                   {selectedRequestDetails.remarks && (
                     <div className='flex justify-between col-span-2'>
                       <span className='text-gray-600'>Remarks:</span>
@@ -1486,8 +1522,10 @@ export default function InternalBankFundRequestPage({
                           <TableHead className='w-[40px]'>#</TableHead>
                           <TableHead>Job Number</TableHead>
                           <TableHead>Customer Name</TableHead>
+                          <TableHead>Bank</TableHead>
                           <TableHead>Head of Account</TableHead>
                           <TableHead>Beneficiary</TableHead>
+                          <TableHead>On Account Of</TableHead>
                           <TableHead>Account No</TableHead>
                           <TableHead className='text-right'>
                             Requested
@@ -1523,11 +1561,22 @@ export default function InternalBankFundRequestPage({
                               <TableCell className='text-xs text-gray-700'>
                                 {detail.customerName || "—"}
                               </TableCell>
+                              <TableCell className='text-sm font-medium text-blue-700'>
+                                {detail.bankName ||
+                                  selectedRequestDetails.bankName ||
+                                  "-"}
+                              </TableCell>
                               <TableCell className='text-sm'>
                                 {detail.headOfAccount || "-"}
                               </TableCell>
                               <TableCell className='text-sm'>
                                 {detail.beneficiary || "-"}
+                              </TableCell>
+                              <TableCell className='text-sm'>
+                                {detail.onAccountOfName ||
+                                  (detail.onAccountOfId
+                                    ? `Party #${detail.onAccountOfId}`
+                                    : "—")}
                               </TableCell>
                               <TableCell className='text-sm font-mono text-gray-600'>
                                 {detail.accountNo || "-"}
@@ -1582,6 +1631,7 @@ export default function InternalBankFundRequestPage({
     getStatusBadge,
     getStatusIcon,
     displayStatusFor,
+    users,
   ]);
 
   // ── Statistics tab ──────────────────────────────────────────────────────────
