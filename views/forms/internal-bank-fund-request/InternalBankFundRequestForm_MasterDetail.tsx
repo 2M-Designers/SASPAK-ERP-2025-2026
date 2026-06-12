@@ -1018,6 +1018,8 @@ export default function InternalBankFundRequestForm({
         const list = raw.map((p: any) => ({
           ...p,
           glAccountId: p.glaccountId ?? p.glAccountId ?? p.gLAccountId ?? p.GLAccountId ?? null,
+          // API returns benificiaryNameOfPO (camelCase); map to the field the component reads
+          benificiaryFromPO: p.benificiaryNameOfPO ?? p.BenificiaryNameOfPO ?? p.benificiaryNameOfPo ?? p.benificiaryFromPO ?? "",
         }));
         setParties(list);
         setFilteredBeneficiaries(list);
@@ -1349,7 +1351,7 @@ export default function InternalBankFundRequestForm({
         ),
       );
 
-      // 2. Load parties linked to this charge (fast: 1 API call)
+      // 2. Load parties linked to this charge (bank form) (fast: 1 API call)
       await fetchChargeParties(charge.chargeId);
 
       // 3. If chargeType maps to a job party, auto-fill beneficiary

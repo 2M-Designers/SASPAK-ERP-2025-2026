@@ -1078,6 +1078,8 @@ export default function InternalFundRequestForm({
         const list = raw.map((p: any) => ({
           ...p,
           glAccountId: p.glaccountId ?? p.glAccountId ?? p.gLAccountId ?? p.GLAccountId ?? null,
+          // API returns benificiaryNameOfPO (camelCase); map to the field the component reads
+          benificiaryFromPO: p.benificiaryNameOfPO ?? p.BenificiaryNameOfPO ?? p.benificiaryNameOfPo ?? p.benificiaryFromPO ?? "",
         }));
         setParties(list);
         setFilteredBeneficiaries(list);
@@ -1438,6 +1440,7 @@ export default function InternalFundRequestForm({
                 onAccountOfPartyId: null,
                 onAccountOfName: "",
                 beneficiary: "",
+                partiesAccount: "",
               }
             : item,
         ),
@@ -1589,10 +1592,7 @@ export default function InternalFundRequestForm({
         e.preventDefault();
         amountInputRefs.current[index - 1]?.focus();
       }
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        handleSubmit(e as any);
-      }
+      // Ctrl+Enter submit is handled by the global keydown listener below
     },
     [lineItems.length, addLineItem],
   );
