@@ -102,6 +102,7 @@ type JobDetail = {
   consigneePartyId?: number;
   shipperPartyId?: number;
   terminalPartyId?: number;
+  principalId?: number;
   carrierPartyId?: number;
   transporterPartyId?: number;
   consigneeParty?: {
@@ -232,6 +233,14 @@ function getAutoPartyIdForCharge(
   return null;
 }
 
+function getJobRelevantPartyIds(detail: JobDetail): Set<number> {
+  return new Set<number>(
+    [detail.terminalPartyId, detail.principalId, detail.consigneePartyId].filter(
+      (id): id is number => !!id,
+    ),
+  );
+}
+
 // ─── Pinned On Account Of parties ────────────────────────────────────────────
 
 const PINNED_ON_ACCOUNT_PARTIES: Party[] = [];
@@ -259,6 +268,7 @@ const LineItemRow = ({
   onAccountOfParties,
   onAccountOfChange,
   chargePartiesCache,
+  jobDetailsCache,
   statusOptions,
   pendingStatus,
   approvedStatus,
@@ -291,15 +301,23 @@ const LineItemRow = ({
     return "";
   };
 
-  // Per-line beneficiary filter:
-  // If a charge is selected for this line, show only parties that the
-  // charge's partyIds set includes. Falls back to all parties if not yet loaded.
+  // Per-line beneficiary filter.
+  // Priority: charge-party mappings → job-relevant parties (terminal/principal/consignee) → all
   const lineFilteredBeneficiaries = React.useMemo(() => {
-    if (!item.headCoaId) return filteredBeneficiaries;
+    const getJobFallback = () => {
+      if (!item.jobId) return filteredBeneficiaries;
+      const detail = jobDetailsCache?.[item.jobId];
+      if (!detail) return filteredBeneficiaries;
+      const jobIds = getJobRelevantPartyIds(detail);
+      if (jobIds.size === 0) return filteredBeneficiaries;
+      return filteredBeneficiaries.filter((p: Party) => jobIds.has(p.partyId));
+    };
+    if (!item.headCoaId) return getJobFallback();
     const allowed = chargePartiesCache?.[item.headCoaId];
-    if (!allowed) return filteredBeneficiaries; // not yet loaded — show all
+    if (!allowed) return filteredBeneficiaries; // still loading
+    if (allowed.size === 0) return getJobFallback(); // no charge-party mappings → job parties
     return filteredBeneficiaries.filter((p: Party) => allowed.has(p.partyId));
-  }, [item.headCoaId, filteredBeneficiaries, chargePartiesCache]);
+  }, [item.headCoaId, item.jobId, filteredBeneficiaries, chargePartiesCache, jobDetailsCache]);
 
   return (
     <TableRow className={`group ${getRowBg(item.subRequestStatus)}`}>
@@ -2295,6 +2313,7 @@ export default function InternalFundRequestForm({
                         onAccountOfParties={filteredOnAccountOfParties}
                         onAccountOfChange={handleOnAccountOfChange}
                         chargePartiesCache={chargePartiesCache}
+                        jobDetailsCache={jobDetailsCache}
                         statusOptions={statusOptions}
                         pendingStatus={pendingStatus}
                         approvedStatus={approvedStatus}
