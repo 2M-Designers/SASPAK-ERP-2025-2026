@@ -317,17 +317,19 @@ export default function PurchaseInvoiceClient() {
   const { toast } = useToast();
 
   // ── Fetch helpers ──────────────────────────────────────────────────────────
+  // Lookup GetList endpoints work without auth (matching server-side page.tsx pattern).
+  // The invoice CRUD endpoints still use getAuthHeaders() individually.
   const postList = async (endpoint: string, select: string, where = "", sort = "") => {
     const res = await fetch(`${getBaseUrl()}${endpoint}`, {
       method: "POST",
-      headers: getAuthHeaders(),
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         select,
         where,
         search: "",
         sortOn: sort,
         page: "1",
-        pageSize: "500",
+        pageSize: "1000",
       }),
     });
     if (!res.ok) return [];
