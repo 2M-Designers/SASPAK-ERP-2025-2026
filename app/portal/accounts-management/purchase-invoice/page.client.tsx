@@ -317,17 +317,19 @@ export default function PurchaseInvoiceClient() {
   const { toast } = useToast();
 
   // ── Fetch helpers ──────────────────────────────────────────────────────────
+  // Lookup GetList endpoints work without auth (matching server-side page.tsx pattern).
+  // The invoice CRUD endpoints still use getAuthHeaders() individually.
   const postList = async (endpoint: string, select: string, where = "", sort = "") => {
     const res = await fetch(`${getBaseUrl()}${endpoint}`, {
       method: "POST",
-      headers: getAuthHeaders(),
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         select,
         where,
         search: "",
         sortOn: sort,
         page: "1",
-        pageSize: "500",
+        pageSize: "1000",
       }),
     });
     if (!res.ok) return [];
@@ -379,7 +381,7 @@ export default function PurchaseInvoiceClient() {
           postList("SetupCurrency/GetList", "CurrencyId, CurrencyCode, CurrencyName, Symbol, IsDefault", "", "CurrencyCode ASC"),
           postList("Party/GetList", "PartyId, PartyCode, PartyName", "", "PartyName ASC"),
           postList("Job/GetList", "JobId, JobNumber", "", "JobId DESC"),
-          postList("ChargesMaster/GetList", "ChargesMasterId, ChargesCode, ChargesName", "", "ChargesName ASC"),
+          postList("ChargesMaster/GetList", "ChargeId, ChargeCode, ChargeName", "", "ChargeName ASC"),
           postList("GlAccount/GetList", "AccountId, AccountCode, AccountName", "", "AccountCode ASC"),
           postList("CostCenter/GetList", "CostCenterId, CostCenterCode, CostCenterName", "", "CostCenterCode ASC"),
         ]);
@@ -402,9 +404,9 @@ export default function PurchaseInvoiceClient() {
         jobNumber: j.jobNumber ?? j.JobNumber ?? "",
       })));
       setCharges(chargeRaw.map((ch: any) => ({
-        chargesMasterId: ch.chargesMasterId ?? ch.ChargesMasterId ?? ch.chargesId ?? ch.ChargesId ?? 0,
-        chargesCode: ch.chargesCode ?? ch.ChargesCode ?? "",
-        chargesName: ch.chargesName ?? ch.ChargesName ?? ch.chargeName ?? ch.ChargeName ?? "",
+        chargesMasterId: ch.chargeId ?? ch.ChargeId ?? ch.chargesMasterId ?? ch.ChargesMasterId ?? 0,
+        chargesCode: ch.chargeCode ?? ch.ChargeCode ?? ch.chargesCode ?? ch.ChargesCode ?? "",
+        chargesName: ch.chargeName ?? ch.ChargeName ?? ch.chargesName ?? ch.ChargesName ?? "",
       })));
       setAccounts(acctRaw.map((a: any) => ({
         accountId: a.accountId ?? a.AccountId ?? 0,

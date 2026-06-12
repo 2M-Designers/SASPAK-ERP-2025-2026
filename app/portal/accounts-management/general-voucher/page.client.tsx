@@ -389,11 +389,11 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
   const fetchFullVoucherWithDetails = useCallback(
     async (id: number): Promise<Voucher | null> => {
       try {
-        const baseUrl = getBaseUrl();
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
         const vRes = await fetch(`${baseUrl}GLVoucher/${id}`, {
           method: "GET",
-          headers: getAuthHeaders(),
+          headers: { "Content-Type": "application/json" },
         });
         if (!vRes.ok) throw new Error(`${vRes.status}`);
         const raw = await vRes.json();
