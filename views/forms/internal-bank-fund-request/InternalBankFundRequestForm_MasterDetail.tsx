@@ -244,9 +244,11 @@ function getAutoPartyIdForCharge(
 // dropdown when a charge has no specific party mappings.
 function getJobRelevantPartyIds(detail: JobDetail): Set<number> {
   return new Set<number>(
-    [detail.terminalPartyId, detail.principalId, detail.consigneePartyId].filter(
-      (id): id is number => !!id,
-    ),
+    [
+      detail.terminalPartyId,
+      detail.principalId,
+      detail.consigneePartyId,
+    ].filter((id): id is number => !!id),
   );
 }
 
@@ -318,7 +320,13 @@ const LineItemRow = ({
     if (!allowed) return filteredBeneficiaries; // still loading
     if (allowed.size === 0) return getJobFallback(); // no charge-party mappings → job parties
     return filteredBeneficiaries.filter((p: Party) => allowed.has(p.partyId));
-  }, [item.headCoaId, item.jobId, filteredBeneficiaries, chargePartiesCache, jobDetailsCache]);
+  }, [
+    item.headCoaId,
+    item.jobId,
+    filteredBeneficiaries,
+    chargePartiesCache,
+    jobDetailsCache,
+  ]);
 
   return (
     <TableRow className={`group ${getRowBg(item.subRequestStatus)}`}>
@@ -1787,8 +1795,15 @@ export default function InternalBankFundRequestForm({
 
             // ── Job & amounts ─────────────────────────────────────────────
             JobId: item.jobId ?? null,
-            HeadCoaId:
-              type === "edit" ? (item.preservedHeadCoaId ?? null) : null,
+            HeadCoaId: (() => {
+              // For edits, use the server-provided HeadCoaId (GL account).
+              // For adds, resolve the charge's costGlaccountId at submit time.
+              if (type === "edit") return item.preservedHeadCoaId ?? null;
+              const ch = chargesMasters.find(
+                (c) => c.chargeId === item.headCoaId,
+              );
+              return ch?.costGlaccountId ?? null;
+            })(),
             BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
             HeadOfAccount: item.headOfAccount || "",
             Beneficiary: item.beneficiary || "",
