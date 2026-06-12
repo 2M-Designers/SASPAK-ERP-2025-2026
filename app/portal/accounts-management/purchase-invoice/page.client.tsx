@@ -66,7 +66,14 @@ type Currency = {
 };
 
 type Party = { partyId: number; partyCode: string; partyName: string };
-type Job = { jobId: number; jobNumber: string };
+type Job = {
+  jobId: number;
+  jobNumber: string;
+  terminalPartyId: number | null;
+  principalId: number | null;
+  consigneePartyId: number | null;
+  jobInvoiceExchRate: number | null;
+};
 type ChargeMaster = {
   chargesMasterId: number;
   chargesCode: string;
@@ -380,7 +387,7 @@ export default function PurchaseInvoiceClient() {
         await Promise.all([
           postList("SetupCurrency/GetList", "CurrencyId, CurrencyCode, CurrencyName, Symbol, IsDefault", "", "CurrencyCode ASC"),
           postList("Party/GetList", "PartyId, PartyCode, PartyName", "", "PartyName ASC"),
-          postList("Job/GetList", "JobId, JobNumber", "", "JobId DESC"),
+          postList("Job/GetList", "JobId, JobNumber, TerminalPartyId, PrincipalId, ConsigneePartyId, JobInvoiceExchRate", "", "JobId DESC"),
           postList("ChargesMaster/GetList", "ChargeId, ChargeCode, ChargeName", "", "ChargeName ASC"),
           postList("GlAccount/GetList", "AccountId, AccountCode, AccountName", "", "AccountCode ASC"),
           postList("CostCenter/GetList", "CostCenterId, CostCenterCode, CostCenterName", "", "CostCenterCode ASC"),
@@ -402,6 +409,10 @@ export default function PurchaseInvoiceClient() {
       setJobs(jobRaw.map((j: any) => ({
         jobId: j.jobId ?? j.JobId ?? 0,
         jobNumber: j.jobNumber ?? j.JobNumber ?? "",
+        terminalPartyId: j.terminalPartyId ?? j.TerminalPartyId ?? null,
+        principalId: j.principalId ?? j.PrincipalId ?? null,
+        consigneePartyId: j.consigneePartyId ?? j.ConsigneePartyId ?? null,
+        jobInvoiceExchRate: j.jobInvoiceExchRate ?? j.JobInvoiceExchRate ?? null,
       })));
       setCharges(chargeRaw.map((ch: any) => ({
         chargesMasterId: ch.chargeId ?? ch.ChargeId ?? ch.chargesMasterId ?? ch.ChargesMasterId ?? 0,
@@ -1018,7 +1029,24 @@ export default function PurchaseInvoiceClient() {
                   <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Job</Label>
                   <Select
                     value={masterForm.jobId?.toString() ?? ""}
-                    onValueChange={(v) => setMasterForm((p) => ({ ...p, jobId: v ? parseInt(v, 10) : null }))}
+                    onValueChange={(v) => {
+                      const selectedJob = v ? jobs.find((j) => j.jobId === parseInt(v, 10)) : null;
+                      setMasterForm((p) => ({
+                        ...p,
+                        jobId: selectedJob?.jobId ?? null,
+                        // Auto-fill billing party from job's terminal party (beneficiary)
+                        billingPartyId:
+                          selectedJob?.terminalPartyId ??
+                          selectedJob?.principalId ??
+                          selectedJob?.consigneePartyId ??
+                          p.billingPartyId,
+                        // Auto-fill exchange rate if job has one
+                        exchangeRate:
+                          selectedJob?.jobInvoiceExchRate
+                            ? selectedJob.jobInvoiceExchRate
+                            : p.exchangeRate,
+                      }));
+                    }}
                   >
                     <SelectTrigger className='h-9 text-sm bg-white'>
                       <SelectValue placeholder='Select job (optional)...' />
