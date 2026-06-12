@@ -1319,7 +1319,7 @@ export default function InternalBankFundRequestForm({
                 if (autoParty) {
                   return {
                     ...baseUpdate,
-                    beneficiaryCoaId: autoParty.glAccountId ?? autoParty.partyId,
+                    beneficiaryCoaId: autoParty.glAccountId ?? null,
                     onAccountOfPartyId: autoParty.partyId,
                     beneficiary: autoParty.benificiaryFromPO || autoParty.partyName,
                     partiesAccount: autoParty.partyName,
@@ -1332,7 +1332,7 @@ export default function InternalBankFundRequestForm({
 
             return {
               ...baseUpdate,
-              beneficiaryCoaId: customerParty.glAccountId ?? customerParty.partyId,
+              beneficiaryCoaId: customerParty.glAccountId ?? null,
               onAccountOfPartyId: customerParty.partyId,
               beneficiary:
                 customerParty.benificiaryFromPO || customerParty.partyName,
@@ -1392,7 +1392,7 @@ export default function InternalBankFundRequestForm({
             item.id === id
               ? {
                   ...item,
-                  beneficiaryCoaId: party.glAccountId ?? party.partyId,
+                  beneficiaryCoaId: party.glAccountId ?? null,
                   onAccountOfPartyId: party.partyId,
                   beneficiary: party.benificiaryFromPO || party.partyName,
                   partiesAccount: party.partyName,
@@ -1409,7 +1409,7 @@ export default function InternalBankFundRequestForm({
     (id: string, partyId: string) => {
       const party = parties.find((p) => p.partyId.toString() === partyId);
       if (!party) return;
-      updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? party.partyId);
+      updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? null);
       updateLineItem(id, "onAccountOfPartyId", party.partyId);
       updateLineItem(
         id,
