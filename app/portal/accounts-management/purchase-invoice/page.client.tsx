@@ -379,7 +379,7 @@ export default function PurchaseInvoiceClient() {
           postList("SetupCurrency/GetList", "CurrencyId, CurrencyCode, CurrencyName, Symbol, IsDefault", "", "CurrencyCode ASC"),
           postList("Party/GetList", "PartyId, PartyCode, PartyName", "", "PartyName ASC"),
           postList("Job/GetList", "JobId, JobNumber", "", "JobId DESC"),
-          postList("ChargesMaster/GetList", "ChargesMasterId, ChargesCode, ChargesName", "", "ChargesName ASC"),
+          postList("ChargesMaster/GetList", "ChargeId, ChargeCode, ChargeName", "", "ChargeName ASC"),
           postList("GlAccount/GetList", "AccountId, AccountCode, AccountName", "", "AccountCode ASC"),
           postList("CostCenter/GetList", "CostCenterId, CostCenterCode, CostCenterName", "", "CostCenterCode ASC"),
         ]);
@@ -402,9 +402,9 @@ export default function PurchaseInvoiceClient() {
         jobNumber: j.jobNumber ?? j.JobNumber ?? "",
       })));
       setCharges(chargeRaw.map((ch: any) => ({
-        chargesMasterId: ch.chargesMasterId ?? ch.ChargesMasterId ?? ch.chargesId ?? ch.ChargesId ?? 0,
-        chargesCode: ch.chargesCode ?? ch.ChargesCode ?? "",
-        chargesName: ch.chargesName ?? ch.ChargesName ?? ch.chargeName ?? ch.ChargeName ?? "",
+        chargesMasterId: ch.chargeId ?? ch.ChargeId ?? ch.chargesMasterId ?? ch.ChargesMasterId ?? 0,
+        chargesCode: ch.chargeCode ?? ch.ChargeCode ?? ch.chargesCode ?? ch.ChargesCode ?? "",
+        chargesName: ch.chargeName ?? ch.ChargeName ?? ch.chargesName ?? ch.ChargesName ?? "",
       })));
       setAccounts(acctRaw.map((a: any) => ({
         accountId: a.accountId ?? a.AccountId ?? 0,
