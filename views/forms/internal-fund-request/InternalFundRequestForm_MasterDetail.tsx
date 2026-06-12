@@ -1781,13 +1781,16 @@ export default function InternalFundRequestForm({
       const isUpdate = type === "edit";
       const nowIso = new Date().toISOString();
       try {
-        const buildDetail = (item: LineItem): CashFundRequestDetailPayload => ({
+        const buildDetail = (item: LineItem): CashFundRequestDetailPayload => {
+          const ch = chargesMasters.find((c) => c.chargeId === item.headCoaId);
+          return ({
           InternalFundsRequestCashId:
             isUpdate && item.internalFundsRequestCashId
               ? item.internalFundsRequestCashId
               : 0,
           JobId: item.jobId ?? 0,
-          HeadCoaId: isUpdate ? (item.preservedHeadCoaId ?? null) : null,
+          // For edits use the server-returned HeadCoaId; for adds resolve the charge's costGlaccountId.
+          HeadCoaId: isUpdate ? (item.preservedHeadCoaId ?? null) : (ch?.costGlaccountId ?? null),
           BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
           HeadOfAccount: item.headOfAccount || "",
           Beneficiary: item.beneficiary || "",
@@ -1812,6 +1815,7 @@ export default function InternalFundRequestForm({
           Version: 0,
           CreatedBy: userId,
         });
+        };
 
         const payload: CashFundRequestPayload = {
           CashFundRequestId:

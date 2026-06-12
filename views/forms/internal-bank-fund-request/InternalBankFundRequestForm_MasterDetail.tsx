@@ -1722,7 +1722,13 @@ export default function InternalBankFundRequestForm({
 
             // ── Job & amounts ─────────────────────────────────────────────
             JobId: item.jobId ?? null,
-            HeadCoaId: type === "edit" ? (item.preservedHeadCoaId ?? null) : null,
+            HeadCoaId: (() => {
+              // For edits, use the server-provided HeadCoaId (GL account).
+              // For adds, resolve the charge's costGlaccountId at submit time.
+              if (type === "edit") return item.preservedHeadCoaId ?? null;
+              const ch = chargesMasters.find((c) => c.chargeId === item.headCoaId);
+              return ch?.costGlaccountId ?? null;
+            })(),
             BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
             HeadOfAccount: item.headOfAccount || "",
             Beneficiary: item.beneficiary || "",
