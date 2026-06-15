@@ -328,8 +328,9 @@ const LineItemRow = ({
     jobDetailsCache,
   ]);
 
-  // Auto-select the first beneficiary whenever the filtered list resolves and nothing is chosen yet
+  // Auto-select the first beneficiary after Head of Account is chosen and list resolves
   React.useEffect(() => {
+    if (!item.headCoaId) return; // only trigger after a charge is selected
     if (item.beneficiaryCoaId) return; // already selected — don't override
     if (lineFilteredBeneficiaries.length === 0) return;
     const first = lineFilteredBeneficiaries[0];
