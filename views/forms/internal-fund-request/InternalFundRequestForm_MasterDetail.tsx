@@ -330,6 +330,8 @@ const LineItemRow = ({
   // Auto-select the first beneficiary after Head of Account is chosen and list resolves
   React.useEffect(() => {
     if (!item.headCoaId) return; // only trigger after a charge is selected
+    // Wait until the charge-party cache has actually loaded (undefined = still fetching)
+    if (chargePartiesCache && chargePartiesCache[item.headCoaId] === undefined) return;
     if (item.beneficiaryCoaId) return; // already selected — don't override
     if (lineFilteredBeneficiaries.length === 0) return;
     const first = lineFilteredBeneficiaries[0];
