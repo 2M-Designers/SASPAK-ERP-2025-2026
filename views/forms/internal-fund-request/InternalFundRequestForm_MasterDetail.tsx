@@ -318,6 +318,14 @@ const LineItemRow = ({
     return filteredBeneficiaries.filter((p: Party) => allowed.has(p.partyId));
   }, [item.headCoaId, item.jobId, filteredBeneficiaries, chargePartiesCache, jobDetailsCache]);
 
+  // Auto-select the first beneficiary whenever the filtered list resolves and nothing is chosen yet
+  React.useEffect(() => {
+    if (item.beneficiaryCoaId) return; // already selected — don't override
+    if (lineFilteredBeneficiaries.length === 0) return;
+    const first = lineFilteredBeneficiaries[0];
+    onBeneficiaryChange(item.id, first.partyId.toString());
+  }, [lineFilteredBeneficiaries]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <TableRow className={`group ${getRowBg(item.subRequestStatus)}`}>
       {/* # */}
