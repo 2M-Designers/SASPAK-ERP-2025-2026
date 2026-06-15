@@ -328,6 +328,14 @@ const LineItemRow = ({
     jobDetailsCache,
   ]);
 
+  // Auto-select the first beneficiary whenever the filtered list resolves and nothing is chosen yet
+  React.useEffect(() => {
+    if (item.beneficiaryCoaId) return; // already selected — don't override
+    if (lineFilteredBeneficiaries.length === 0) return;
+    const first = lineFilteredBeneficiaries[0];
+    onBeneficiaryChange(item.id, first.partyId.toString());
+  }, [lineFilteredBeneficiaries]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <TableRow className={`group ${getRowBg(item.subRequestStatus)}`}>
       {/* # */}
@@ -1372,8 +1380,7 @@ export default function InternalBankFundRequestForm({
                 if (autoParty) {
                   return {
                     ...baseUpdate,
-                    beneficiaryCoaId:
-                      autoParty.glAccountId ?? autoParty.partyId,
+                    beneficiaryCoaId: autoParty.glAccountId ?? null,
                     onAccountOfPartyId: autoParty.partyId,
                     beneficiary:
                       autoParty.benificiaryFromPO || autoParty.partyName,
@@ -1387,8 +1394,7 @@ export default function InternalBankFundRequestForm({
 
             return {
               ...baseUpdate,
-              beneficiaryCoaId:
-                customerParty.glAccountId ?? customerParty.partyId,
+              beneficiaryCoaId: customerParty.glAccountId ?? null,
               onAccountOfPartyId: customerParty.partyId,
               beneficiary:
                 customerParty.benificiaryFromPO || customerParty.partyName,
@@ -1453,7 +1459,7 @@ export default function InternalBankFundRequestForm({
             item.id === id
               ? {
                   ...item,
-                  beneficiaryCoaId: party.glAccountId ?? party.partyId,
+                  beneficiaryCoaId: party.glAccountId ?? null,
                   onAccountOfPartyId: party.partyId,
                   beneficiary: party.benificiaryFromPO || party.partyName,
                   partiesAccount: party.partyName,
@@ -1470,11 +1476,7 @@ export default function InternalBankFundRequestForm({
     (id: string, partyId: string) => {
       const party = parties.find((p) => p.partyId.toString() === partyId);
       if (!party) return;
-      updateLineItem(
-        id,
-        "beneficiaryCoaId",
-        party.glAccountId ?? party.partyId,
-      );
+      updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? null);
       updateLineItem(id, "onAccountOfPartyId", party.partyId);
       updateLineItem(
         id,

@@ -235,9 +235,11 @@ function getAutoPartyIdForCharge(
 
 function getJobRelevantPartyIds(detail: JobDetail): Set<number> {
   return new Set<number>(
-    [detail.terminalPartyId, detail.principalId, detail.consigneePartyId].filter(
-      (id): id is number => !!id,
-    ),
+    [
+      detail.terminalPartyId,
+      detail.principalId,
+      detail.consigneePartyId,
+    ].filter((id): id is number => !!id),
   );
 }
 
@@ -317,7 +319,21 @@ const LineItemRow = ({
     if (!allowed) return filteredBeneficiaries; // still loading
     if (allowed.size === 0) return getJobFallback(); // no charge-party mappings → job parties
     return filteredBeneficiaries.filter((p: Party) => allowed.has(p.partyId));
-  }, [item.headCoaId, item.jobId, filteredBeneficiaries, chargePartiesCache, jobDetailsCache]);
+  }, [
+    item.headCoaId,
+    item.jobId,
+    filteredBeneficiaries,
+    chargePartiesCache,
+    jobDetailsCache,
+  ]);
+
+  // Auto-select the first beneficiary whenever the filtered list resolves and nothing is chosen yet
+  React.useEffect(() => {
+    if (item.beneficiaryCoaId) return; // already selected — don't override
+    if (lineFilteredBeneficiaries.length === 0) return;
+    const first = lineFilteredBeneficiaries[0];
+    onBeneficiaryChange(item.id, first.partyId.toString());
+  }, [lineFilteredBeneficiaries]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <TableRow className={`group ${getRowBg(item.subRequestStatus)}`}>
@@ -1456,8 +1472,7 @@ export default function InternalFundRequestForm({
                 if (autoParty) {
                   return {
                     ...baseUpdate,
-                    beneficiaryCoaId:
-                      autoParty.glAccountId ?? autoParty.partyId,
+                    beneficiaryCoaId: autoParty.glAccountId ?? null,
                     onAccountOfPartyId: autoParty.partyId,
                     beneficiary:
                       autoParty.benificiaryFromPO || autoParty.partyName,
@@ -1471,8 +1486,7 @@ export default function InternalFundRequestForm({
 
             return {
               ...baseUpdate,
-              beneficiaryCoaId:
-                customerParty.glAccountId ?? customerParty.partyId,
+              beneficiaryCoaId: customerParty.glAccountId ?? null,
               onAccountOfPartyId: customerParty.partyId,
               beneficiary:
                 customerParty.benificiaryFromPO || customerParty.partyName,
@@ -1537,7 +1551,7 @@ export default function InternalFundRequestForm({
             item.id === id
               ? {
                   ...item,
-                  beneficiaryCoaId: party.glAccountId ?? party.partyId,
+                  beneficiaryCoaId: party.glAccountId ?? null,
                   onAccountOfPartyId: party.partyId,
                   beneficiary: party.benificiaryFromPO || party.partyName,
                 }
@@ -1553,11 +1567,7 @@ export default function InternalFundRequestForm({
     (id: string, partyId: string) => {
       const party = parties.find((p) => p.partyId.toString() === partyId);
       if (!party) return;
-      updateLineItem(
-        id,
-        "beneficiaryCoaId",
-        party.glAccountId ?? party.partyId,
-      );
+      updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? null);
       updateLineItem(id, "onAccountOfPartyId", party.partyId);
       updateLineItem(
         id,
@@ -1849,38 +1859,40 @@ export default function InternalFundRequestForm({
       try {
         const buildDetail = (item: LineItem): CashFundRequestDetailPayload => {
           const ch = chargesMasters.find((c) => c.chargeId === item.headCoaId);
-          return ({
-          InternalFundsRequestCashId:
-            isUpdate && item.internalFundsRequestCashId
-              ? item.internalFundsRequestCashId
-              : 0,
-          JobId: item.jobId ?? 0,
-          // For edits use the server-returned HeadCoaId; for adds resolve the charge's costGlaccountId.
-          HeadCoaId: isUpdate ? (item.preservedHeadCoaId ?? null) : (ch?.costGlaccountId ?? null),
-          BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
-          HeadOfAccount: item.headOfAccount || "",
-          Beneficiary: item.beneficiary || "",
-          RequestedAmount: item.requestedAmount,
-          ApprovedAmount: 0,
-          CreatedOn: nowIso,
-          CashFundRequestMasterId:
-            isUpdate && defaultState?.cashFundRequestId
-              ? defaultState.cashFundRequestId
-              : 0,
-          ChargesId: item.headCoaId ?? 0,
-          CustomerName: item.partiesAccount || item.beneficiary || "",
-          RequestedTo: selectedRequestor ?? 0,
-          OnAccountOfId:
-            item.onAccountOfPartyId && item.onAccountOfPartyId > 0
-              ? item.onAccountOfPartyId
-              : 0,
-          SubRequestStatus: item.subRequestStatus ?? "",
-          Remarks: item.remarks || "",
-          CashHeadId: isUpdate ? (item.preservedCashHeadId ?? null) : null,
-          IsBankLetterReleased: false,
-          Version: 0,
-          CreatedBy: userId,
-        });
+          return {
+            InternalFundsRequestCashId:
+              isUpdate && item.internalFundsRequestCashId
+                ? item.internalFundsRequestCashId
+                : 0,
+            JobId: item.jobId ?? 0,
+            // For edits use the server-returned HeadCoaId; for adds resolve the charge's costGlaccountId.
+            HeadCoaId: isUpdate
+              ? (item.preservedHeadCoaId ?? null)
+              : (ch?.costGlaccountId ?? null),
+            BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
+            HeadOfAccount: item.headOfAccount || "",
+            Beneficiary: item.beneficiary || "",
+            RequestedAmount: item.requestedAmount,
+            ApprovedAmount: 0,
+            CreatedOn: nowIso,
+            CashFundRequestMasterId:
+              isUpdate && defaultState?.cashFundRequestId
+                ? defaultState.cashFundRequestId
+                : 0,
+            ChargesId: item.headCoaId ?? 0,
+            CustomerName: item.partiesAccount || item.beneficiary || "",
+            RequestedTo: selectedRequestor ?? 0,
+            OnAccountOfId:
+              item.onAccountOfPartyId && item.onAccountOfPartyId > 0
+                ? item.onAccountOfPartyId
+                : 0,
+            SubRequestStatus: item.subRequestStatus ?? "",
+            Remarks: item.remarks || "",
+            CashHeadId: isUpdate ? (item.preservedCashHeadId ?? null) : null,
+            IsBankLetterReleased: false,
+            Version: 0,
+            CreatedBy: userId,
+          };
         };
 
         const payload: CashFundRequestPayload = {
