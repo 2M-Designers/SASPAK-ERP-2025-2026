@@ -104,8 +104,9 @@ const formSchema = z
     contactPersonEmail: z
       .string()
       .email("Invalid email address")
-      .min(1, "Contact Person Email is required"),
-    contactPersonPhone: z.string().min(1, "Contact Person Phone is required"),
+      .optional()
+      .or(z.literal("")),
+    contactPersonPhone: z.string().optional(),
     ntnNumber: z.string().optional(),
     strnNumber: z.string().optional(),
     bankName: z.string().optional(),
@@ -664,17 +665,11 @@ export default function PartiesForm({
           errors.push("Invalid email address");
           isValid = false;
         }
-        if (!formValues.contactPersonEmail?.trim()) {
-          errors.push("Contact Person Email is required");
-          isValid = false;
-        } else if (
+        if (
+          formValues.contactPersonEmail?.trim() &&
           !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.contactPersonEmail)
         ) {
-          errors.push("Invalid contact person email");
-          isValid = false;
-        }
-        if (!formValues.contactPersonPhone?.trim()) {
-          errors.push("Contact Person Phone is required");
+          errors.push("Invalid contact person email format");
           isValid = false;
         }
         break;
@@ -730,12 +725,11 @@ export default function PartiesForm({
     if (!v.email?.trim()) add(3, "Email is required");
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email))
       add(3, "Invalid email address");
-    if (!v.contactPersonEmail?.trim())
-      add(3, "Contact Person Email is required");
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.contactPersonEmail))
-      add(3, "Invalid contact person email");
-    if (!v.contactPersonPhone?.trim())
-      add(3, "Contact Person Phone is required");
+    if (
+      v.contactPersonEmail?.trim() &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.contactPersonEmail)
+    )
+      add(3, "Invalid contact person email format");
 
     // Step 4 — no mandatory fields
 
@@ -1415,14 +1409,14 @@ export default function PartiesForm({
                   {
                     name: "contactPersonEmail" as const,
                     label: "Contact Email",
-                    req: true,
+                    req: false,
                     placeholder: "contact@example.com",
                     type: "email",
                   },
                   {
                     name: "contactPersonPhone" as const,
                     label: "Contact Phone",
-                    req: true,
+                    req: false,
                     placeholder: "+92 XXX XXXXXXX",
                   },
                 ].map(({ name, label, req, placeholder, type }) => (
