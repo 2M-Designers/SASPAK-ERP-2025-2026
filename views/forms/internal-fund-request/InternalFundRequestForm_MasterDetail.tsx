@@ -331,7 +331,8 @@ const LineItemRow = ({
   React.useEffect(() => {
     if (!item.headCoaId) return; // only trigger after a charge is selected
     // Wait until the charge-party cache has actually loaded (undefined = still fetching)
-    if (chargePartiesCache && chargePartiesCache[item.headCoaId] === undefined) return;
+    if (chargePartiesCache && chargePartiesCache[item.headCoaId] === undefined)
+      return;
     if (item.beneficiaryCoaId) return; // already selected — don't override
     if (lineFilteredBeneficiaries.length === 0) return;
     const first = lineFilteredBeneficiaries[0];
@@ -796,8 +797,11 @@ export default function InternalFundRequestForm({
       headOfAccount: "",
       chargeType: "",
       beneficiaryCoaId: null,
-      onAccountOfPartyId: null,
-      onAccountOfName: "",
+      onAccountOfPartyId: saspakCargoPartyId,
+      onAccountOfName: saspakCargoPartyId
+        ? (parties.find((p) => p.partyId === saspakCargoPartyId)?.partyName ??
+          "")
+        : "",
       beneficiary: "",
       partiesAccount: "",
       requestedAmount: 0,
@@ -807,16 +811,37 @@ export default function InternalFundRequestForm({
       preservedHeadCoaId: null,
       preservedCashHeadId: null,
     }),
-    [pendingStatus],
+    [pendingStatus, saspakCargoPartyId, parties],
   );
 
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
+
+  // Seed the first (empty) line's On Account Of with SASPAK Cargo once parties load
+  useEffect(() => {
+    if (!saspakCargoPartyId) return;
+    const saspakParty = parties.find((p) => p.partyId === saspakCargoPartyId);
+    if (!saspakParty) return;
+    setLineItems((prev) =>
+      prev.map((item) =>
+        item.onAccountOfPartyId === null
+          ? {
+              ...item,
+              onAccountOfPartyId: saspakCargoPartyId,
+              onAccountOfName: saspakParty.partyName,
+            }
+          : item,
+      ),
+    );
+  }, [saspakCargoPartyId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [jobDetailsCache, setJobDetailsCache] = useState<
     Record<number, JobDetail>
   >({});
 
   // ── Reference data ────────────────────────────────────────────────────────
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [saspakCargoPartyId, setSaspakCargoPartyId] = useState<number | null>(
+    null,
+  );
   const [parties, setParties] = useState<Party[]>([]);
   const [chargesMasters, setChargesMasters] = useState<ChargesMaster[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -1152,6 +1177,10 @@ export default function InternalFundRequestForm({
         }));
         setParties(list);
         setFilteredBeneficiaries(list);
+        const saspak = list.find((p: any) =>
+          p.partyName?.toLowerCase().includes("saspak cargo"),
+        );
+        if (saspak) setSaspakCargoPartyId(saspak.partyId);
       } catch (e) {
         console.error("Parties fetch error:", e);
         toast({
@@ -1396,11 +1425,9 @@ export default function InternalFundRequestForm({
               jobOperationType: "",
               customerName: "",
               beneficiaryCoaId: null,
-              onAccountOfPartyId: null,
-              onAccountOfName: "",
               beneficiary: "",
               partiesAccount: "",
-              // Charges remain independent of job — no longer cleared here
+              // On Account Of stays as SASPAK Cargo — not cleared on job clear
             }
           : item,
       ),
@@ -1425,10 +1452,9 @@ export default function InternalFundRequestForm({
                 jobOperationType: job.operationType,
                 customerName: "",
                 beneficiaryCoaId: null,
-                onAccountOfPartyId: null,
-                onAccountOfName: "",
                 beneficiary: "",
                 partiesAccount: "",
+                // On Account Of keeps its current value (SASPAK Cargo default)
               }
             : item,
         ),
@@ -1452,7 +1478,7 @@ export default function InternalFundRequestForm({
               jobOperationType: job.operationType,
             };
 
-            // If chargeType maps to a specific job party, use that instead
+            // If chargeType maps to a specific job party, auto-fill beneficiary only
             const currentChargeType = item.chargeType || "";
             const autoTypes = [
               "terminal",
@@ -1476,10 +1502,10 @@ export default function InternalFundRequestForm({
                   return {
                     ...baseUpdate,
                     beneficiaryCoaId: autoParty.glAccountId ?? null,
-                    onAccountOfPartyId: autoParty.partyId,
                     beneficiary:
                       autoParty.benificiaryFromPO || autoParty.partyName,
                     partiesAccount: autoParty.partyName,
+                    // onAccountOfPartyId intentionally not changed — stays SASPAK Cargo
                   };
                 }
               }
@@ -1490,10 +1516,10 @@ export default function InternalFundRequestForm({
             return {
               ...baseUpdate,
               beneficiaryCoaId: customerParty.glAccountId ?? null,
-              onAccountOfPartyId: customerParty.partyId,
               beneficiary:
                 customerParty.benificiaryFromPO || customerParty.partyName,
               partiesAccount: customerParty.partyName,
+              // onAccountOfPartyId intentionally not changed — stays SASPAK Cargo
             };
           }),
         );
@@ -1510,7 +1536,7 @@ export default function InternalFundRequestForm({
       );
       if (!charge) return;
 
-      // 1. Set charge fields + clear beneficiary immediately
+      // 1. Set charge fields + clear beneficiary (On Account Of stays as SASPAK Cargo)
       setLineItems((prev) =>
         prev.map((item) =>
           item.id === id
@@ -1520,10 +1546,9 @@ export default function InternalFundRequestForm({
                 headOfAccount: charge.chargeName || charge.chargeCode,
                 chargeType: charge.chargeType || "",
                 beneficiaryCoaId: null,
-                onAccountOfPartyId: null,
-                onAccountOfName: "",
                 beneficiary: "",
                 partiesAccount: "",
+                // onAccountOfPartyId intentionally not cleared — stays SASPAK Cargo
               }
             : item,
         ),
@@ -1532,7 +1557,7 @@ export default function InternalFundRequestForm({
       // 2. Load parties linked to this charge (fast: 1 API call)
       await fetchChargeParties(charge.chargeId);
 
-      // 3. If chargeType maps to a job party, auto-fill beneficiary
+      // 3. If chargeType maps to a job party, auto-fill beneficiary only
       const chargeType = charge.chargeType || "";
       const autoTypes = [
         "terminal",
@@ -1555,8 +1580,8 @@ export default function InternalFundRequestForm({
               ? {
                   ...item,
                   beneficiaryCoaId: party.glAccountId ?? null,
-                  onAccountOfPartyId: party.partyId,
                   beneficiary: party.benificiaryFromPO || party.partyName,
+                  // onAccountOfPartyId intentionally not changed — stays SASPAK Cargo
                 }
               : item,
           );
@@ -1571,18 +1596,13 @@ export default function InternalFundRequestForm({
       const party = parties.find((p) => p.partyId.toString() === partyId);
       if (!party) return;
       updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? null);
-      updateLineItem(id, "onAccountOfPartyId", party.partyId);
       updateLineItem(
         id,
         "beneficiary",
         party.benificiaryFromPO || party.partyName || party.partyCode,
       );
-      updateLineItem(
-        id,
-        "onAccountOfName",
-        party.partyName || party.partyCode || "",
-      );
       updateLineItem(id, "partiesAccount", party.partyName || party.partyCode);
+      // onAccountOfPartyId is NOT changed here — it always stays as SASPAK Cargo
     },
     [parties, updateLineItem],
   );
