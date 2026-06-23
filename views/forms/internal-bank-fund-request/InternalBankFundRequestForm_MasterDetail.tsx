@@ -814,25 +814,16 @@ export default function InternalBankFundRequestForm({
     [pendingStatus],
   );
 
+  // ── Reference data (declared before useEffect/addLineItem that read them) ─
+  const [saspakCargoPartyId, setSaspakCargoPartyId] = useState<number | null>(null);
+  const [parties, setParties] = useState<Party[]>([]);
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [chargesMasters, setChargesMasters] = useState<ChargesMaster[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
 
-  // Seed the first (empty) line's On Account Of with SASPAK Cargo once parties load
-  useEffect(() => {
-    if (!saspakCargoPartyId) return;
-    const saspakParty = parties.find((p) => p.partyId === saspakCargoPartyId);
-    if (!saspakParty) return;
-    setLineItems((prev) =>
-      prev.map((item) =>
-        item.onAccountOfPartyId === null
-          ? {
-              ...item,
-              onAccountOfPartyId: saspakCargoPartyId,
-              onAccountOfName: saspakParty.partyName,
-            }
-          : item,
-      ),
-    );
-  }, [saspakCargoPartyId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [jobDetailsCache, setJobDetailsCache] = useState<
     Record<number, JobDetail>
   >({});
@@ -843,16 +834,19 @@ export default function InternalBankFundRequestForm({
     Record<number, Set<number>>
   >({});
 
-  // ── Reference data ────────────────────────────────────────────────────────
-  const [saspakCargoPartyId, setSaspakCargoPartyId] = useState<number | null>(
-    null,
-  );
-
-  const [banks, setBanks] = useState<Bank[]>([]);
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [chargesMasters, setChargesMasters] = useState<ChargesMaster[]>([]);
-  const [parties, setParties] = useState<Party[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  // Seed On Account Of with SASPAK Cargo on the first line once parties load
+  useEffect(() => {
+    if (!saspakCargoPartyId) return;
+    const saspakParty = parties.find((p) => p.partyId === saspakCargoPartyId);
+    if (!saspakParty) return;
+    setLineItems((prev) =>
+      prev.map((item) =>
+        item.onAccountOfPartyId === null
+          ? { ...item, onAccountOfPartyId: saspakCargoPartyId, onAccountOfName: saspakParty.partyName }
+          : item,
+      ),
+    );
+  }, [saspakCargoPartyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [filteredBanks, setFilteredBanks] = useState<Bank[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);

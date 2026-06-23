@@ -811,7 +811,24 @@ export default function InternalFundRequestForm({
     [pendingStatus],
   );
 
+  // ── Reference data (declared before useEffect that reads them) ────────────
+  const [saspakCargoPartyId, setSaspakCargoPartyId] = useState<number | null>(null);
+  const [parties, setParties] = useState<Party[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [chargesMasters, setChargesMasters] = useState<ChargesMaster[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
+
+  const [jobDetailsCache, setJobDetailsCache] = useState<
+    Record<number, JobDetail>
+  >({});
+
+  // Maps chargeId → Set of partyIds that have that charge active.
+  // Built lazily by fetching ChargesMaster/{chargeId} when a charge is selected.
+  const [chargePartiesCache, setChargePartiesCache] = useState<
+    Record<number, Set<number>>
+  >({});
 
   // Seed the first (empty) line's On Account Of with SASPAK Cargo once parties load
   useEffect(() => {
@@ -830,24 +847,6 @@ export default function InternalFundRequestForm({
       ),
     );
   }, [saspakCargoPartyId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [jobDetailsCache, setJobDetailsCache] = useState<
-    Record<number, JobDetail>
-  >({});
-
-  // ── Reference data ────────────────────────────────────────────────────────
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [saspakCargoPartyId, setSaspakCargoPartyId] = useState<number | null>(
-    null,
-  );
-  const [parties, setParties] = useState<Party[]>([]);
-  const [chargesMasters, setChargesMasters] = useState<ChargesMaster[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-
-  // Maps chargeId → Set of partyIds that have that charge active.
-  // Built lazily by fetching ChargesMaster/{chargeId} when a charge is selected.
-  const [chargePartiesCache, setChargePartiesCache] = useState<
-    Record<number, Set<number>>
-  >({});
 
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [filteredCharges, setFilteredCharges] = useState<ChargesMaster[]>([]);
