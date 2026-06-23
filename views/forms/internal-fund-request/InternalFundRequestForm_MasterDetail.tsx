@@ -797,11 +797,8 @@ export default function InternalFundRequestForm({
       headOfAccount: "",
       chargeType: "",
       beneficiaryCoaId: null,
-      onAccountOfPartyId: saspakCargoPartyId,
-      onAccountOfName: saspakCargoPartyId
-        ? (parties.find((p) => p.partyId === saspakCargoPartyId)?.partyName ??
-          "")
-        : "",
+      onAccountOfPartyId: null,
+      onAccountOfName: "",
       beneficiary: "",
       partiesAccount: "",
       requestedAmount: 0,
@@ -811,7 +808,7 @@ export default function InternalFundRequestForm({
       preservedHeadCoaId: null,
       preservedCashHeadId: null,
     }),
-    [pendingStatus, saspakCargoPartyId, parties],
+    [pendingStatus],
   );
 
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
@@ -1655,10 +1652,15 @@ export default function InternalFundRequestForm({
 
   // ── Add / Remove line ─────────────────────────────────────────────────────
   const addLineItem = useCallback(() => {
+    const saspakParty = saspakCargoPartyId
+      ? parties.find((p) => p.partyId === saspakCargoPartyId)
+      : null;
     const newItem: LineItem = {
       ...emptyLine(),
       requestedTo: selectedRequestor,
       subRequestStatus: pendingStatus,
+      onAccountOfPartyId: saspakCargoPartyId,
+      onAccountOfName: saspakParty?.partyName ?? "",
     };
     setLineItems((prev) => {
       const newItems = [...prev, newItem];
@@ -1667,7 +1669,7 @@ export default function InternalFundRequestForm({
       }, 120);
       return newItems;
     });
-  }, [emptyLine, selectedRequestor, pendingStatus]);
+  }, [emptyLine, selectedRequestor, pendingStatus, saspakCargoPartyId, parties]);
 
   const removeLineItem = useCallback(
     (id: string, index: number) => {
