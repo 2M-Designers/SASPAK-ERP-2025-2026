@@ -306,23 +306,41 @@ const LineItemRow = ({
 
   // Per-line beneficiary filter.
   // Priority: charge-party mappings → job-relevant parties (terminal/principal/consignee) → all
+  // The auto-party for this charge type (terminal/shipping/transporter) is always placed first
+  // so the auto-select effect below picks it without extra logic.
   const lineFilteredBeneficiaries = React.useMemo(() => {
+    const prioritiseAutoParty = (list: Party[]): Party[] => {
+      if (!item.jobId || !item.chargeType) return list;
+      const detail = jobDetailsCache?.[item.jobId];
+      if (!detail) return list;
+      const autoId = getAutoPartyIdForCharge(item.chargeType, detail);
+      if (!autoId) return list;
+      const idx = list.findIndex((p) => p.partyId === autoId);
+      if (idx <= 0) return list;
+      return [list[idx], ...list.slice(0, idx), ...list.slice(idx + 1)];
+    };
+
     const getJobFallback = () => {
       if (!item.jobId) return filteredBeneficiaries;
       const detail = jobDetailsCache?.[item.jobId];
       if (!detail) return filteredBeneficiaries;
       const jobIds = getJobRelevantPartyIds(detail);
       if (jobIds.size === 0) return filteredBeneficiaries;
-      return filteredBeneficiaries.filter((p: Party) => jobIds.has(p.partyId));
+      return prioritiseAutoParty(
+        filteredBeneficiaries.filter((p: Party) => jobIds.has(p.partyId)),
+      );
     };
     if (!item.headCoaId) return getJobFallback();
     const allowed = chargePartiesCache?.[item.headCoaId];
     if (!allowed) return filteredBeneficiaries; // still loading
     if (allowed.size === 0) return getJobFallback(); // no charge-party mappings → job parties
-    return filteredBeneficiaries.filter((p: Party) => allowed.has(p.partyId));
+    return prioritiseAutoParty(
+      filteredBeneficiaries.filter((p: Party) => allowed.has(p.partyId)),
+    );
   }, [
     item.headCoaId,
     item.jobId,
+    item.chargeType,
     filteredBeneficiaries,
     chargePartiesCache,
     jobDetailsCache,
@@ -334,7 +352,7 @@ const LineItemRow = ({
     // Wait until the charge-party cache has actually loaded (undefined = still fetching)
     if (chargePartiesCache && chargePartiesCache[item.headCoaId] === undefined)
       return;
-    if (item.beneficiaryCoaId) return; // already selected — don't override
+    if (item.beneficiary) return; // already has a beneficiary — don't override
     if (lineFilteredBeneficiaries.length === 0) return;
     const first = lineFilteredBeneficiaries[0];
     onBeneficiaryChange(item.id, first.partyId.toString());
@@ -834,19 +852,22 @@ export default function InternalBankFundRequestForm({
     Record<number, Set<number>>
   >({});
 
-  // Seed On Account Of with SASPAK Cargo on the first line once parties load
+  // When parties load, detect SASPAK Cargo and seed On Account Of on all null lines
   useEffect(() => {
-    if (!saspakCargoPartyId) return;
-    const saspakParty = parties.find((p) => p.partyId === saspakCargoPartyId);
-    if (!saspakParty) return;
+    if (parties.length === 0) return;
+    const saspak = parties.find((p) =>
+      p.partyName?.toLowerCase().includes("saspak cargo"),
+    );
+    if (!saspak) return;
+    setSaspakCargoPartyId(saspak.partyId);
     setLineItems((prev) =>
       prev.map((item) =>
         item.onAccountOfPartyId === null
-          ? { ...item, onAccountOfPartyId: saspakCargoPartyId, onAccountOfName: saspakParty.partyName }
+          ? { ...item, onAccountOfPartyId: saspak.partyId, onAccountOfName: saspak.partyName }
           : item,
       ),
     );
-  }, [saspakCargoPartyId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [parties]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [filteredBanks, setFilteredBanks] = useState<Bank[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
@@ -1112,11 +1133,6 @@ export default function InternalBankFundRequestForm({
         }));
         setParties(list);
         setFilteredBeneficiaries(list);
-        // Find SASPAK Cargo to use as the default "On Account Of" party
-        const saspak = list.find((p: any) =>
-          p.partyName?.toLowerCase().includes("saspak cargo"),
-        );
-        if (saspak) setSaspakCargoPartyId(saspak.partyId);
       } catch (e) {
         console.error("Parties fetch error:", e);
       } finally {
@@ -1828,7 +1844,7 @@ export default function InternalBankFundRequestForm({
               );
               return ch?.costGlaccountId ?? null;
             })(),
-            BeneficiaryCoaId: item.beneficiaryCoaId ?? 0,
+            BeneficiaryCoaId: item.beneficiaryCoaId ?? null,
             HeadOfAccount: item.headOfAccount || "",
             Beneficiary: item.beneficiary || "",
             AccountNo: "",
@@ -1836,10 +1852,7 @@ export default function InternalBankFundRequestForm({
             ApprovedAmount: 0,
             ChargesId: item.headCoaId ?? 0,
             CustomerName: item.partiesAccount || item.beneficiary || "",
-            OnAccountOfId:
-              item.onAccountOfPartyId && item.onAccountOfPartyId > 0
-                ? item.onAccountOfPartyId
-                : 0,
+            OnAccountOfId: item.onAccountOfPartyId ?? null,
 
             // ── Routing ───────────────────────────────────────────────────
             RequestedTo: item.requestedTo ?? selectedRequestor ?? 0,
