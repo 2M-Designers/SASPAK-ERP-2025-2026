@@ -1949,11 +1949,19 @@ export default function InternalFundRequestForm({
             ? (defaultState?.totalApprovedAmount ?? 0)
             : 0,
           ApprovalStatus: computedStatus,
-          ApprovedBy: isUpdate && defaultState?.approvedBy != null ? String(defaultState.approvedBy) : null,
+          ApprovedBy: (() => {
+            if (!isUpdate) return null;
+            const raw = defaultState?.approvedBy;
+            if (raw == null || raw === 0 || raw === "0" || raw === "") return null;
+            return String(raw);
+          })(),
           ApprovedOn: isUpdate ? (defaultState?.approvedOn ?? null) : null,
           RequestedTo: selectedRequestor ?? 0,
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
-          CreatedBy: isUpdate ? (defaultState?.createdBy ?? userId) : userId,
+          CreatedBy: (() => {
+            const raw = isUpdate ? (defaultState?.createdBy ?? userId) : userId;
+            return raw != null ? String(raw) : null;
+          })(),
           CashHeadId: isUpdate
             ? (defaultState?.cashHeadId ?? defaultState?.CashHeadId ?? null)
             : null,

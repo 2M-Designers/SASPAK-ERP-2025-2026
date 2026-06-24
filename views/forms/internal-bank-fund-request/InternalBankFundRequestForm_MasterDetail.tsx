@@ -1912,7 +1912,9 @@ export default function InternalBankFundRequestForm({
           ApprovedBy: (() => {
             if (type !== "edit") return null;
             const raw = defaultState?.approvedBy ?? defaultState?.ApprovedBy;
-            return raw != null ? String(raw) : null;
+            // treat 0 / "0" / "" / null / undefined as "not yet approved"
+            if (raw == null || raw === 0 || raw === "0" || raw === "") return null;
+            return String(raw);
           })(),
           ApprovedOn:
             type === "edit"
@@ -1930,10 +1932,13 @@ export default function InternalBankFundRequestForm({
                 defaultState?.CreatedOn ??
                 new Date().toISOString())
               : new Date().toISOString(),
-          CreatedBy:
-            type === "edit"
-              ? (defaultState?.createdBy ?? defaultState?.CreatedBy ?? userId)
-              : userId,
+          CreatedBy: (() => {
+            const raw =
+              type === "edit"
+                ? (defaultState?.createdBy ?? defaultState?.CreatedBy ?? userId)
+                : userId;
+            return raw != null ? String(raw) : null;
+          })(),
           Version:
             type === "edit"
               ? (defaultState?.version ?? defaultState?.Version ?? 0)

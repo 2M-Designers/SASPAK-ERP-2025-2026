@@ -639,7 +639,10 @@ export default function InternalBankFundRequestApprovalForm({
         ApprovedOn: isApproving ? new Date().toISOString() : null,
         RequestedTo: req.requestedTo || req.RequestedTo,
         CreatedOn: req.createdOn || req.CreatedOn,
-        CreatedBy: req.createdBy || req.CreatedBy || userId,
+        CreatedBy: (() => {
+          const raw = req.createdBy ?? req.CreatedBy ?? userId;
+          return raw != null ? String(raw) : null;
+        })(),
         RequestorUserId: req.requestorUserId || req.RequestorUserId,
         Remarks: masterRemarks,
         Version: req.version || req.Version || 1,
