@@ -635,7 +635,7 @@ export default function InternalBankFundRequestApprovalForm({
         TotalRequestedAmount: totals.totalRequested,
         TotalApprovedAmount: totals.totalApproved,
         ApprovalStatus: derivedMasterStatus,
-        ApprovedBy: userId,
+        ApprovedBy: userId.toString(),
         ApprovedOn: isApproving ? new Date().toISOString() : null,
         RequestedTo: req.requestedTo || req.RequestedTo,
         CreatedOn: req.createdOn || req.CreatedOn,

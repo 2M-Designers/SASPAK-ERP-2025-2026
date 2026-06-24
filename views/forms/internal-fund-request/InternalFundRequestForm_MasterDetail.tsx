@@ -1949,7 +1949,7 @@ export default function InternalFundRequestForm({
             ? (defaultState?.totalApprovedAmount ?? 0)
             : 0,
           ApprovalStatus: computedStatus,
-          ApprovedBy: isUpdate ? (defaultState?.approvedBy ?? null) : null,
+          ApprovedBy: isUpdate && defaultState?.approvedBy != null ? String(defaultState.approvedBy) : null,
           ApprovedOn: isUpdate ? (defaultState?.approvedOn ?? null) : null,
           RequestedTo: selectedRequestor ?? 0,
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,

@@ -1909,10 +1909,11 @@ export default function InternalBankFundRequestForm({
 
           // ── Status ─────────────────────────────────────────────────────
           ApprovalStatus: masterApprovalStatus,
-          ApprovedBy:
-            type === "edit"
-              ? (defaultState?.approvedBy ?? defaultState?.ApprovedBy ?? null)
-              : null,
+          ApprovedBy: (() => {
+            if (type !== "edit") return null;
+            const raw = defaultState?.approvedBy ?? defaultState?.ApprovedBy;
+            return raw != null ? String(raw) : null;
+          })(),
           ApprovedOn:
             type === "edit"
               ? (defaultState?.approvedOn ?? defaultState?.ApprovedOn ?? null)
