@@ -117,6 +117,7 @@ const formSchema = z
     allowedCreditDays: z.number().default(0),
     paymentTerms: z.string().optional(),
     glParentAccountId: z.number().optional(),
+    glAccountId: z.number().nullable().optional(),
     trackIdAllowed: z.boolean().default(false),
     idPasswordAllowed: z.boolean().default(false),
     sendEmail: z.boolean().default(false),
@@ -503,6 +504,12 @@ export default function PartiesForm({
 
       // ── GL ──
       glParentAccountId: defaultState?.glparentAccountId ?? undefined,
+      glAccountId:
+        defaultState?.glaccountId ??
+        defaultState?.gLAccountId ??
+        defaultState?.GLAccountId ??
+        defaultState?.glAccountId ??
+        null,
 
       // ── Settings ──
       trackIdAllowed: defaultState?.trackIdAllowed ?? false,
@@ -832,6 +839,7 @@ export default function PartiesForm({
 
         // GL
         glparentAccountId: values.glParentAccountId ?? null,
+        glaccountId: values.glAccountId ?? null,
 
         // Portal & operational settings
         trackIdAllowed: values.trackIdAllowed,
@@ -1791,6 +1799,52 @@ export default function PartiesForm({
                         <FormDescription className='text-xs text-gray-500'>
                           Parent account under which this party's transactions
                           will be recorded
+                        </FormDescription>
+                        <FormMessage className='text-xs' />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='glAccountId'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className='flex items-center gap-1.5 text-sm font-medium'>
+                          GL Account{" "}
+                          <span className='text-red-500 text-base'>*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Select
+                            options={glAccounts}
+                            value={
+                              field.value != null
+                                ? glAccounts.find(
+                                    (o) => o.value === field.value,
+                                  ) ?? null
+                                : null
+                            }
+                            onChange={(v) => field.onChange(v?.value ?? null)}
+                            placeholder={
+                              loadingGlAccounts
+                                ? "Loading..."
+                                : "Select GL Account"
+                            }
+                            isClearable
+                            isLoading={loadingGlAccounts}
+                            isDisabled={loadingGlAccounts}
+                            styles={{
+                              control: (b) => ({
+                                ...b,
+                                minHeight: "40px",
+                                fontSize: "14px",
+                                borderColor: "#d1d5db",
+                              }),
+                              menu: (b) => ({ ...b, zIndex: 50 }),
+                            }}
+                          />
+                        </FormControl>
+                        <FormDescription className='text-xs text-gray-500'>
+                          Leaf GL account used as beneficiary account (BeneficiaryCoaId) in fund requests
                         </FormDescription>
                         <FormMessage className='text-xs' />
                       </FormItem>
