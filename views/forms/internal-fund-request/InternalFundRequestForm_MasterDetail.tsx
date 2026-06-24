@@ -1847,8 +1847,8 @@ export default function InternalFundRequestForm({
       if (!item.headCoaId) {
         errors.push(`Line ${i + 1}: Head of Account is required`);
       }
-      if (!item.beneficiaryCoaId) {
-        errors.push(`Line ${i + 1}: On Account Of is required`);
+      if (!item.beneficiary) {
+        errors.push(`Line ${i + 1}: Beneficiary is required`);
       }
       if (!item.requestedAmount || item.requestedAmount <= 0) {
         errors.push(`Line ${i + 1}: Valid amount is required`);
