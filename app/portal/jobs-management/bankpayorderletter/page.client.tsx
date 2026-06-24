@@ -456,15 +456,36 @@ export default function BankPayOrderLetterClient() {
       await fetchApprovedItems(selectedBankId);
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : "";
+      const lowerMsg = errMsg.toLowerCase();
 
-      if (errMsg === "Failed to fetch") {
-        // Server updated the bank letter status but crashed during GL payment
+      if (
+        errMsg === "Failed to fetch" ||
+        lowerMsg.includes("entity changes") ||
+        lowerMsg.includes("saving the entity")
+      ) {
+        // Server updated the bank letter status but failed during GL payment
         // post-processing (server-side issue). The status update did succeed,
-        // so reset state and refresh to reflect the change.
+        // so reset state and redirect to bank letter list.
         toast({
           title: "Status Updated",
           description:
             "Bank letter status was updated. GL payment entry could not be created due to a server issue — please contact your system administrator.",
+        });
+        setSelectedIds(new Set());
+        setRemarks("");
+        setReferenceNo("");
+        setTimeout(
+          () => router.push("/portal/jobs-management/bankletter"),
+          1500,
+        );
+        fetchApprovedItems(selectedBankId);
+      } else if (lowerMsg.includes("already released")) {
+        // Records were already marked as released on a previous attempt.
+        // Treat as success and redirect.
+        toast({
+          title: "Already Released",
+          description:
+            "These records were already released on a previous attempt. Redirecting to bank letter.",
         });
         setSelectedIds(new Set());
         setRemarks("");
