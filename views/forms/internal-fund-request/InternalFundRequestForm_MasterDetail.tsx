@@ -510,11 +510,18 @@ const LineItemRow = ({
           onValueChange={(v) => onBeneficiaryChange(item.id, v)}
         >
           <SelectTrigger
-            className='h-9 text-sm'
+            className={`h-9 text-sm ${item.beneficiary && !item.beneficiaryCoaId ? "border-amber-400 bg-amber-50" : ""}`}
             aria-label={`Select on account of for line ${index + 1}`}
           >
             <SelectValue placeholder='Select Beneficiary'>
-              {item.beneficiary || "Select Beneficiary"}
+              <span className='flex items-center gap-1'>
+                <span>{item.beneficiary || "Select Beneficiary"}</span>
+                {item.beneficiary && !item.beneficiaryCoaId && (
+                  <span className='text-amber-600 text-[10px] font-semibold shrink-0'>
+                    ⚠ No GL A/C
+                  </span>
+                )}
+              </span>
             </SelectValue>
           </SelectTrigger>
           <SelectContent
@@ -556,8 +563,11 @@ const LineItemRow = ({
                   >
                     <div className='flex flex-col'>
                       <span className='font-medium'>{party.partyName}</span>
-                      <span className='text-xs text-gray-500'>
-                        {party.benificiaryFromPO || party.partyCode}
+                      <span className='text-xs text-gray-500 flex items-center gap-1'>
+                        <span>{party.benificiaryFromPO || party.partyCode}</span>
+                        {!party.glAccountId && (
+                          <span className='text-amber-500 font-medium'>— No GL Account</span>
+                        )}
                       </span>
                     </div>
                   </SelectItem>
