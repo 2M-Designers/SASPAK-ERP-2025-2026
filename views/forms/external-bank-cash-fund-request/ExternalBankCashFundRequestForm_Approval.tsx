@@ -298,7 +298,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
         TotalRequestedAmount: totals.totalRequested,
         TotalApprovedAmount: totals.totalApproved,
         ApprovalStatus: derivedMasterStatus,
-        ApprovedBy: isApproving ? userId.toString() : "",
+        ApprovedBy: isApproving ? userId : null,
         ApprovedOn: isApproving ? new Date().toISOString() : null,
         RequestedTo: requestData.requestedTo || requestData.RequestedTo,
         CreatedOn: requestData.createdOn || requestData.CreatedOn,

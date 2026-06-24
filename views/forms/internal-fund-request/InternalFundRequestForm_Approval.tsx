@@ -623,7 +623,7 @@ export default function InternalFundRequestApprovalForm({
         TotalRequestedAmount: totals.totalRequested,
         TotalApprovedAmount: totals.totalApproved,
         ApprovalStatus: derivedMasterStatus,
-        ApprovedBy: userId.toString(),
+        ApprovedBy: userId,
         ApprovedOn:
           derivedMasterStatus === approvedStatus
             ? new Date().toISOString()
