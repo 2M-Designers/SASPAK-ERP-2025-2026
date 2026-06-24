@@ -51,6 +51,8 @@ type ApprovedDetailItem = {
   jobNumber: string;
   headOfAccount: string;
   beneficiary: string;
+  onAccountOfId: number | null;
+  onAccountOfName: string;
   accountNo: string;
   approvedAmount: number;
   requestedAmount: number;
@@ -58,7 +60,6 @@ type ApprovedDetailItem = {
   bankName: string;
   customerName: string;
   chargesId: number;
-  onAccountOfId: number | null;
   remarks: string;
   isBankLetterReleased: boolean | number | null;
 };
@@ -223,10 +224,9 @@ export default function BankPayOrderLetterClient() {
       setIsLoadingItems(true);
       setSelectedIds(new Set());
       try {
-        // Step 1: get list of approved master IDs
-        const listRes = await fetch(
-          `${getBaseUrl()}InternalBankFundsRequest/GetList`,
-          {
+        // Fetch master IDs, jobs, and parties in parallel
+        const [listRes, jobsRes, partiesRes] = await Promise.all([
+          fetch(`${getBaseUrl()}InternalBankFundsRequest/GetList`, {
             method: "POST",
             headers: getAuthHeaders(),
             body: JSON.stringify({
@@ -234,12 +234,35 @@ export default function BankPayOrderLetterClient() {
               where: `ApprovalStatus == "Approved"`,
               search: "",
               sortOn: "BankFundRequestId DESC",
-
               page: "1",
               pageSize: "500",
             }),
-          },
-        );
+          }),
+          fetch(`${getBaseUrl()}Jobs/GetList`, {
+            method: "POST",
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              select: "JobId, JobNumber",
+              where: "",
+              search: "",
+              sortOn: "JobId DESC",
+              page: "1",
+              pageSize: "2000",
+            }),
+          }),
+          fetch(`${getBaseUrl()}Party/GetList`, {
+            method: "POST",
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              select: "PartyId, PartyName",
+              where: "",
+              search: "",
+              sortOn: "PartyName ASC",
+              page: "1",
+              pageSize: "500",
+            }),
+          }),
+        ]);
 
         if (!listRes.ok) {
           toast({
@@ -248,6 +271,30 @@ export default function BankPayOrderLetterClient() {
             description: `Failed to load approved requests (${listRes.status})`,
           });
           return;
+        }
+
+        // Build jobId → jobNumber lookup
+        const jobMap = new Map<number, string>();
+        if (jobsRes.ok) {
+          const jd = await jobsRes.json();
+          const jList: any[] = Array.isArray(jd) ? jd : (jd?.data ?? jd?.items ?? []);
+          for (const j of jList) {
+            const id = j.jobId ?? j.JobId;
+            const num = j.jobNumber ?? j.JobNumber ?? "";
+            if (id) jobMap.set(id, num);
+          }
+        }
+
+        // Build partyId → partyName lookup
+        const partyMap = new Map<number, string>();
+        if (partiesRes.ok) {
+          const pd = await partiesRes.json();
+          const pList: any[] = Array.isArray(pd) ? pd : (pd?.data ?? pd?.items ?? []);
+          for (const p of pList) {
+            const id = p.partyId ?? p.PartyId;
+            const name = p.partyName ?? p.PartyName ?? "";
+            if (id) partyMap.set(id, name);
+          }
         }
 
         const listData = await listRes.json();
@@ -264,7 +311,7 @@ export default function BankPayOrderLetterClient() {
           return;
         }
 
-        // Step 2: fetch each master individually to get nested detail lines
+        // Fetch each master individually to get nested detail lines
         const fullRecords = await Promise.all(
           ids.map((id) =>
             fetch(`${getBaseUrl()}InternalBankFundsRequest/${id}`, {
@@ -296,16 +343,25 @@ export default function BankPayOrderLetterClient() {
             // Client-side bank filter — only apply when a bank is selected
             if (bankId !== null && bId !== bankId) continue;
 
+            const jobId = r.jobId ?? r.JobId ?? null;
+            const onAccountOfId = r.onAccountOfId ?? r.OnAccountOfId ?? null;
+
             items.push({
               internalFundsRequestBankId:
                 r.internalFundsRequestBankId ??
                 r.InternalFundsRequestBankId ??
                 0,
               bankFundRequestMasterId: masterId,
-              jobId: r.jobId ?? r.JobId ?? null,
-              jobNumber: r.jobNumber ?? r.JobNumber ?? "",
+              jobId,
+              jobNumber:
+                (jobId ? jobMap.get(jobId) : undefined) ??
+                r.jobNumber ?? r.JobNumber ?? "",
               headOfAccount: r.headOfAccount ?? r.HeadOfAccount ?? "",
               beneficiary: r.beneficiary ?? r.Beneficiary ?? "",
+              onAccountOfId,
+              onAccountOfName:
+                (onAccountOfId ? partyMap.get(onAccountOfId) : undefined) ??
+                r.onAccountOfName ?? r.OnAccountOfName ?? "",
               accountNo: r.accountNo ?? r.AccountNo ?? "",
               approvedAmount: r.approvedAmount ?? r.ApprovedAmount ?? 0,
               requestedAmount: r.requestedAmount ?? r.RequestedAmount ?? 0,
@@ -313,7 +369,6 @@ export default function BankPayOrderLetterClient() {
               bankName: bankMap.get(bId) ?? r.bankName ?? r.BankName ?? "",
               customerName: r.customerName ?? r.CustomerName ?? "",
               chargesId: r.chargesId ?? r.ChargesId ?? 0,
-              onAccountOfId: r.onAccountOfId ?? r.OnAccountOfId ?? null,
               remarks: r.remarks ?? r.Remarks ?? "",
               isBankLetterReleased:
                 r.isBankLetterReleased ?? r.IsBankLetterReleased ?? null,
@@ -860,13 +915,8 @@ export default function BankPayOrderLetterClient() {
                               </TableCell>
 
                               <TableCell className='text-xs text-gray-700'>
-                                <div>
-                                  {item.beneficiary || item.customerName || "—"}
-                                </div>
-                                {item.accountNo && (
-                                  <div className='text-gray-400 text-[10px] mt-0.5'>
-                                    A/C: {item.accountNo}
-                                  </div>
+                                {item.onAccountOfName || (
+                                  <span className='text-gray-400 italic'>—</span>
                                 )}
                               </TableCell>
 
@@ -947,7 +997,9 @@ export default function BankPayOrderLetterClient() {
                                 </TableCell>
 
                                 <TableCell className='text-xs text-gray-500'>
-                                  {item.beneficiary || item.customerName || "—"}
+                                  {item.onAccountOfName || (
+                                    <span className='italic'>—</span>
+                                  )}
                                 </TableCell>
 
                                 <TableCell className='text-xs font-mono text-gray-400'>
