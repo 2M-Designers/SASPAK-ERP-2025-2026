@@ -655,7 +655,12 @@ const LineItemRow = ({
             className='h-9 text-sm'
             aria-label={`Cost Center for line ${index + 1}`}
           >
-            <SelectValue placeholder='Select cost center' />
+            <SelectValue placeholder='Select cost center'>
+              {(() => {
+                const cc = costCenters.find((c: any) => c.costCenterId === item.costCenterId);
+                return cc ? `${cc.costCenterCode} — ${cc.costCenterName}` : undefined;
+              })()}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent className='max-h-[300px] w-[240px]' position='popper' sideOffset={5}>
             {costCenters.map((cc: any) => (
