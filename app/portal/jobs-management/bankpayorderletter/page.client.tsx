@@ -51,6 +51,7 @@ type ApprovedDetailItem = {
   jobNumber: string;
   headOfAccount: string;
   beneficiary: string;
+  beneficiaryCoaId: number | null;
   onAccountOfId: number | null;
   onAccountOfName: string;
   accountNo: string;
@@ -358,6 +359,7 @@ export default function BankPayOrderLetterClient() {
                 r.jobNumber ?? r.JobNumber ?? "",
               headOfAccount: r.headOfAccount ?? r.HeadOfAccount ?? "",
               beneficiary: r.beneficiary ?? r.Beneficiary ?? "",
+              beneficiaryCoaId: r.beneficiaryCoaId ?? r.BeneficiaryCoaId ?? null,
               onAccountOfId,
               onAccountOfName:
                 (onAccountOfId ? partyMap.get(onAccountOfId) : undefined) ??
@@ -444,6 +446,38 @@ export default function BankPayOrderLetterClient() {
       return;
     }
 
+    // ── Pre-validation: all selected items must have a GL Account (BeneficiaryCoaId) ──
+    const selectedItems = allItems.filter((it) =>
+      selectedIds.has(it.internalFundsRequestBankId),
+    );
+
+    const missingGlAccount = selectedItems.filter(
+      (it) => !it.beneficiaryCoaId || it.beneficiaryCoaId === 0,
+    );
+
+    if (missingGlAccount.length > 0) {
+      const names = [
+        ...new Set(missingGlAccount.map((it) => it.beneficiary || "Unknown")),
+      ];
+      toast({
+        variant: "destructive",
+        title: "GL Account Missing",
+        description: `Cannot release — the following beneficiar${names.length === 1 ? "y has" : "ies have"} no GL Account configured: ${names.join(", ")}. Please set the GL Account in Parties Setup first.`,
+        duration: 8000,
+      });
+      return;
+    }
+
+    // ── Pre-validation: bank must be selected ──
+    if (!selectedBankId) {
+      toast({
+        variant: "destructive",
+        title: "No Bank Selected",
+        description: "Please select a bank before releasing.",
+      });
+      return;
+    }
+
     isSubmittingRef.current = true;
     setIsSubmitting(true);
 
@@ -452,7 +486,7 @@ export default function BankPayOrderLetterClient() {
         fundRequestDetailIds: [...selectedIds],
         bulkIds: totals.masterIds,
         status: "Released",
-        headId: selectedBankId ?? 0,
+        headId: selectedBankId,
         anyId: 0,
         anyString: referenceNo.trim(),
         remarks: remarks.trim(),
@@ -503,7 +537,6 @@ export default function BankPayOrderLetterClient() {
         description: `${totals.count} item(s) | ${fmt(totals.totalAmount)}`,
       });
 
-      // Reset and refresh
       setSelectedIds(new Set());
       setRemarks("");
       setReferenceNo("");
@@ -513,30 +546,7 @@ export default function BankPayOrderLetterClient() {
       const errMsg = error instanceof Error ? error.message : "";
       const lowerMsg = errMsg.toLowerCase();
 
-      if (
-        errMsg === "Failed to fetch" ||
-        lowerMsg.includes("entity changes") ||
-        lowerMsg.includes("saving the entity")
-      ) {
-        // Server updated the bank letter status but failed during GL payment
-        // post-processing (server-side issue). The status update did succeed,
-        // so reset state and redirect to bank letter list.
-        toast({
-          title: "Status Updated",
-          description:
-            "Bank letter status was updated. GL payment entry could not be created due to a server issue — please contact your system administrator.",
-        });
-        setSelectedIds(new Set());
-        setRemarks("");
-        setReferenceNo("");
-        setTimeout(
-          () => router.push("/portal/jobs-management/bankletter"),
-          1500,
-        );
-        fetchApprovedItems(selectedBankId);
-      } else if (lowerMsg.includes("already released")) {
-        // Records were already marked as released on a previous attempt.
-        // Treat as success and redirect.
+      if (lowerMsg.includes("already released")) {
         toast({
           title: "Already Released",
           description:
@@ -554,8 +564,9 @@ export default function BankPayOrderLetterClient() {
         console.error("💥 Pay Order Letter error:", error);
         toast({
           variant: "destructive",
-          title: "Create Failed",
-          description: errMsg || "An unknown error occurred",
+          title: "Release Failed",
+          description: errMsg || "An unknown error occurred. No records were released.",
+          duration: 8000,
         });
       }
     } finally {
@@ -564,6 +575,7 @@ export default function BankPayOrderLetterClient() {
     }
   }, [
     selectedIds,
+    allItems,
     totals,
     selectedBankId,
     referenceNo,
@@ -819,6 +831,9 @@ export default function BankPayOrderLetterClient() {
                         Head of Account
                       </TableHead>
                       <TableHead className='text-xs min-w-[180px]'>
+                        Beneficiary
+                      </TableHead>
+                      <TableHead className='text-xs min-w-[180px]'>
                         On Account Of
                       </TableHead>
                       <TableHead className='text-xs min-w-[130px]'>
@@ -839,7 +854,7 @@ export default function BankPayOrderLetterClient() {
                     {isLoadingItems ? (
                       <TableRow>
                         <TableCell
-                          colSpan={selectedBankId ? 8 : 9}
+                          colSpan={selectedBankId ? 9 : 10}
                           className='text-center py-12 text-gray-400'
                         >
                           <FiLoader className='animate-spin inline h-5 w-5 mr-2' />
@@ -849,7 +864,7 @@ export default function BankPayOrderLetterClient() {
                     ) : filteredItems.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={selectedBankId ? 8 : 9}
+                          colSpan={selectedBankId ? 9 : 10}
                           className='text-center py-8 text-gray-400 text-sm'
                         >
                           No items match your search.
@@ -912,6 +927,17 @@ export default function BankPayOrderLetterClient() {
                                 {item.headOfAccount || (
                                   <span className='text-gray-400'>—</span>
                                 )}
+                              </TableCell>
+
+                              <TableCell className='text-xs text-gray-700'>
+                                <span className='flex items-center gap-1'>
+                                  <span>{item.beneficiary || <span className='text-gray-400 italic'>—</span>}</span>
+                                  {item.beneficiary && (!item.beneficiaryCoaId || item.beneficiaryCoaId === 0) && (
+                                    <span className='text-amber-600 text-[10px] font-semibold shrink-0 bg-amber-50 border border-amber-300 rounded px-1'>
+                                      ⚠ No GL A/C
+                                    </span>
+                                  )}
+                                </span>
                               </TableCell>
 
                               <TableCell className='text-xs text-gray-700'>
@@ -992,6 +1018,12 @@ export default function BankPayOrderLetterClient() {
 
                                 <TableCell className='text-xs text-gray-500'>
                                   {item.headOfAccount || (
+                                    <span className='italic'>—</span>
+                                  )}
+                                </TableCell>
+
+                                <TableCell className='text-xs text-gray-500'>
+                                  {item.beneficiary || (
                                     <span className='italic'>—</span>
                                   )}
                                 </TableCell>
