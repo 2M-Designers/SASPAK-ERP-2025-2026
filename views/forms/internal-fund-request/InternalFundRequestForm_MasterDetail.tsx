@@ -153,7 +153,14 @@ type LoadingState = {
   parties: boolean;
   users: boolean;
   statuses: boolean;
+  costCenters: boolean;
   jobDetail: Record<number, boolean>;
+};
+
+type CostCenter = {
+  costCenterId: number;
+  costCenterCode: string;
+  costCenterName: string;
 };
 
 // ─── Master status derivation ─────────────────────────────────────────────────
@@ -845,6 +852,8 @@ export default function InternalFundRequestForm({
   const [jobs, setJobs] = useState<Job[]>([]);
   const [chargesMasters, setChargesMasters] = useState<ChargesMaster[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const [selectedCostCenterId, setSelectedCostCenterId] = useState<number | null>(null);
 
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
 
@@ -898,6 +907,7 @@ export default function InternalFundRequestForm({
     parties: false,
     users: false,
     statuses: false,
+    costCenters: false,
     jobDetail: {},
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1264,10 +1274,44 @@ export default function InternalFundRequestForm({
       }
     };
 
+    const fetchCostCenters = async () => {
+      setLoadingState((prev) => ({ ...prev, costCenters: true }));
+      try {
+        const res = await fetch(`${getBaseUrl()}CostCenter/GetList`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            select: "CostCenterId, CostCenterCode, CostCenterName",
+            where: "IsActive == true",
+            sortOn: "CostCenterName ASC",
+            page: "1",
+            pageSize: "200",
+          }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const list: any[] = Array.isArray(data) ? data : (data?.data ?? data?.items ?? []);
+        const mapped: CostCenter[] = list.map((c: any) => ({
+          costCenterId: c.costCenterId ?? c.CostCenterId,
+          costCenterCode: c.costCenterCode ?? c.CostCenterCode ?? "",
+          costCenterName: c.costCenterName ?? c.CostCenterName ?? "",
+        }));
+        setCostCenters(mapped);
+        if (type !== "edit" && mapped.length > 0) {
+          setSelectedCostCenterId(mapped[0].costCenterId);
+        }
+      } catch (e) {
+        console.error("CostCenter fetch error:", e);
+      } finally {
+        setLoadingState((prev) => ({ ...prev, costCenters: false }));
+      }
+    };
+
     fetchJobs();
     fetchChargesMasters();
     fetchParties();
     fetchUsers();
+    fetchCostCenters();
   }, [toast]);
 
   // ── Fetch parties linked to a charge (single API call, replaces N+1) ────────
@@ -1757,6 +1801,12 @@ export default function InternalFundRequestForm({
       if (user) setRequestorName(user.fullName || user.username);
     }
 
+    const existingCostCenterId =
+      defaultState.costCenterId ?? defaultState.CostCenterId ?? null;
+    if (existingCostCenterId) {
+      setSelectedCostCenterId(existingCostCenterId);
+    }
+
     const details = defaultState.internalCashFundsRequests || [];
     if (details.length > 0) {
       const mapped: LineItem[] = details.map((d: any) => {
@@ -1957,6 +2007,7 @@ export default function InternalFundRequestForm({
           })(),
           ApprovedOn: isUpdate ? (defaultState?.approvedOn ?? null) : null,
           RequestedTo: selectedRequestor ?? 0,
+          CostCenterId: selectedCostCenterId ?? null,
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
           CreatedBy: (() => {
             const raw = isUpdate ? (defaultState?.createdBy ?? userId) : userId;
@@ -2207,7 +2258,41 @@ export default function InternalFundRequestForm({
               </Badge>
               Request Information
             </h3>
-            <div className='grid grid-cols-1 md:grid-cols-1 gap-4 max-w-md'>
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+              {/* Cost Center */}
+              <div>
+                <Label className='text-sm font-medium text-gray-700 mb-2 block'>
+                  Cost Center
+                </Label>
+                <Select
+                  value={selectedCostCenterId?.toString() ?? ""}
+                  onValueChange={(v) =>
+                    setSelectedCostCenterId(v ? parseInt(v, 10) : null)
+                  }
+                  disabled={loadingState.costCenters}
+                >
+                  <SelectTrigger className='w-full h-10'>
+                    <SelectValue
+                      placeholder={
+                        loadingState.costCenters
+                          ? "Loading..."
+                          : "Select Cost Center"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {costCenters.map((cc) => (
+                      <SelectItem
+                        key={cc.costCenterId}
+                        value={cc.costCenterId.toString()}
+                      >
+                        {cc.costCenterCode} — {cc.costCenterName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div>
                 <Label className='text-sm font-medium text-gray-700 mb-2 block'>
                   Request To (User) <span className='text-red-500'>*</span>

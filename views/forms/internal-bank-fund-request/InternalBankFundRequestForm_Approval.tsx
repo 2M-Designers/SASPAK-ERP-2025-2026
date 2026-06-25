@@ -89,12 +89,6 @@ type User = {
   username: string;
 };
 
-type CostCenter = {
-  costCenterId: number;
-  costCenterCode: string;
-  costCenterName: string;
-};
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function InternalBankFundRequestApprovalForm({
@@ -119,10 +113,6 @@ export default function InternalBankFundRequestApprovalForm({
   const [filteredBanks, setFilteredBanks] = useState<Bank[]>([]);
   const [isLoadingBanks, setIsLoadingBanks] = useState(false);
   const [bankSearch, setBankSearch] = useState("");
-
-  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
-  const [selectedCostCenterId, setSelectedCostCenterId] = useState<number | null>(null);
-  const [isLoadingCostCenters, setIsLoadingCostCenters] = useState(false);
 
   const [users, setUsers] = useState<User[]>([]);
 
@@ -150,41 +140,6 @@ export default function InternalBankFundRequestApprovalForm({
       });
     }
   }, [toast]);
-
-  // ── Fetch cost centers ────────────────────────────────────────────────────
-  useEffect(() => {
-    const fetchCostCenters = async () => {
-      setIsLoadingCostCenters(true);
-      try {
-        const res = await fetch(`${getBaseUrl()}CostCenter/GetList`, {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            select: "CostCenterId, CostCenterCode, CostCenterName",
-            where: "IsActive == true",
-            sortOn: "CostCenterName ASC",
-            page: "1",
-            pageSize: "200",
-          }),
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        const list: any[] = Array.isArray(data) ? data : (data?.data ?? data?.items ?? []);
-        setCostCenters(
-          list.map((c: any) => ({
-            costCenterId: c.costCenterId ?? c.CostCenterId,
-            costCenterCode: c.costCenterCode ?? c.CostCenterCode ?? "",
-            costCenterName: c.costCenterName ?? c.CostCenterName ?? "",
-          })),
-        );
-      } catch (e) {
-        console.error("CostCenter fetch error:", e);
-      } finally {
-        setIsLoadingCostCenters(false);
-      }
-    };
-    fetchCostCenters();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Fetch status options ──────────────────────────────────────────────────
   useEffect(() => {
@@ -689,7 +644,6 @@ export default function InternalBankFundRequestApprovalForm({
           return raw != null ? String(raw) : null;
         })(),
         RequestorUserId: req.requestorUserId || req.RequestorUserId,
-        CostCenterId: selectedCostCenterId ?? null,
         Remarks: masterRemarks,
         Version: req.version || req.Version || 1,
         InternalBankFundsRequests: lineItems.map((item) => ({
@@ -1423,39 +1377,6 @@ export default function InternalBankFundRequestApprovalForm({
               }).format(totals.totalApproved - totals.totalRequested)}
             </p>
           </div>
-        </div>
-
-        {/* Cost Center */}
-        <div>
-          <Label className='text-sm font-medium text-gray-700 mb-2 block'>
-            Cost Center
-          </Label>
-          <Select
-            value={selectedCostCenterId?.toString() ?? ""}
-            onValueChange={(v) =>
-              setSelectedCostCenterId(v ? parseInt(v, 10) : null)
-            }
-            disabled={isLoadingCostCenters}
-          >
-            <SelectTrigger className='h-9 text-sm'>
-              <SelectValue
-                placeholder={
-                  isLoadingCostCenters ? "Loading..." : "Select Cost Center"
-                }
-              />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value=''>— None —</SelectItem>
-              {costCenters.map((cc) => (
-                <SelectItem
-                  key={cc.costCenterId}
-                  value={cc.costCenterId.toString()}
-                >
-                  {cc.costCenterCode} — {cc.costCenterName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         {/* Master remarks (single mode only) */}
