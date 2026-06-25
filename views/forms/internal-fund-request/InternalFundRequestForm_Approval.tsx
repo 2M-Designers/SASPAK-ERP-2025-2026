@@ -451,20 +451,24 @@ export default function InternalFundRequestApprovalForm({
     setLineItems(allItems);
   }, [sourceRequests, isBatchMode, pendingStatus, users]);
 
-  // ── Backfill jobNumber from jobMap when jobs list is ready ─────────────────
+  // ── Backfill jobNumber from jobMap ────────────────────────────────────────
+  // Depends on both so it fires whether jobs or lineItems load second.
+  // The hasChanges guard breaks the loop after the first successful pass.
   useEffect(() => {
     if (!jobMap.size || !lineItems.length) return;
-    setLineItems((prev) =>
-      prev.map((item) => {
-        if (!item.jobId) return item;
-        const resolved = jobMap.get(item.jobId);
-        return resolved && resolved !== item.jobNumber
-          ? { ...item, jobNumber: resolved }
-          : item;
-      }),
-    );
+    let hasChanges = false;
+    const updated = lineItems.map((item) => {
+      if (!item.jobId) return item;
+      const resolved = jobMap.get(item.jobId);
+      if (resolved && resolved !== item.jobNumber) {
+        hasChanges = true;
+        return { ...item, jobNumber: resolved };
+      }
+      return item;
+    });
+    if (hasChanges) setLineItems(updated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobMap]);
+  }, [jobMap, lineItems]);
 
   // ── Group items by requestor (batch mode) ─────────────────────────────────
   const groupedByRequestor = useMemo(() => {
