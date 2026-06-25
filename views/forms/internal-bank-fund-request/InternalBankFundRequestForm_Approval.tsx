@@ -843,7 +843,8 @@ export default function InternalBankFundRequestApprovalForm({
     const endpoint = `${getBaseUrl()}InternalBankFundsRequestDetail/BulkApprove`;
 
     type BatchKey = { status: string; headId: number; remarks: string; bulkIds: number[] };
-    const groupMap = new Map<string, { key: BatchKey; ids: number[] }>();
+    type ItemEntry = { id: number; approvedAmount: number };
+    const groupMap = new Map<string, { key: BatchKey; items: ItemEntry[] }>();
 
     lineItems.forEach((item) => {
       if (
@@ -862,11 +863,15 @@ export default function InternalBankFundRequestApprovalForm({
       if (!groupMap.has(groupKey)) {
         groupMap.set(groupKey, {
           key: { status, headId, remarks, bulkIds: [] },
-          ids: [],
+          items: [],
         });
       }
       const group = groupMap.get(groupKey)!;
-      group.ids.push(item.internalFundsRequestBankId);
+      group.items.push({
+        id: item.internalFundsRequestBankId,
+        approvedAmount:
+          item.subRequestStatus === approvedStatus ? (item.approvedAmount ?? 0) : 0,
+      });
       if (!group.key.bulkIds.includes(item.bankFundRequestMasterId)) {
         group.key.bulkIds.push(item.bankFundRequestMasterId);
       }
@@ -884,14 +889,18 @@ export default function InternalBankFundRequestApprovalForm({
 
     const callBulk = async (
       key: BatchKey,
-      ids: number[],
+      items: ItemEntry[],
     ): Promise<{ ok: boolean; count: number; error?: string }> => {
       try {
         const res = await fetch(endpoint, {
           method: "PUT",
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            fundRequestDetailIds: ids,
+            fundRequestDetailIds: items.map((i) => i.id),
+            fundIdsWithAmounts: items.map((i) => ({
+              integerVal: i.id,
+              decimalVals: i.approvedAmount,
+            })),
             bulkIds: key.bulkIds,
             status: key.status,
             headId: key.headId,
@@ -901,13 +910,13 @@ export default function InternalBankFundRequestApprovalForm({
         });
         if (!res.ok) {
           const text = await res.text();
-          return { ok: false, count: ids.length, error: text };
+          return { ok: false, count: items.length, error: text };
         }
-        return { ok: true, count: ids.length };
+        return { ok: true, count: items.length };
       } catch (e) {
         return {
           ok: false,
-          count: ids.length,
+          count: items.length,
           error: e instanceof Error ? e.message : "Network error",
         };
       }
@@ -915,7 +924,7 @@ export default function InternalBankFundRequestApprovalForm({
 
     try {
       const results = await Promise.all(
-        Array.from(groupMap.values()).map((g) => callBulk(g.key, g.ids)),
+        Array.from(groupMap.values()).map((g) => callBulk(g.key, g.items)),
       );
 
       const totalOk = results

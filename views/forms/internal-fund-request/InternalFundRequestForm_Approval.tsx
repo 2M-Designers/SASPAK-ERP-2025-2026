@@ -835,7 +835,8 @@ export default function InternalFundRequestApprovalForm({
 
     // Build groups keyed by (status, headId, remarks) to preserve per-line values
     type BatchKey = { status: string; headId: number; remarks: string };
-    const groupMap = new Map<string, { key: BatchKey; ids: number[] }>();
+    type ItemEntry = { id: number; approvedAmount: number };
+    const groupMap = new Map<string, { key: BatchKey; items: ItemEntry[] }>();
 
     lineItems.forEach((item) => {
       // Only submit decided items
@@ -855,10 +856,14 @@ export default function InternalFundRequestApprovalForm({
       if (!groupMap.has(groupKey)) {
         groupMap.set(groupKey, {
           key: { status, headId, remarks },
-          ids: [],
+          items: [],
         });
       }
-      groupMap.get(groupKey)!.ids.push(item.internalFundsRequestCashId);
+      groupMap.get(groupKey)!.items.push({
+        id: item.internalFundsRequestCashId,
+        approvedAmount:
+          item.subRequestStatus === approvedStatus ? (item.approvedAmount ?? 0) : 0,
+      });
     });
 
     if (groupMap.size === 0) {
@@ -874,28 +879,33 @@ export default function InternalFundRequestApprovalForm({
     // Fan out one PUT per group, in parallel
     const callBulk = async (
       key: BatchKey,
-      ids: number[],
+      items: ItemEntry[],
     ): Promise<{ ok: boolean; count: number; error?: string }> => {
       try {
         const res = await fetch(endpoint, {
           method: "PUT",
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            fundRequestDetailIds: ids,
+            fundRequestDetailIds: items.map((i) => i.id),
+            fundIdsWithAmounts: items.map((i) => ({
+              integerVal: i.id,
+              decimalVals: i.approvedAmount,
+            })),
             status: key.status,
             headId: key.headId,
+            anyString: "",
             remarks: key.remarks,
           }),
         });
         if (!res.ok) {
           const text = await res.text();
-          return { ok: false, count: ids.length, error: text };
+          return { ok: false, count: items.length, error: text };
         }
-        return { ok: true, count: ids.length };
+        return { ok: true, count: items.length };
       } catch (e) {
         return {
           ok: false,
-          count: ids.length,
+          count: items.length,
           error: e instanceof Error ? e.message : "Network error",
         };
       }
@@ -903,7 +913,7 @@ export default function InternalFundRequestApprovalForm({
 
     try {
       const results = await Promise.all(
-        Array.from(groupMap.values()).map((g) => callBulk(g.key, g.ids)),
+        Array.from(groupMap.values()).map((g) => callBulk(g.key, g.items)),
       );
 
       const totalOk = results
