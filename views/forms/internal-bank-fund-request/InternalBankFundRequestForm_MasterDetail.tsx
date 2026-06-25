@@ -85,6 +85,7 @@ type LineItem = {
   subRequestStatus: SubRequestStatus;
   remarks: string;
   preservedHeadCoaId: number | null;
+  costCenterId: number | null;
 };
 
 type Bank = {
@@ -278,6 +279,8 @@ const LineItemRow = ({
   setOnAccountOfSearch,
   onAccountOfParties,
   onAccountOfChange,
+  costCenters,
+  onCostCenterChange,
   chargePartiesCache,
   jobDetailsCache,
   statusOptions,
@@ -639,6 +642,28 @@ const LineItemRow = ({
         </Select>
       </TableCell>
 
+      {/* Cost Center */}
+      <TableCell>
+        <Select
+          value={item.costCenterId?.toString() || ""}
+          onValueChange={(v) => onCostCenterChange(item.id, v ? parseInt(v, 10) : null)}
+        >
+          <SelectTrigger
+            className='h-9 text-sm'
+            aria-label={`Cost Center for line ${index + 1}`}
+          >
+            <SelectValue placeholder='Select cost center' />
+          </SelectTrigger>
+          <SelectContent className='max-h-[300px] w-[240px]' position='popper' sideOffset={5}>
+            {costCenters.map((cc: any) => (
+              <SelectItem key={cc.costCenterId} value={cc.costCenterId.toString()}>
+                {cc.costCenterCode} — {cc.costCenterName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </TableCell>
+
       {/* Amount */}
       <TableCell>
         <div className='relative'>
@@ -845,6 +870,7 @@ export default function InternalBankFundRequestForm({
       subRequestStatus: pendingStatus,
       remarks: "",
       preservedHeadCoaId: null,
+      costCenterId: null,
     }),
     [pendingStatus],
   );
@@ -857,7 +883,6 @@ export default function InternalBankFundRequestForm({
   const [chargesMasters, setChargesMasters] = useState<ChargesMaster[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
-  const [selectedCostCenterId, setSelectedCostCenterId] = useState<number | null>(null);
 
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
 
@@ -887,6 +912,18 @@ export default function InternalBankFundRequestForm({
       ),
     );
   }, [parties]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-seed first cost center on rows that don't have one set yet
+  useEffect(() => {
+    if (costCenters.length === 0) return;
+    setLineItems((prev) =>
+      prev.map((item) =>
+        item.costCenterId === null
+          ? { ...item, costCenterId: costCenters[0].costCenterId }
+          : item,
+      ),
+    );
+  }, [costCenters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [filteredBanks, setFilteredBanks] = useState<Bank[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
@@ -1210,10 +1247,6 @@ export default function InternalBankFundRequestForm({
           costCenterName: c.costCenterName ?? c.CostCenterName ?? "",
         }));
         setCostCenters(mapped);
-        // Auto-select the first cost center for new records
-        if (type !== "edit" && mapped.length > 0) {
-          setSelectedCostCenterId(mapped[0].costCenterId);
-        }
       } catch (e) {
         console.error("CostCenter fetch error:", e);
       } finally {
@@ -1730,12 +1763,6 @@ export default function InternalBankFundRequestForm({
       if (user) setRequestorName(user.fullName || user.username);
     }
 
-    const existingCostCenterId =
-      defaultState.costCenterId ?? defaultState.CostCenterId ?? null;
-    if (existingCostCenterId) {
-      setSelectedCostCenterId(existingCostCenterId);
-    }
-
     const details =
       defaultState.internalBankFundsRequests ||
       defaultState.InternalBankFundsRequests ||
@@ -1779,6 +1806,7 @@ export default function InternalBankFundRequestForm({
             d.subRequestStatus || d.SubRequestStatus || pendingStatus,
           remarks: d.remarks || d.Remarks || "",
           preservedHeadCoaId: d.headCoaId || d.HeadCoaId || null,
+          costCenterId: d.costCenterId ?? d.CostCenterId ?? null,
         };
       });
 
@@ -1930,7 +1958,7 @@ export default function InternalBankFundRequestForm({
               type === "edit" ? item.subRequestStatus : pendingStatus,
             Remarks: item.remarks || "",
             Version: 0,
-            CostCenterId: selectedCostCenterId ?? null,
+            CostCenterId: item.costCenterId ?? null,
             CreatedOn:
               origDetail?.createdOn ||
               origDetail?.CreatedOn ||
@@ -2234,40 +2262,6 @@ export default function InternalBankFundRequestForm({
               Request Information
             </h3>
             <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              {/* Cost Center */}
-              <div>
-                <Label className='text-sm font-medium text-gray-700 mb-2 block'>
-                  Cost Center
-                </Label>
-                <Select
-                  value={selectedCostCenterId?.toString() ?? ""}
-                  onValueChange={(v) =>
-                    setSelectedCostCenterId(v ? parseInt(v, 10) : null)
-                  }
-                  disabled={loadingState.costCenters}
-                >
-                  <SelectTrigger className='w-full h-10'>
-                    <SelectValue
-                      placeholder={
-                        loadingState.costCenters
-                          ? "Loading..."
-                          : "Select Cost Center"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {costCenters.map((cc) => (
-                      <SelectItem
-                        key={cc.costCenterId}
-                        value={cc.costCenterId.toString()}
-                      >
-                        {cc.costCenterCode} — {cc.costCenterName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* Requested To */}
               <div>
                 <Label className='text-sm font-medium text-gray-700 mb-2 block'>
@@ -2405,6 +2399,9 @@ export default function InternalBankFundRequestForm({
                       <TableHead className='min-w-[200px]'>
                         On Account Of
                       </TableHead>
+                      <TableHead className='min-w-[180px]'>
+                        Cost Center
+                      </TableHead>
                       <TableHead className='min-w-[135px]'>
                         Amount (PKR) <span className='text-red-500'>*</span>
                       </TableHead>
@@ -2438,6 +2435,12 @@ export default function InternalBankFundRequestForm({
                         setOnAccountOfSearch={setOnAccountOfSearch}
                         onAccountOfParties={filteredOnAccountOfParties}
                         onAccountOfChange={handleOnAccountOfChange}
+                        costCenters={costCenters}
+                        onCostCenterChange={(id: string, value: number | null) =>
+                          setLineItems((prev) =>
+                            prev.map((it) => (it.id === id ? { ...it, costCenterId: value } : it))
+                          )
+                        }
                         chargePartiesCache={chargePartiesCache}
                         jobDetailsCache={jobDetailsCache}
                         statusOptions={statusOptions}
