@@ -124,6 +124,9 @@ export default function InternalBankFundRequestApprovalForm({
   // Cost Centers (read-only display)
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
 
+  // Jobs lookup map (jobId → jobNumber)
+  const [jobMap, setJobMap] = useState<Map<number, string>>(new Map());
+
   const [users, setUsers] = useState<User[]>([]);
 
   const [pendingStatus, setPendingStatus] = useState("Pending");
@@ -271,6 +274,39 @@ export default function InternalBankFundRequestApprovalForm({
       }
     };
     fetchCostCenters();
+  }, []);
+
+  // ── Fetch Jobs (jobId → jobNumber lookup) ────────────────────────────────
+  useEffect(() => {
+    const fetchJobs = async () => {
+      try {
+        const res = await fetch(`${getBaseUrl()}Job/GetList`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            select: "JobId, JobNumber",
+            where: "",
+            search: "",
+            sortOn: "JobId DESC",
+            page: "1",
+            pageSize: "2000",
+          }),
+        });
+        if (!res.ok) return;
+        const d = await res.json();
+        const list: any[] = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+        const map = new Map<number, string>();
+        for (const j of list) {
+          const id = j.jobId ?? j.JobId;
+          const num = j.jobNumber ?? j.JobNumber ?? "";
+          if (id) map.set(id, num);
+        }
+        setJobMap(map);
+      } catch (e) {
+        console.error("Jobs fetch error:", e);
+      }
+    };
+    fetchJobs();
   }, []);
 
   // ── Fetch users (for displaying requestor names in batch mode) ───────────
@@ -423,6 +459,21 @@ export default function InternalBankFundRequestApprovalForm({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [banks]);
+
+  // ── Backfill jobNumber from jobMap when jobs list is ready ─────────────────
+  useEffect(() => {
+    if (!jobMap.size || !lineItems.length) return;
+    setLineItems((prev) =>
+      prev.map((item) => {
+        if (!item.jobId) return item;
+        const resolved = jobMap.get(item.jobId);
+        return resolved && resolved !== item.jobNumber
+          ? { ...item, jobNumber: resolved }
+          : item;
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobMap]);
 
   // ── Group items by requestor (batch mode) ─────────────────────────────────
   const groupedByRequestor = useMemo(() => {
