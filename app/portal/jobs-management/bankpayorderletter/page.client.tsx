@@ -239,7 +239,7 @@ export default function BankPayOrderLetterClient() {
               pageSize: "500",
             }),
           }),
-          fetch(`${getBaseUrl()}Jobs/GetList`, {
+          fetch(`${getBaseUrl()}Job/GetList`, {
             method: "POST",
             headers: getAuthHeaders(),
             body: JSON.stringify({
