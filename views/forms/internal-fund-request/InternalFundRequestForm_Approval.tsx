@@ -71,12 +71,19 @@ type LineItemApproval = {
   version?: number;
   cashHeadId: number | null;
   cashHeadName?: string;
+  costCenterId: number | null;
 };
 
 type GlAccount = {
   accountId: number;
   accountCode: string;
   accountName: string;
+};
+
+type CostCenter = {
+  costCenterId: number;
+  costCenterCode: string;
+  costCenterName: string;
 };
 
 type StatusOption = { key: string; label: string };
@@ -110,6 +117,9 @@ export default function InternalFundRequestApprovalForm({
   const [filteredGlAccounts, setFilteredGlAccounts] = useState<GlAccount[]>([]);
   const [isLoadingGlAccounts, setIsLoadingGlAccounts] = useState(false);
   const [glAccountSearch, setGlAccountSearch] = useState("");
+
+  // Cost Centers (read-only display)
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
 
   const [users, setUsers] = useState<User[]>([]);
 
@@ -230,6 +240,38 @@ export default function InternalFundRequestApprovalForm({
 
     fetchGlAccounts();
   }, [toast]);
+
+  // ── Fetch Cost Centers ────────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchCostCenters = async () => {
+      try {
+        const res = await fetch(`${getBaseUrl()}CostCenter/GetList`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            select: "CostCenterId, CostCenterCode, CostCenterName",
+            where: "",
+            sortOn: "CostCenterName ASC",
+            page: "1",
+            pageSize: "200",
+          }),
+        });
+        if (!res.ok) return;
+        const d = await res.json();
+        const list = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+        setCostCenters(
+          list.map((c: any) => ({
+            costCenterId: c.costCenterId ?? c.CostCenterId,
+            costCenterCode: c.costCenterCode ?? c.CostCenterCode ?? "",
+            costCenterName: c.costCenterName ?? c.CostCenterName ?? "",
+          })),
+        );
+      } catch (e) {
+        console.error("CostCenter fetch error:", e);
+      }
+    };
+    fetchCostCenters();
+  }, []);
 
   // ── Fetch users (for displaying requestor names in batch mode) ───────────
   useEffect(() => {
@@ -365,6 +407,7 @@ export default function InternalFundRequestApprovalForm({
           version: detail.version ?? 0,
           cashHeadId,
           cashHeadName: cashHeadName || glAccountName,
+          costCenterId: detail.costCenterId ?? detail.CostCenterId ?? null,
         });
       });
     });
@@ -566,6 +609,14 @@ export default function InternalFundRequestApprovalForm({
     [lineItems, approvedStatus],
   );
 
+  const missingCostCenterItems = useMemo(
+    () =>
+      lineItems.filter(
+        (it) => it.subRequestStatus === approvedStatus && !it.costCenterId,
+      ),
+    [lineItems, approvedStatus],
+  );
+
   const hasInvalidApprovedAmount = useMemo(
     () =>
       lineItems.some(
@@ -659,6 +710,7 @@ export default function InternalFundRequestApprovalForm({
           CashHeadId: item.cashHeadId,
           IsBankLetterReleased: false,
           Version: item.version || 0,
+          CostCenterId: item.costCenterId ?? null,
         })),
         Version: req.version || req.Version || 1,
       };
@@ -937,6 +989,19 @@ export default function InternalFundRequestApprovalForm({
                   >
                     {item.beneficiary}
                   </span>
+                </div>
+                <div className={`text-[10px] truncate pl-4 ${!item.costCenterId ? "text-orange-500" : "text-gray-500"}`}>
+                  CC:{" "}
+                  {(() => {
+                    const cc = costCenters.find(
+                      (c) => c.costCenterId === item.costCenterId,
+                    );
+                    return cc
+                      ? `${cc.costCenterCode} — ${cc.costCenterName}`
+                      : item.costCenterId
+                        ? `#${item.costCenterId}`
+                        : "Not set";
+                  })()}
                 </div>
               </div>
             </div>
@@ -1398,6 +1463,21 @@ export default function InternalFundRequestApprovalForm({
               <p className='text-xs text-orange-700'>
                 {missingCashHeadItems.length} approved line item(s) need a Cash
                 Account before saving.
+              </p>
+            </div>
+          </div>
+        )}
+        {missingCostCenterItems.length > 0 && (
+          <div className='mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2'>
+            <AlertTriangle className='h-5 w-5 text-yellow-600 flex-shrink-0' />
+            <div>
+              <h4 className='font-semibold text-yellow-900 text-sm'>
+                Cost Center Missing
+              </h4>
+              <p className='text-xs text-yellow-700'>
+                {missingCostCenterItems.length} approved line item(s) have no
+                Cost Center assigned. Please go back and set the Cost Center on
+                the fund request before approving.
               </p>
             </div>
           </div>
