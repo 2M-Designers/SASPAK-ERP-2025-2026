@@ -1930,6 +1930,7 @@ export default function InternalBankFundRequestForm({
               type === "edit" ? item.subRequestStatus : pendingStatus,
             Remarks: item.remarks || "",
             Version: 0,
+            CostCenterId: selectedCostCenterId ?? null,
             CreatedOn:
               origDetail?.createdOn ||
               origDetail?.CreatedOn ||
@@ -1975,7 +1976,6 @@ export default function InternalBankFundRequestForm({
           // ── Routing ────────────────────────────────────────────────────
           RequestedTo: selectedRequestor ?? 0,
           RequestorUserId: userId,
-          CostCenterId: selectedCostCenterId ?? null,
 
           // ── Audit ──────────────────────────────────────────────────────
           CreatedOn:

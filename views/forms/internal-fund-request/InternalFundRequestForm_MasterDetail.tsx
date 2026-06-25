@@ -1985,6 +1985,7 @@ export default function InternalFundRequestForm({
             CashHeadId: isUpdate ? (item.preservedCashHeadId ?? null) : null,
             IsBankLetterReleased: false,
             Version: 0,
+            CostCenterId: selectedCostCenterId ?? null,
             CreatedBy: userId,
           };
         };
@@ -2007,7 +2008,6 @@ export default function InternalFundRequestForm({
           })(),
           ApprovedOn: isUpdate ? (defaultState?.approvedOn ?? null) : null,
           RequestedTo: selectedRequestor ?? 0,
-          CostCenterId: selectedCostCenterId ?? null,
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
           CreatedBy: (() => {
             const raw = isUpdate ? (defaultState?.createdBy ?? userId) : userId;
