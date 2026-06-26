@@ -143,6 +143,7 @@ type ReceiptPayment = {
   payToParty?: { partyId: number; partyName: string; partyCode: string };
   currency?: { currencyId: number; currencyCode: string };
   job?: { jobId: number; jobNumber: string };
+  glVoucher?: { glvoucherId: number; voucherNumber?: string } | null;
 };
 
 type DetailRow = {
@@ -247,6 +248,7 @@ const mapRecord = (it: any): ReceiptPayment => ({
   payToParty: it.payToParty ?? undefined,
   currency: it.currency ?? undefined,
   job: it.job ?? undefined,
+  glVoucher: it.glVoucher ?? it.GlVoucher ?? null,
 });
 
 const mapDetail = (d: any): ReceiptPaymentDetail => ({
@@ -1908,30 +1910,56 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           {viewRecord && (
             <div className='space-y-4'>
               <Card>
-                <CardHeader className='py-2 px-4 bg-blue-50'>
-                  <CardTitle className='text-sm font-medium flex items-center gap-2'>
-                    <Badge className='bg-blue-600 text-white'>Master</Badge>
-                    Receipt/Payment Information
-                  </CardTitle>
+                <CardHeader className='py-3 px-4 bg-blue-50 border-b border-blue-100'>
+                  <div className='flex items-start justify-between'>
+                    <CardTitle className='text-sm font-medium flex items-center gap-2'>
+                      <Badge className='bg-blue-600 text-white'>Master</Badge>
+                      Receipt/Payment Information
+                    </CardTitle>
+                    <div className='text-right'>
+                      <p className='text-[10px] font-semibold text-blue-500 uppercase tracking-widest'>
+                        {viewRecord.receiptPaymentType === 1 ? "Receipt No." : "Payment No."}
+                      </p>
+                      <p className='text-xl font-bold text-blue-800 leading-tight'>
+                        {viewRecord.receiptPaymentNumber || "—"}
+                      </p>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className='p-4'>
                   <div className='grid grid-cols-2 gap-x-8 gap-y-2 text-sm'>
-                    {[
-                      ["ID", `#${viewRecord.glreceiptPaymentId}`],
-                      ["Number", viewRecord.receiptPaymentNumber || "—"],
-                      ["Date", viewRecord.receiptPaymentDate ? moment(viewRecord.receiptPaymentDate).format("DD MMM YYYY") : "—"],
-                      ["Type", typeLabel(viewRecord.receiptPaymentType)],
-                      ["Pay To Party", viewRecord.payToParty?.partyName || `Party #${viewRecord.payToPartyId}`],
-                      ["Job", viewRecord.job?.jobNumber || (viewRecord.jobId ? `#${viewRecord.jobId}` : "—")],
-                      ["Currency", viewRecord.currency?.currencyCode || `Currency #${viewRecord.currencyId}`],
-                      ["Exchange Rate", String(viewRecord.exchangeRate)],
-                      ["Amount", fmt(viewRecord.receiptPaymentAmount)],
-                      ["Total Tax", fmt(viewRecord.totalTax)],
-                      ["Discount Total", fmt(viewRecord.discountTotal)],
-                      ["Partial Receipt Payment", fmt(viewRecord.partialReceiptPayment)],
-                      ["Total Amount", fmt(viewRecord.totalAmount)],
-                      ["GL Voucher", viewRecord.glVoucherId ? `#${viewRecord.glVoucherId}` : "—"],
-                    ].map(([label, value]) => (
+                    {(() => {
+                      const partyLabel = viewRecord.receiptPaymentType === 1 ? "Received From" : "Paid To";
+                      const partyName =
+                        viewRecord.payToParty?.partyName ??
+                        parties.find((p) => p.partyId === viewRecord.payToPartyId)?.partyName ??
+                        (viewRecord.payToPartyId ? `Party #${viewRecord.payToPartyId}` : "—");
+                      const jobNum =
+                        viewRecord.job?.jobNumber ??
+                        jobs.find((j) => j.jobId === viewRecord.jobId)?.jobNumber ??
+                        (viewRecord.jobId ? `Job #${viewRecord.jobId}` : "—");
+                      const voucherNum =
+                        viewRecord.glVoucher?.voucherNumber ??
+                        (viewRecord.glVoucherId ? `GV-${viewRecord.glVoucherId}` : "—");
+                      const currCode =
+                        viewRecord.currency?.currencyCode ??
+                        currencies.find((c) => c.currencyId === viewRecord.currencyId)?.currencyCode ??
+                        (viewRecord.currencyId ? `#${viewRecord.currencyId}` : "—");
+                      return [
+                        ["Date", viewRecord.receiptPaymentDate ? moment(viewRecord.receiptPaymentDate).format("DD MMM YYYY") : "—"],
+                        ["Type", typeLabel(viewRecord.receiptPaymentType)],
+                        [partyLabel, partyName],
+                        ["Job Order No.", jobNum],
+                        ["Currency", currCode],
+                        ["Exchange Rate", String(viewRecord.exchangeRate)],
+                        ["Amount", fmt(viewRecord.receiptPaymentAmount)],
+                        ["Total Tax", fmt(viewRecord.totalTax)],
+                        ["Discount Total", fmt(viewRecord.discountTotal)],
+                        ["Partial Receipt Payment", fmt(viewRecord.partialReceiptPayment)],
+                        ["Total Amount", fmt(viewRecord.totalAmount)],
+                        ["GL Voucher No.", voucherNum],
+                      ] as [string, string][];
+                    })().map(([label, value]) => (
                       <div key={label} className='flex justify-between border-b border-gray-50 pb-1'>
                         <span className='text-gray-500 text-xs'>{label}:</span>
                         <span className='font-medium text-gray-800 text-xs'>{value}</span>
