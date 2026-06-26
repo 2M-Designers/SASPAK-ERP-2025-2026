@@ -176,6 +176,8 @@ type MasterForm = {
   partialReceiptPayment: number;
 };
 
+type TypeOption = { value: string; label: string };
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
@@ -272,9 +274,32 @@ const mapDetail = (d: any): ReceiptPaymentDetail => ({
   version: d.version ?? d.Version ?? 1,
 });
 
-const STATUSES = ["Draft", "Pending", "Processed", "Approved", "Cancelled"];
+// ── GetTypeValues helper ──────────────────────────────────────────────────────
 
-const RP_TYPES: Record<number, string> = { 1: "Receipt", 2: "Payment" };
+const getTypeValues = async (typeName: string): Promise<TypeOption[]> => {
+  try {
+    const res = await fetch(
+      `${getBaseUrl()}General/GetTypeValues?typeName=${typeName}`,
+      { headers: { "Content-Type": "application/json" } },
+    );
+    if (!res.ok) return [];
+    const raw = await res.json();
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return Object.entries(raw)
+        .filter(([, v]) => v !== "" && v !== null && v !== undefined)
+        .map(([key, value]) => ({ value: key, label: value as string }));
+    }
+    if (Array.isArray(raw)) {
+      return raw.map((item: any) => ({
+        value: item.value ?? item.code ?? item.name,
+        label: item.label ?? item.name ?? item.value,
+      }));
+    }
+  } catch {
+    // silently fall back to empty
+  }
+  return [];
+};
 
 const statusClass = (s: string) => {
   const v = (s || "").toLowerCase();
@@ -306,6 +331,10 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   const [accounts, setAccounts] = useState<GlAccount[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [lookupReady, setLookupReady] = useState(false);
+
+  // ── Dynamic type-value options (from General/GetTypeValues) ────────────────
+  const [statusOptions, setStatusOptions] = useState<TypeOption[]>([]);
+  const [typeOptions, setTypeOptions] = useState<TypeOption[]>([]);
 
   // ── Form state ─────────────────────────────────────────────────────────────
   const [showForm, setShowForm] = useState(false);
@@ -397,14 +426,17 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   // ── Fetch all lookups ──────────────────────────────────────────────────────
   const fetchLookups = useCallback(async () => {
     try {
-      const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw] = await Promise.all([
-        postList("SetupCurrency/GetList", "CurrencyId, CurrencyCode, CurrencyName, Symbol, IsDefault", "", "CurrencyCode ASC"),
-        postList("Party/GetList", "PartyId, PartyCode, PartyName", "", "PartyName ASC"),
-        postList("Job/GetList", "JobId, JobNumber, TerminalPartyId, PrincipalId, ConsigneePartyId, JobInvoiceExchRate", "", "JobId DESC"),
-        postList("ChargesMaster/GetList", "ChargeId, ChargeCode, ChargeName", "", "ChargeName ASC"),
-        postList("GlAccount/GetList", "AccountId, AccountCode, AccountName", "", "AccountCode ASC"),
-        postList("CostCenter/GetList", "CostCenterId, CostCenterCode, CostCenterName", "", "CostCenterCode ASC"),
-      ]);
+      const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw, statusRaw, typeRaw] =
+        await Promise.all([
+          postList("SetupCurrency/GetList", "CurrencyId, CurrencyCode, CurrencyName, Symbol, IsDefault", "", "CurrencyCode ASC"),
+          postList("Party/GetList", "PartyId, PartyCode, PartyName", "", "PartyName ASC"),
+          postList("Job/GetList", "JobId, JobNumber, TerminalPartyId, PrincipalId, ConsigneePartyId, JobInvoiceExchRate", "", "JobId DESC"),
+          postList("ChargesMaster/GetList", "ChargeId, ChargeCode, ChargeName", "", "ChargeName ASC"),
+          postList("GlAccount/GetList", "AccountId, AccountCode, AccountName", "", "AccountCode ASC"),
+          postList("CostCenter/GetList", "CostCenterId, CostCenterCode, CostCenterName", "", "CostCenterCode ASC"),
+          getTypeValues("Payment_Status"),
+          getTypeValues("ReceiptPayment_Type_Ids"),
+        ]);
 
       const curr: Currency[] = currRaw.map((c: any) => ({
         currencyId: c.currencyId ?? c.CurrencyId ?? 0,
@@ -453,6 +485,9 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
         })),
       );
 
+      if (statusRaw.length) setStatusOptions(statusRaw);
+      if (typeRaw.length) setTypeOptions(typeRaw);
+
       const def = curr.find((c) => c.isDefault);
       if (def) {
         setMasterForm((prev) =>
@@ -482,7 +517,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
         String(r.glreceiptPaymentId).includes(q) ||
         String(r.payToPartyId).includes(q) ||
         (r.payToParty?.partyName || "").toLowerCase().includes(q) ||
-        (RP_TYPES[r.receiptPaymentType] || "").toLowerCase().includes(q),
+        (typeLabel(r.receiptPaymentType) || "").toLowerCase().includes(q),
     );
   }, [data, searchText]);
 
@@ -515,6 +550,20 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
     const q = jobSearch.toLowerCase();
     return jobs.filter((j) => j.jobNumber.toLowerCase().includes(q)).slice(0, 150);
   }, [jobs, jobSearch]);
+
+  // ── Resolved type label (int → string) using API-fetched options ───────────
+  const typeLabel = useCallback(
+    (typeInt: number): string => {
+      // API returns either { "Receipt": "1", ... } or { "1": "Receipt", ... }
+      // Check by value first (key is numeric string), then by label parse
+      const byKey = typeOptions.find((o) => parseInt(o.value, 10) === typeInt);
+      if (byKey) return byKey.label;
+      const byLabel = typeOptions.find((o) => parseInt(o.label, 10) === typeInt);
+      if (byLabel) return byLabel.value;
+      return typeInt === 1 ? "Receipt" : typeInt === 2 ? "Payment" : String(typeInt);
+    },
+    [typeOptions],
+  );
 
   // ── Open add form ──────────────────────────────────────────────────────────
   const openAdd = () => {
@@ -786,7 +835,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
       try {
         const doc = new jsPDF("portrait", "mm", "a4");
         const W = doc.internal.pageSize.getWidth();
-        const typeName = RP_TYPES[rec.receiptPaymentType] ?? "Receipt";
+        const typeName = typeLabel(rec.receiptPaymentType);
 
         doc.setFillColor(30, 64, 175);
         doc.rect(0, 0, W, 30, "F");
@@ -998,7 +1047,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                   {editingRecord ? "Edit GL Receipt/Payment" : "New GL Receipt/Payment"}
                 </h1>
                 <p className='text-xs text-gray-500 mt-0.5'>
-                  Type: {RP_TYPES[masterForm.receiptPaymentType] ?? "Receipt"}
+                  Type: {typeLabel(masterForm.receiptPaymentType)}
                 </p>
               </div>
             </div>
@@ -1068,8 +1117,22 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                   >
                     <SelectTrigger className='h-9 text-sm bg-white'><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value='1'>Receipt</SelectItem>
-                      <SelectItem value='2'>Payment</SelectItem>
+                      {typeOptions.length ? (
+                        typeOptions.map((o) => {
+                          const intVal = parseInt(o.value, 10);
+                          const numericKey = !isNaN(intVal) ? o.value : (o.label === "Receipt" ? "1" : o.label === "Payment" ? "2" : o.value);
+                          return (
+                            <SelectItem key={numericKey} value={numericKey}>
+                              {isNaN(intVal) ? o.value : o.label}
+                            </SelectItem>
+                          );
+                        })
+                      ) : (
+                        <>
+                          <SelectItem value='1'>Receipt</SelectItem>
+                          <SelectItem value='2'>Payment</SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1083,7 +1146,16 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                   >
                     <SelectTrigger className='h-9 text-sm bg-white'><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      {(statusOptions.length
+                        ? statusOptions
+                        : [
+                            { value: "Pending", label: "Pending" },
+                            { value: "Approved", label: "Approved" },
+                            { value: "Done", label: "Done" },
+                          ]
+                      ).map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1725,7 +1797,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
 
                             <TableCell>
                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${typeClass(rec.receiptPaymentType)}`}>
-                                {RP_TYPES[rec.receiptPaymentType] ?? "—"}
+                                {typeLabel(rec.receiptPaymentType)}
                               </span>
                             </TableCell>
 
@@ -1792,7 +1864,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                       ["ID", `#${viewRecord.glreceiptPaymentId}`],
                       ["Number", viewRecord.receiptPaymentNumber || "—"],
                       ["Date", viewRecord.receiptPaymentDate ? moment(viewRecord.receiptPaymentDate).format("DD MMM YYYY") : "—"],
-                      ["Type", RP_TYPES[viewRecord.receiptPaymentType] ?? "—"],
+                      ["Type", typeLabel(viewRecord.receiptPaymentType)],
                       ["Pay To Party", viewRecord.payToParty?.partyName || `Party #${viewRecord.payToPartyId}`],
                       ["Job", viewRecord.job?.jobNumber || (viewRecord.jobId ? `#${viewRecord.jobId}` : "—")],
                       ["Currency", viewRecord.currency?.currencyCode || `Currency #${viewRecord.currencyId}`],
@@ -2050,7 +2122,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                       </TableCell>
                       <TableCell>
                         <span className={`text-[11px] px-1.5 py-0.5 rounded border ${typeClass(rec.receiptPaymentType)}`}>
-                          {RP_TYPES[rec.receiptPaymentType] ?? "—"}
+                          {typeLabel(rec.receiptPaymentType)}
                         </span>
                       </TableCell>
                       <TableCell className='text-xs text-right font-semibold text-blue-800'>
