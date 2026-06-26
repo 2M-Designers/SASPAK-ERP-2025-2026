@@ -488,7 +488,10 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
       if (statusRaw.length) setStatusOptions(statusRaw);
       if (typeRaw.length) setTypeOptions(typeRaw);
 
-      const def = curr.find((c) => c.isDefault);
+      const def =
+        curr.find((c) => c.currencyCode === "PKR") ??
+        curr.find((c) => c.isDefault) ??
+        curr[0];
       if (def) {
         setMasterForm((prev) =>
           prev.currencyId === null ? { ...prev, currencyId: def.currencyId } : prev,
@@ -538,18 +541,32 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
 
   // ── Filtered dropdowns ─────────────────────────────────────────────────────
   const filteredParties = useMemo(() => {
-    if (!partySearch) return parties.slice(0, 150);
     const q = partySearch.toLowerCase();
-    return parties
-      .filter((p) => p.partyName.toLowerCase().includes(q) || p.partyCode.toLowerCase().includes(q))
-      .slice(0, 150);
-  }, [parties, partySearch]);
+    const base = partySearch
+      ? parties.filter((p) => p.partyName.toLowerCase().includes(q) || p.partyCode.toLowerCase().includes(q))
+      : parties;
+    const sliced = base.slice(0, 150);
+    // Always include the currently selected party so SelectValue can display it
+    if (masterForm.payToPartyId) {
+      const sel = parties.find((p) => p.partyId === masterForm.payToPartyId);
+      if (sel && !sliced.find((p) => p.partyId === sel.partyId)) sliced.push(sel);
+    }
+    return sliced;
+  }, [parties, partySearch, masterForm.payToPartyId]);
 
   const filteredJobs = useMemo(() => {
-    if (!jobSearch) return jobs.slice(0, 150);
     const q = jobSearch.toLowerCase();
-    return jobs.filter((j) => j.jobNumber.toLowerCase().includes(q)).slice(0, 150);
-  }, [jobs, jobSearch]);
+    const base = jobSearch
+      ? jobs.filter((j) => j.jobNumber.toLowerCase().includes(q))
+      : jobs;
+    const sliced = base.slice(0, 150);
+    // Always include the currently selected job so SelectValue can display it
+    if (masterForm.jobId) {
+      const sel = jobs.find((j) => j.jobId === masterForm.jobId);
+      if (sel && !sliced.find((j) => j.jobId === sel.jobId)) sliced.push(sel);
+    }
+    return sliced;
+  }, [jobs, jobSearch, masterForm.jobId]);
 
   // ── Resolved type label (int → string) using API-fetched options ───────────
   const typeLabel = useCallback(
@@ -567,7 +584,12 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
 
   // ── Open add form ──────────────────────────────────────────────────────────
   const openAdd = () => {
-    const def = currencies.find((c) => c.isDefault) ?? currencies[0];
+    const def =
+      currencies.find((c) => c.currencyCode === "PKR") ??
+      currencies.find((c) => c.isDefault) ??
+      currencies[0];
+    const defaultStatus =
+      statusOptions.length ? statusOptions[0].value : "Pending";
     setEditingRecord(null);
     setMasterForm({
       receiptPaymentDate: new Date().toISOString().slice(0, 10),
@@ -577,7 +599,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
       receiptPaymentType: 1,
       currencyId: def?.currencyId ?? null,
       exchangeRate: 1,
-      receiptPaymentStatus: "Draft",
+      receiptPaymentStatus: defaultStatus,
       receiptPaymentDescription: "",
       partialReceiptPayment: 0,
     });
@@ -1115,24 +1137,12 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                     value={masterForm.receiptPaymentType.toString()}
                     onValueChange={(v) => setMasterForm((p) => ({ ...p, receiptPaymentType: parseInt(v, 10) }))}
                   >
-                    <SelectTrigger className='h-9 text-sm bg-white'><SelectValue /></SelectTrigger>
+                    <SelectTrigger className='h-9 text-sm bg-white'>
+                      <SelectValue>{typeLabel(masterForm.receiptPaymentType)}</SelectValue>
+                    </SelectTrigger>
                     <SelectContent>
-                      {typeOptions.length ? (
-                        typeOptions.map((o) => {
-                          const intVal = parseInt(o.value, 10);
-                          const numericKey = !isNaN(intVal) ? o.value : (o.label === "Receipt" ? "1" : o.label === "Payment" ? "2" : o.value);
-                          return (
-                            <SelectItem key={numericKey} value={numericKey}>
-                              {isNaN(intVal) ? o.value : o.label}
-                            </SelectItem>
-                          );
-                        })
-                      ) : (
-                        <>
-                          <SelectItem value='1'>Receipt</SelectItem>
-                          <SelectItem value='2'>Payment</SelectItem>
-                        </>
-                      )}
+                      <SelectItem value='1'>{typeLabel(1)}</SelectItem>
+                      <SelectItem value='2'>{typeLabel(2)}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1144,7 +1154,13 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                     value={masterForm.receiptPaymentStatus}
                     onValueChange={(v) => setMasterForm((p) => ({ ...p, receiptPaymentStatus: v }))}
                   >
-                    <SelectTrigger className='h-9 text-sm bg-white'><SelectValue /></SelectTrigger>
+                    <SelectTrigger className='h-9 text-sm bg-white'>
+                      <SelectValue>
+                        {(statusOptions.find((o) => o.value === masterForm.receiptPaymentStatus)?.label) ??
+                          masterForm.receiptPaymentStatus ||
+                          "Select status..."}
+                      </SelectValue>
+                    </SelectTrigger>
                     <SelectContent>
                       {(statusOptions.length
                         ? statusOptions
@@ -1168,7 +1184,11 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                     onValueChange={(v) => setMasterForm((p) => ({ ...p, payToPartyId: v ? parseInt(v, 10) : null }))}
                   >
                     <SelectTrigger className='h-9 text-sm bg-white'>
-                      <SelectValue placeholder='Select party...' />
+                      <SelectValue>
+                        {masterForm.payToPartyId
+                          ? (parties.find((p) => p.partyId === masterForm.payToPartyId)?.partyName ?? `Party #${masterForm.payToPartyId}`)
+                          : "Select party..."}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent className='max-h-[300px] w-[340px]'>
                       <div className='sticky top-0 bg-white p-2 border-b z-50'>
@@ -1213,7 +1233,11 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                     }}
                   >
                     <SelectTrigger className='h-9 text-sm bg-white'>
-                      <SelectValue placeholder='Select job (optional)...' />
+                      <SelectValue>
+                        {masterForm.jobId
+                          ? (jobs.find((j) => j.jobId === masterForm.jobId)?.jobNumber ?? `Job #${masterForm.jobId}`)
+                          : "Select job (optional)..."}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent className='max-h-[300px] w-[280px]'>
                       <div className='sticky top-0 bg-white p-2 border-b z-50'>
@@ -1247,13 +1271,20 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                     onValueChange={(v) => setMasterForm((p) => ({ ...p, currencyId: v ? parseInt(v, 10) : null }))}
                   >
                     <SelectTrigger className='h-9 text-sm bg-white'>
-                      <SelectValue placeholder='Select currency...' />
+                      <SelectValue>
+                        {masterForm.currencyId
+                          ? (() => {
+                              const c = currencies.find((c) => c.currencyId === masterForm.currencyId);
+                              return c ? `${c.currencyCode} — ${c.currencyName}` : `Currency #${masterForm.currencyId}`;
+                            })()
+                          : "Select currency..."}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {currencies.map((c) => (
                         <SelectItem key={c.currencyId} value={c.currencyId.toString()}>
                           {c.currencyCode} — {c.currencyName}
-                          {c.isDefault && <span className='ml-1 text-xs text-blue-500'>(default)</span>}
+                          {c.currencyCode === "PKR" && <span className='ml-1 text-xs text-blue-500'>(default)</span>}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1366,7 +1397,11 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                 onValueChange={(v) => updateRow(row._key, { chargesId: parseInt(v, 10) })}
                               >
                                 <SelectTrigger className='h-7 text-xs bg-white'>
-                                  <SelectValue placeholder='Select charge...' />
+                                  <SelectValue>
+                                    {row.chargesId
+                                      ? (charges.find((ch) => ch.chargesMasterId === row.chargesId)?.chargesName ?? `Charge #${row.chargesId}`)
+                                      : "Select charge..."}
+                                  </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent className='max-h-[200px]'>
                                   {charges.map((ch) => (
@@ -1446,9 +1481,16 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                 onValueChange={(v) => updateRow(row._key, { fromCoaId: parseInt(v, 10) })}
                               >
                                 <SelectTrigger className='h-7 text-xs bg-white'>
-                                  <SelectValue placeholder='From CoA...' />
+                                  <SelectValue>
+                                    {row.fromCoaId
+                                      ? (() => {
+                                          const a = accounts.find((a) => a.accountId === row.fromCoaId);
+                                          return a ? `${a.accountCode} — ${a.accountName}` : `#${row.fromCoaId}`;
+                                        })()
+                                      : "From CoA..."}
+                                  </SelectValue>
                                 </SelectTrigger>
-                                <SelectContent className='max-h-[220px] w-[280px]'>
+                                <SelectContent className='max-h-[220px] w-[300px]'>
                                   {accounts.map((a) => (
                                     <SelectItem key={a.accountId} value={a.accountId.toString()}>
                                       <span className='font-mono text-blue-600 mr-1.5 text-[11px]'>{a.accountCode}</span>
@@ -1466,9 +1508,16 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                 onValueChange={(v) => updateRow(row._key, { toCoaId: parseInt(v, 10) })}
                               >
                                 <SelectTrigger className='h-7 text-xs bg-white'>
-                                  <SelectValue placeholder='To CoA...' />
+                                  <SelectValue>
+                                    {row.toCoaId
+                                      ? (() => {
+                                          const a = accounts.find((a) => a.accountId === row.toCoaId);
+                                          return a ? `${a.accountCode} — ${a.accountName}` : `#${row.toCoaId}`;
+                                        })()
+                                      : "To CoA..."}
+                                  </SelectValue>
                                 </SelectTrigger>
-                                <SelectContent className='max-h-[220px] w-[280px]'>
+                                <SelectContent className='max-h-[220px] w-[300px]'>
                                   {accounts.map((a) => (
                                     <SelectItem key={a.accountId} value={a.accountId.toString()}>
                                       <span className='font-mono text-blue-600 mr-1.5 text-[11px]'>{a.accountCode}</span>
@@ -1486,7 +1535,11 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                 onValueChange={(v) => updateRow(row._key, { currencyId: parseInt(v, 10) })}
                               >
                                 <SelectTrigger className='h-7 text-xs bg-white'>
-                                  <SelectValue placeholder='CCY' />
+                                  <SelectValue>
+                                    {row.currencyId
+                                      ? (currencies.find((c) => c.currencyId === row.currencyId)?.currencyCode ?? `#${row.currencyId}`)
+                                      : "CCY"}
+                                  </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent>
                                   {currencies.map((c) => (
@@ -1517,7 +1570,11 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                 onValueChange={(v) => updateRow(row._key, { costCenterId: v ? parseInt(v, 10) : null })}
                               >
                                 <SelectTrigger className='h-7 text-xs bg-white'>
-                                  <SelectValue placeholder='Optional' />
+                                  <SelectValue>
+                                    {row.costCenterId
+                                      ? (costCenters.find((cc) => cc.costCenterId === row.costCenterId)?.costCenterName ?? `#${row.costCenterId}`)
+                                      : "— None —"}
+                                  </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value=''>— None —</SelectItem>
