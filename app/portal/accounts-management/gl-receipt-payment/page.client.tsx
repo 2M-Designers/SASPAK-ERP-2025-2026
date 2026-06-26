@@ -1157,8 +1157,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                     <SelectTrigger className='h-9 text-sm bg-white'>
                       <SelectValue>
                         {(statusOptions.find((o) => o.value === masterForm.receiptPaymentStatus)?.label) ??
-                          masterForm.receiptPaymentStatus ||
-                          "Select status..."}
+                          (masterForm.receiptPaymentStatus || "Select status...")}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
