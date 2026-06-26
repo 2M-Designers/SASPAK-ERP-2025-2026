@@ -178,6 +178,7 @@ type MasterForm = {
 };
 
 type TypeOption = { value: string; label: string };
+type GlVoucherLookup = { voucherId: number; voucherNumber: string };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -317,6 +318,9 @@ const typeClass = (t: number) =>
     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
     : "bg-violet-50 text-violet-700 border-violet-200";
 
+const isAlreadyApproved = (status: string) =>
+  ["approved", "done", "processed"].includes((status || "").toLowerCase());
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function GLReceiptPaymentClient({ initialData }: { initialData: any[] }) {
@@ -332,6 +336,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   const [charges, setCharges] = useState<ChargeMaster[]>([]);
   const [accounts, setAccounts] = useState<GlAccount[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const [glVouchers, setGlVouchers] = useState<GlVoucherLookup[]>([]);
   const [lookupReady, setLookupReady] = useState(false);
 
   // ── Dynamic type-value options (from General/GetTypeValues) ────────────────
@@ -428,7 +433,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   // ── Fetch all lookups ──────────────────────────────────────────────────────
   const fetchLookups = useCallback(async () => {
     try {
-      const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw, statusRaw, typeRaw] =
+      const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw, statusRaw, typeRaw, voucherRaw] =
         await Promise.all([
           postList("SetupCurrency/GetList", "CurrencyId, CurrencyCode, CurrencyName, Symbol, IsDefault", "", "CurrencyCode ASC"),
           postList("Party/GetList", "PartyId, PartyCode, PartyName", "", "PartyName ASC"),
@@ -438,6 +443,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           postList("CostCenter/GetList", "CostCenterId, CostCenterCode, CostCenterName", "", "CostCenterCode ASC"),
           getTypeValues("Payment_Status"),
           getTypeValues("ReceiptPayment_Type_Ids"),
+          postList("GLVoucher/GetList", "VoucherId, VoucherNumber", "", "VoucherId DESC"),
         ]);
 
       const curr: Currency[] = currRaw.map((c: any) => ({
@@ -489,6 +495,12 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
 
       if (statusRaw.length) setStatusOptions(statusRaw);
       if (typeRaw.length) setTypeOptions(typeRaw);
+      setGlVouchers(
+        voucherRaw.map((v: any) => ({
+          voucherId: v.voucherId ?? v.VoucherId ?? 0,
+          voucherNumber: v.voucherNumber ?? v.VoucherNumber ?? "",
+        })),
+      );
 
       const def =
         curr.find((c) => c.currencyCode === "PKR") ??
@@ -1821,18 +1833,20 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                 >
                                   <FiPrinter size={13} />
                                 </button>
-                                <button
-                                  onClick={() => handleApprove(rec)}
-                                  disabled={isApproving}
-                                  className='p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50'
-                                  title='Approve'
-                                >
-                                  {isApproving ? (
-                                    <FiLoader size={13} className='animate-spin' />
-                                  ) : (
-                                    <FiSend size={13} />
-                                  )}
-                                </button>
+                                {!isAlreadyApproved(rec.receiptPaymentStatus) && (
+                                  <button
+                                    onClick={() => handleApprove(rec)}
+                                    disabled={isApproving}
+                                    className='p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50'
+                                    title='Approve'
+                                  >
+                                    {isApproving ? (
+                                      <FiLoader size={13} className='animate-spin' />
+                                    ) : (
+                                      <FiSend size={13} />
+                                    )}
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => setDeleteTarget(rec)}
                                   className='p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors'
@@ -1940,6 +1954,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                         (viewRecord.jobId ? `Job #${viewRecord.jobId}` : "—");
                       const voucherNum =
                         viewRecord.glVoucher?.voucherNumber ??
+                        glVouchers.find((v) => v.voucherId === viewRecord.glVoucherId)?.voucherNumber ??
                         (viewRecord.glVoucherId ? `GV-${viewRecord.glVoucherId}` : "—");
                       const currCode =
                         viewRecord.currency?.currencyCode ??
@@ -2075,19 +2090,21 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
             >
               <FiDownload className='h-4 w-4' /> Download PDF
             </Button>
-            <Button
-              variant='outline'
-              className='gap-2 text-emerald-700 border-emerald-200 hover:bg-emerald-50'
-              onClick={() => { if (viewRecord) handleApprove(viewRecord); }}
-              disabled={approvingId === viewRecord?.glreceiptPaymentId}
-            >
-              {approvingId === viewRecord?.glreceiptPaymentId ? (
-                <FiLoader className='h-4 w-4 animate-spin' />
-              ) : (
-                <FiSend className='h-4 w-4' />
-              )}
-              Approve
-            </Button>
+            {viewRecord && !isAlreadyApproved(viewRecord.receiptPaymentStatus) && (
+              <Button
+                variant='outline'
+                className='gap-2 text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+                onClick={() => { if (viewRecord) handleApprove(viewRecord); }}
+                disabled={approvingId === viewRecord.glreceiptPaymentId}
+              >
+                {approvingId === viewRecord.glreceiptPaymentId ? (
+                  <FiLoader className='h-4 w-4 animate-spin' />
+                ) : (
+                  <FiSend className='h-4 w-4' />
+                )}
+                Approve
+              </Button>
+            )}
             <Button
               variant='outline'
               className='gap-2 text-green-700 border-green-200 hover:bg-green-50'
