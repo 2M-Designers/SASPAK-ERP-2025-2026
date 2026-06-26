@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -374,6 +375,9 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   const [bulkRemarks, setBulkRemarks] = useState("");
   const [isBulkPosting, setIsBulkPosting] = useState(false);
 
+  // ── Tab state ──────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<"all" | "receipt" | "payment">("all");
+
   // ── Inline search for big dropdowns ───────────────────────────────────────
   const [partySearch, setPartySearch] = useState("");
   const [jobSearch, setJobSearch] = useState("");
@@ -537,6 +541,13 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
         (typeLabel(r.receiptPaymentType) || "").toLowerCase().includes(q),
     );
   }, [data, searchText]);
+
+  // ── Tab-filtered list ──────────────────────────────────────────────────────
+  const tabFiltered = useMemo(() => {
+    if (activeTab === "receipt") return filtered.filter((r) => r.receiptPaymentType === 1);
+    if (activeTab === "payment") return filtered.filter((r) => r.receiptPaymentType === 2);
+    return filtered;
+  }, [filtered, activeTab]);
 
   // ── Computed rows ──────────────────────────────────────────────────────────
   const computedRows = useMemo(() => detailRows.map((r) => ({ ...r, ...computeRow(r) })), [detailRows]);
@@ -1720,54 +1731,183 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           </div>
         </div>
 
-        {/* Stats */}
-        <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
-          {[
-            { label: "Total Records", value: data.length, cls: "text-blue-700" },
-            { label: "Receipts", value: data.filter((r) => r.receiptPaymentType === 1).length, cls: "text-emerald-700" },
-            { label: "Payments", value: data.filter((r) => r.receiptPaymentType === 2).length, cls: "text-violet-700" },
-            { label: "Grand Total", value: fmt(data.reduce((s, r) => s + r.totalAmount, 0)), cls: "text-purple-700" },
-          ].map((card) => (
-            <Card key={card.label} className='shadow-sm'>
-              <CardContent className='p-3'>
-                <p className='text-xs text-gray-500'>{card.label}</p>
-                <p className={`text-xl font-bold mt-0.5 ${card.cls}`}>{card.value}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+          <div className='flex items-center justify-between'>
+            <TabsList className='h-10 gap-1 bg-gray-100 p-1 rounded-lg'>
+              <TabsTrigger
+                value='all'
+                className='gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm text-sm px-4'
+              >
+                All
+                <Badge variant='outline' className='text-xs h-5 px-1.5 font-semibold'>
+                  {data.length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger
+                value='receipt'
+                className='gap-2 data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-sm px-4'
+              >
+                Receipt
+                <Badge
+                  className='text-xs h-5 px-1.5 font-semibold bg-emerald-100 text-emerald-700 data-[state=active]:bg-emerald-500 data-[state=active]:text-white border-0'
+                  variant='outline'
+                >
+                  {data.filter((r) => r.receiptPaymentType === 1).length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger
+                value='payment'
+                className='gap-2 data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-sm px-4'
+              >
+                Payment
+                <Badge
+                  className='text-xs h-5 px-1.5 font-semibold bg-violet-100 text-violet-700 border-0'
+                  variant='outline'
+                >
+                  {data.filter((r) => r.receiptPaymentType === 2).length}
+                </Badge>
+              </TabsTrigger>
+            </TabsList>
 
-        {/* Table */}
-        <Card className='shadow-sm'>
-          <CardHeader className='py-3 px-4 bg-gray-50 border-b'>
-            <div className='flex items-center justify-between'>
+            {/* Search (always visible) */}
+            <div className='relative w-72'>
+              <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-3.5 w-3.5' />
+              <Input
+                placeholder='Search number, party, status...'
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className='pl-7 h-9 text-sm'
+              />
+              {searchText && (
+                <button
+                  onClick={() => setSearchText("")}
+                  className='absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'
+                >
+                  <FiX className='h-3.5 w-3.5' />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
+            {activeTab === "all" && (
+              <>
+                <Card className='shadow-sm'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Total Records</p>
+                    <p className='text-xl font-bold mt-0.5 text-blue-700'>{tabFiltered.length}</p>
+                  </CardContent>
+                </Card>
+                <Card className='shadow-sm'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Receipts</p>
+                    <p className='text-xl font-bold mt-0.5 text-emerald-700'>
+                      {tabFiltered.filter((r) => r.receiptPaymentType === 1).length}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className='shadow-sm'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Payments</p>
+                    <p className='text-xl font-bold mt-0.5 text-violet-700'>
+                      {tabFiltered.filter((r) => r.receiptPaymentType === 2).length}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className='shadow-sm'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Grand Total</p>
+                    <p className='text-xl font-bold mt-0.5 text-purple-700'>
+                      {fmt(tabFiltered.reduce((s, r) => s + r.totalAmount, 0))}
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+            {activeTab === "receipt" && (
+              <>
+                <Card className='shadow-sm border-emerald-100'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Total Receipts</p>
+                    <p className='text-xl font-bold mt-0.5 text-emerald-700'>{tabFiltered.length}</p>
+                  </CardContent>
+                </Card>
+                <Card className='shadow-sm border-emerald-100'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Total Receipt Amount</p>
+                    <p className='text-xl font-bold mt-0.5 text-emerald-700'>
+                      {fmt(tabFiltered.reduce((s, r) => s + r.totalAmount, 0))}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className='shadow-sm border-emerald-100'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Approved</p>
+                    <p className='text-xl font-bold mt-0.5 text-green-700'>
+                      {tabFiltered.filter((r) => isAlreadyApproved(r.receiptPaymentStatus)).length}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className='shadow-sm border-emerald-100'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Pending</p>
+                    <p className='text-xl font-bold mt-0.5 text-amber-600'>
+                      {tabFiltered.filter((r) => !isAlreadyApproved(r.receiptPaymentStatus)).length}
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+            {activeTab === "payment" && (
+              <>
+                <Card className='shadow-sm border-violet-100'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Total Payments</p>
+                    <p className='text-xl font-bold mt-0.5 text-violet-700'>{tabFiltered.length}</p>
+                  </CardContent>
+                </Card>
+                <Card className='shadow-sm border-violet-100'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Total Payment Amount</p>
+                    <p className='text-xl font-bold mt-0.5 text-violet-700'>
+                      {fmt(tabFiltered.reduce((s, r) => s + r.totalAmount, 0))}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className='shadow-sm border-violet-100'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Approved</p>
+                    <p className='text-xl font-bold mt-0.5 text-green-700'>
+                      {tabFiltered.filter((r) => isAlreadyApproved(r.receiptPaymentStatus)).length}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className='shadow-sm border-violet-100'>
+                  <CardContent className='p-3'>
+                    <p className='text-xs text-gray-500'>Pending</p>
+                    <p className='text-xl font-bold mt-0.5 text-amber-600'>
+                      {tabFiltered.filter((r) => !isAlreadyApproved(r.receiptPaymentStatus)).length}
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
+
+          {/* Table */}
+          <Card className='shadow-sm'>
+            <CardHeader className='py-3 px-4 bg-gray-50 border-b'>
               <CardTitle className='text-sm font-semibold text-gray-800 flex items-center gap-2'>
                 <FiFileText className='h-4 w-4 text-blue-600' />
-                Records
-                <Badge variant='outline' className='text-xs'>{filtered.length}</Badge>
+                {activeTab === "receipt" ? "Receipts" : activeTab === "payment" ? "Payments" : "Records"}
+                <Badge variant='outline' className='text-xs'>{tabFiltered.length}</Badge>
               </CardTitle>
-              <div className='relative w-72'>
-                <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-3.5 w-3.5' />
-                <Input
-                  placeholder='Search number, party, status...'
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  className='pl-7 h-8 text-sm'
-                />
-                {searchText && (
-                  <button
-                    onClick={() => setSearchText("")}
-                    className='absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'
-                  >
-                    <FiX className='h-3.5 w-3.5' />
-                  </button>
-                )}
-              </div>
-            </div>
-          </CardHeader>
+            </CardHeader>
 
           <CardContent className='p-0'>
-            {filtered.length === 0 && !isLoading ? (
+            {tabFiltered.length === 0 && !isLoading ? (
               <div className='flex flex-col items-center justify-center py-16 text-gray-400'>
                 <AlertCircle className='h-10 w-10 mb-3 text-gray-300' />
                 <p className='text-sm font-medium'>No records found</p>
@@ -1784,9 +1924,9 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                       <TableHead className='text-xs'>Actions</TableHead>
                       <TableHead className='text-xs min-w-[130px]'>Number</TableHead>
                       <TableHead className='text-xs min-w-[100px]'>Date</TableHead>
-                      <TableHead className='text-xs min-w-[90px]'>Type</TableHead>
-                      <TableHead className='text-xs min-w-[180px]'>Pay To Party</TableHead>
-                      <TableHead className='text-xs min-w-[100px]'>Job</TableHead>
+                      {activeTab === "all" && <TableHead className='text-xs min-w-[90px]'>Type</TableHead>}
+                      <TableHead className='text-xs min-w-[180px]'>Party</TableHead>
+                      <TableHead className='text-xs min-w-[100px]'>Job Order No.</TableHead>
                       <TableHead className='text-xs text-right min-w-[110px]'>Amount</TableHead>
                       <TableHead className='text-xs text-right min-w-[110px]'>Total Amount</TableHead>
                       <TableHead className='text-xs min-w-[100px]'>Status</TableHead>
@@ -1802,7 +1942,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filtered.map((rec, idx) => {
+                      tabFiltered.map((rec, idx) => {
                         const party = parties.find((p) => p.partyId === rec.payToPartyId);
                         const job = jobs.find((j) => j.jobId === rec.jobId);
                         const isApproving = approvingId === rec.glreceiptPaymentId;
@@ -1867,19 +2007,21 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                 : "—"}
                             </TableCell>
 
-                            <TableCell>
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${typeClass(rec.receiptPaymentType)}`}>
-                                {typeLabel(rec.receiptPaymentType)}
-                              </span>
-                            </TableCell>
+                            {activeTab === "all" && (
+                              <TableCell>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${typeClass(rec.receiptPaymentType)}`}>
+                                  {typeLabel(rec.receiptPaymentType)}
+                                </span>
+                              </TableCell>
+                            )}
 
                             <TableCell className='text-xs text-gray-700'>
-                              {party?.partyName ||
+                              {party?.partyName || rec.payToParty?.partyName ||
                                 (rec.payToPartyId ? `Party #${rec.payToPartyId}` : "—")}
                             </TableCell>
 
                             <TableCell className='text-xs text-gray-600'>
-                              {job?.jobNumber || (rec.jobId ? `#${rec.jobId}` : <span className='text-gray-300'>—</span>)}
+                              {job?.jobNumber || rec.job?.jobNumber || (rec.jobId ? `#${rec.jobId}` : <span className='text-gray-300'>—</span>)}
                             </TableCell>
 
                             <TableCell className='text-xs text-right text-gray-700'>
@@ -1903,7 +2045,8 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
               </div>
             )}
           </CardContent>
-        </Card>
+          </Card>
+        </Tabs>
       </div>
 
       {isLoading && !data.length && <AppLoader />}
