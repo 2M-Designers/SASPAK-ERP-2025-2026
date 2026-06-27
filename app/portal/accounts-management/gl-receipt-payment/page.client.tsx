@@ -706,83 +706,52 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
     const exRate = masterForm.exchangeRate;
     const isEdit = !!editingRecord;
 
-    const masterCurrency = currencies.find((c) => c.currencyId === masterForm.currencyId);
-
     const payload = {
-      glreceiptPaymentId: editingRecord?.glreceiptPaymentId ?? 0,
-      receiptPaymentDate: masterForm.receiptPaymentDate,
-      receiptPaymentNumber: masterForm.receiptPaymentNumber,
-      jobId: masterForm.jobId,
-      receiptPaymentType: masterForm.receiptPaymentType,
-      receiptPaymentAmount,
-      receiptPaymentAmountFc: receiptPaymentAmount * exRate,
-      exchangeRate: exRate,
-      currencyId: masterForm.currencyId,
-      currency: masterCurrency
-        ? {
-            currencyId: masterCurrency.currencyId,
-            currencyCode: masterCurrency.currencyCode,
-            currencyName: masterCurrency.currencyName,
-            symbol: masterCurrency.symbol,
-            isDefault: masterCurrency.isDefault,
-          }
-        : null,
-      totalTax,
-      totalTaxFc: totalTax * exRate,
-      discountTotal,
-      discountTotalFc: discountTotal * exRate,
-      partialReceiptPayment: masterForm.partialReceiptPayment,
-      totalAmount,
-      totalAmountFc: totalAmount * exRate,
-      payToPartyId: masterForm.payToPartyId,
-      receiptPaymentStatus: masterForm.receiptPaymentStatus,
-      receiptPaymentDescription: masterForm.receiptPaymentDescription,
-      glVoucherId: editingRecord?.glVoucherId ?? null,
-      version: editingRecord?.version ?? 1,
-      glreceiptPaymentDetails: computedRows.map((r) => {
-        const rowCurrency = currencies.find((c) => c.currencyId === r.currencyId);
-        const rowCharge = charges.find((ch) => ch.chargesMasterId === r.chargesId);
-        return {
-          glreceiptPaymentDetailId: r.glreceiptPaymentDetailId,
-          glreceiptPaymentId: editingRecord?.glreceiptPaymentId ?? 0,
-          chargesId: r.chargesId,
-          charges: rowCharge
-            ? {
-                chargesMasterId: rowCharge.chargesMasterId,
-                chargesCode: rowCharge.chargesCode,
-                chargesName: rowCharge.chargesName,
-              }
-            : null,
-          cost: r.cost,
-          amount: r.amount,
-          qty: r.qty,
-          exchangeRate: r.exchangeRate,
-          currencyId: r.currencyId,
-          currency: rowCurrency
-            ? {
-                currencyId: rowCurrency.currencyId,
-                currencyCode: rowCurrency.currencyCode,
-                currencyName: rowCurrency.currencyName,
-                symbol: rowCurrency.symbol,
-                isDefault: rowCurrency.isDefault,
-              }
-            : null,
-          costLc: r.costLc,
-          amountLc: r.amountLc,
-          tax: r.tax,
-          taxFc: r.taxFc,
-          discount: r.discount,
-          discountFc: r.discountFc,
-          netAmount: r.netAmount,
-          netAmountFc: r.netAmountFc,
-          fromCoaId: r.fromCoaId,
-          toCoaId: r.toCoaId,
-          costCenterId: r.costCenterId,
-          glInvoiceId: r.glInvoiceId,
-          glbillId: r.glbillId,
-          version: r.version,
-        };
-      }),
+      GlreceiptPaymentId: editingRecord?.glreceiptPaymentId ?? 0,
+      ReceiptPaymentDate: masterForm.receiptPaymentDate,
+      ReceiptPaymentNumber: masterForm.receiptPaymentNumber ?? "",
+      JobId: masterForm.jobId ?? 0,
+      ReceiptPaymentType: masterForm.receiptPaymentType,
+      ReceiptPaymentAmount: receiptPaymentAmount,
+      ReceiptPaymentAmountFc: receiptPaymentAmount * exRate,
+      ExchangeRate: exRate,
+      CurrencyId: masterForm.currencyId ?? 0,
+      TotalTax: totalTax,
+      TotalTaxFc: totalTax * exRate,
+      DiscountTotal: discountTotal,
+      DiscountTotalFc: discountTotal * exRate,
+      PartialReceiptPayment: masterForm.partialReceiptPayment,
+      TotalAmount: totalAmount,
+      TotalAmountFc: totalAmount * exRate,
+      PayToPartyId: masterForm.payToPartyId ?? 0,
+      ReceiptPaymentStatus: masterForm.receiptPaymentStatus,
+      ReceiptPaymentDescription: masterForm.receiptPaymentDescription ?? "",
+      GlVoucherId: editingRecord?.glVoucherId ?? 0,
+      Version: editingRecord?.version ?? 1,
+      GlreceiptPaymentDetails: computedRows.map((r) => ({
+        GlreceiptPaymentDetailId: r.glreceiptPaymentDetailId,
+        GlreceiptPaymentId: editingRecord?.glreceiptPaymentId ?? 0,
+        ChargesId: r.chargesId,
+        Cost: r.cost,
+        Amount: r.amount,
+        Qty: r.qty,
+        ExchangeRate: r.exchangeRate,
+        CurrencyId: r.currencyId,
+        CostLc: r.costLc,
+        AmountLc: r.amountLc,
+        Tax: r.tax,
+        TaxFc: r.taxFc,
+        Discount: r.discount,
+        DiscountFc: r.discountFc,
+        NetAmount: r.netAmount,
+        NetAmountFc: r.netAmountFc,
+        FromCoaId: r.fromCoaId,
+        ToCoaId: r.toCoaId,
+        CostCenterId: r.costCenterId ?? 0,
+        GlInvoiceId: r.glInvoiceId ?? 0,
+        GlbillId: r.glbillId ?? 0,
+        Version: r.version,
+      })),
     };
 
     setIsSaving(true);
