@@ -521,7 +521,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
     fetchLookups();
   }, [fetchLookups]);
 
-  // ── Auto-fill from Job Order (Cash + Bank Fund Requests) ───────────────────
+  // ── Auto-fill from Job Order (Cash + Bank Fund Request details) ──────────────
   const autoFillFromJob = useCallback(
     async (jobId: number) => {
       if (!jobId) return;
@@ -530,57 +530,44 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
         const exRate = masterForm.exchangeRate;
         const currId = masterForm.currencyId ?? currencies.find((c) => c.isDefault)?.currencyId ?? 0;
 
-        // Fetch all approved masters — JobId is on the detail lines (nested),
-        // not on the master, so we filter by ApprovalStatus on the master and
-        // then filter detail lines by jobId client-side.
-        const [cashMasters, bankMasters] = await Promise.all([
+        // Query detail tables directly — both have JobId as a column so we
+        // can filter server-side. Only fetch lines with ApprovedAmount > 0.
+        const [cashDetails, bankDetails] = await Promise.all([
           postList(
-            "InternalCashFundsRequest/GetList",
-            "cashFundRequestId, TotalApprovedAmount, ApprovalStatus",
-            "ApprovalStatus == 'Approved'",
-            "cashFundRequestId ASC",
+            "InternalCashFundsRequestDetail/GetList",
+            "InternalFundsRequestCashId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, SubRequestStatus, CashFundRequestMasterId",
+            `JobId == ${jobId}`,
+            "InternalFundsRequestCashId ASC",
             "5000",
           ),
           postList(
-            "InternalBankFundsRequest/GetList",
-            "bankFundRequestId, TotalApprovedAmount, ApprovalStatus",
-            "ApprovalStatus == 'Approved'",
-            "bankFundRequestId ASC",
+            "InternalBankFundsRequestDetail/GetList",
+            "InternalFundsRequestBankId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, SubRequestStatus, BankFundRequestMasterId",
+            `JobId == ${jobId}`,
+            "InternalFundsRequestBankId ASC",
             "5000",
           ),
         ]);
 
-        // Flatten nested detail lines and filter by the selected jobId
-        const cashDetails: any[] = cashMasters.flatMap(
-          (m: any) => m.internalCashFundsRequests ?? m.InternalCashFundsRequests ?? [],
-        ).filter((d: any) => (d.jobId ?? d.JobId) === jobId);
-
-        const bankDetails: any[] = bankMasters.flatMap(
-          (m: any) => m.internalBankFundsRequests ?? m.InternalBankFundsRequests ?? [],
-        ).filter((d: any) => (d.jobId ?? d.JobId) === jobId);
-
-        // Map a detail line to a DetailRow.
-        // API fields: chargesId, approvedAmount, headCoaId (from), beneficiaryCoaId (to)
-        const toDetailRow = (item: any): DetailRow => {
-          const approvedCost =
-            item.approvedAmount ?? item.ApprovedAmount ?? 0;
-          return {
-            _key: Math.random().toString(36).slice(2),
-            glbillDetailId: 0,
-            chargesId: item.chargesId ?? item.ChargesId ?? 0,
-            cost: approvedCost,
-            qty: 1,
-            exchangeRate: exRate,
-            currencyId: currId,
-            tax: 0,
-            discount: 0,
-            fromCoaId: item.headCoaId ?? item.HeadCoaId ?? 0,
-            toCoaId: item.beneficiaryCoaId ?? item.BeneficiaryCoaId ?? 0,
-            costCenterId: null,
-            version: 1,
-            _autoFilled: true,
-          };
-        };
+        // Map a detail line to a GL Bill DetailRow.
+        // headCoaId → fromCoaId (expense head / debit side)
+        // beneficiaryCoaId → toCoaId (creditor / payable side)
+        const toDetailRow = (item: any): DetailRow => ({
+          _key: Math.random().toString(36).slice(2),
+          glbillDetailId: 0,
+          chargesId: item.chargesId ?? item.ChargesId ?? 0,
+          cost: item.approvedAmount ?? item.ApprovedAmount ?? 0,
+          qty: 1,
+          exchangeRate: exRate,
+          currencyId: currId,
+          tax: 0,
+          discount: 0,
+          fromCoaId: item.headCoaId ?? item.HeadCoaId ?? 0,
+          toCoaId: item.beneficiaryCoaId ?? item.BeneficiaryCoaId ?? 0,
+          costCenterId: null,
+          version: 1,
+          _autoFilled: true,
+        });
 
         const autoRows = [
           ...cashDetails.map(toDetailRow),
@@ -589,8 +576,8 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
 
         if (autoRows.length === 0) {
           toast({
-            title: "No Fund Requests Found",
-            description: "No Cash or Bank Fund Requests with approved expenses were found for this job. You can add charges manually.",
+            title: "No Approved Charges Found",
+            description: "No Cash or Bank Fund Request lines with approved amounts were found for this job. You can add charges manually.",
           });
           return;
         }
@@ -602,7 +589,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
 
         toast({
           title: "Charges Auto-Filled",
-          description: `${autoRows.length} charge(s) loaded from Fund Requests for this Job Order.`,
+          description: `${autoRows.length} approved charge line(s) loaded from Fund Requests.`,
         });
       } catch (err) {
         console.error("Auto-fill error:", err);
