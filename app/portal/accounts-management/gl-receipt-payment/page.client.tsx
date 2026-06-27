@@ -86,6 +86,7 @@ type GlAccount = {
   accountId: number;
   accountCode: string;
   accountName: string;
+  isHeader: boolean;
 };
 type CostCenter = {
   costCenterId: number;
@@ -386,15 +387,21 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   const { toast } = useToast();
 
   // ── Fetch helpers ──────────────────────────────────────────────────────────
-  const postList = async (endpoint: string, select: string, where = "", sort = "") => {
-    const res = await fetch(`${getBaseUrl()}${endpoint}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ select, where, search: "", sortOn: sort, page: "1", pageSize: "1000" }),
-    });
-    if (!res.ok) return [];
-    const d = await res.json();
-    return Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+  const postList = async (endpoint: string, select: string, where = "", sort = "", pageSize = "2000") => {
+    try {
+      const res = await fetch(`${getBaseUrl()}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ select, where, search: "", sortOn: sort, page: "1", pageSize }),
+      });
+      if (!res.ok) return [];
+      const text = await res.text();
+      if (!text) return [];
+      const d = JSON.parse(text);
+      return Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+    } catch {
+      return [];
+    }
   };
 
   // ── Fetch list ─────────────────────────────────────────────────────────────
@@ -444,7 +451,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           postList("Party/GetList", "PartyId, PartyCode, PartyName", "", "PartyName ASC"),
           postList("Job/GetList", "JobId, JobNumber, TerminalPartyId, PrincipalId, ConsigneePartyId, JobInvoiceExchRate", "", "JobId DESC"),
           postList("ChargesMaster/GetList", "ChargeId, ChargeCode, ChargeName", "", "ChargeName ASC"),
-          postList("GlAccount/GetList", "AccountId, AccountCode, AccountName", "", "AccountCode ASC"),
+          postList("GlAccount/GetList", "AccountId, AccountCode, AccountName, IsHeader", "", "AccountCode ASC", "9999"),
           postList("CostCenter/GetList", "CostCenterId, CostCenterCode, CostCenterName", "", "CostCenterCode ASC"),
           getTypeValues("Payment_Status"),
           getTypeValues("ReceiptPayment_Type_Ids"),
@@ -489,6 +496,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           accountId: a.accountId ?? a.AccountId ?? 0,
           accountCode: a.accountCode ?? a.AccountCode ?? "",
           accountName: a.accountName ?? a.AccountName ?? "",
+          isHeader: a.isHeader ?? a.IsHeader ?? false,
         })),
       );
       setCostCenters(
@@ -595,6 +603,12 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
     }
     return sliced;
   }, [jobs, jobSearch, masterForm.jobId]);
+
+  // Transactional accounts only (isHeader = false) for From/To CoA dropdowns
+  const transactionalAccounts = useMemo(
+    () => accounts.filter((a) => !a.isHeader),
+    [accounts],
+  );
 
   // ── Resolved type label (int → string) using API-fetched options ───────────
   const typeLabel = useCallback(
@@ -1546,7 +1560,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                   </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent className='max-h-[220px] w-[300px]'>
-                                  {accounts.map((a) => (
+                                  {transactionalAccounts.map((a) => (
                                     <SelectItem key={a.accountId} value={a.accountId.toString()}>
                                       <span className='font-mono text-blue-600 mr-1.5 text-[11px]'>{a.accountCode}</span>
                                       {a.accountName}
@@ -1573,7 +1587,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                   </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent className='max-h-[220px] w-[300px]'>
-                                  {accounts.map((a) => (
+                                  {transactionalAccounts.map((a) => (
                                     <SelectItem key={a.accountId} value={a.accountId.toString()}>
                                       <span className='font-mono text-blue-600 mr-1.5 text-[11px]'>{a.accountCode}</span>
                                       {a.accountName}
