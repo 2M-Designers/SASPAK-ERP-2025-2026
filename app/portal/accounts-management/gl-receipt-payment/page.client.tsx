@@ -772,16 +772,34 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
     };
 
     setIsSaving(true);
+    console.debug("[GLReceiptPayment] Submitting payload:", JSON.stringify(payload, null, 2));
     try {
-      const res = await fetch(`${getBaseUrl()}GLReceiptPayment`, {
-        method: isEdit ? "PUT" : "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${getBaseUrl()}GLReceiptPayment`, {
+          method: isEdit ? "PUT" : "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload),
+        });
+      } catch (networkErr) {
+        // fetch() itself threw — almost always means the server returned an
+        // error response (e.g. 500) without CORS headers, so the browser
+        // blocked the response before JS could read it.
+        console.error("[GLReceiptPayment] Network/CORS error:", networkErr, "Payload was:", payload);
+        throw new Error(
+          "Server returned an error and the browser could not read the response (CORS). " +
+          "Open DevTools → Network tab → find the failed POST to GLReceiptPayment → " +
+          "check the response body there for the actual server error."
+        );
+      }
+
+      console.debug("[GLReceiptPayment] Response:", res.status, res.statusText);
+
       if (!res.ok) {
         let msg = `Request failed (${res.status})`;
         try {
           const txt = await res.text();
+          console.debug("[GLReceiptPayment] Error body:", txt);
           if (txt) {
             const p = JSON.parse(txt);
             if (p.errors) {
@@ -803,6 +821,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
         } catch { /* keep default message */ }
         throw new Error(msg);
       }
+
       toast({
         title: isEdit ? "Record Updated" : "Record Created",
         description: `${masterForm.receiptPaymentNumber || "Record"} saved successfully.`,
@@ -811,6 +830,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
       setEditingRecord(null);
       fetchRecords();
     } catch (err) {
+      console.error("[GLReceiptPayment] Save failed:", err);
       toast({
         variant: "destructive",
         title: "Save Failed",
