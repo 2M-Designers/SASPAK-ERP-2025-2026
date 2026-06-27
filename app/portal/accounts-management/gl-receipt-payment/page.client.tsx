@@ -706,6 +706,8 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
     const exRate = masterForm.exchangeRate;
     const isEdit = !!editingRecord;
 
+    const masterCurrency = currencies.find((c) => c.currencyId === masterForm.currencyId);
+
     const payload = {
       glreceiptPaymentId: editingRecord?.glreceiptPaymentId ?? 0,
       receiptPaymentDate: masterForm.receiptPaymentDate,
@@ -716,6 +718,15 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
       receiptPaymentAmountFc: receiptPaymentAmount * exRate,
       exchangeRate: exRate,
       currencyId: masterForm.currencyId,
+      currency: masterCurrency
+        ? {
+            currencyId: masterCurrency.currencyId,
+            currencyCode: masterCurrency.currencyCode,
+            currencyName: masterCurrency.currencyName,
+            symbol: masterCurrency.symbol,
+            isDefault: masterCurrency.isDefault,
+          }
+        : null,
       totalTax,
       totalTaxFc: totalTax * exRate,
       discountTotal,
@@ -728,30 +739,50 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
       receiptPaymentDescription: masterForm.receiptPaymentDescription,
       glVoucherId: editingRecord?.glVoucherId ?? null,
       version: editingRecord?.version ?? 1,
-      glreceiptPaymentDetails: computedRows.map((r) => ({
-        glreceiptPaymentDetailId: r.glreceiptPaymentDetailId,
-        glreceiptPaymentId: editingRecord?.glreceiptPaymentId ?? 0,
-        chargesId: r.chargesId,
-        cost: r.cost,
-        amount: r.amount,
-        qty: r.qty,
-        exchangeRate: r.exchangeRate,
-        currencyId: r.currencyId,
-        costLc: r.costLc,
-        amountLc: r.amountLc,
-        tax: r.tax,
-        taxFc: r.taxFc,
-        discount: r.discount,
-        discountFc: r.discountFc,
-        netAmount: r.netAmount,
-        netAmountFc: r.netAmountFc,
-        fromCoaId: r.fromCoaId,
-        toCoaId: r.toCoaId,
-        costCenterId: r.costCenterId,
-        glInvoiceId: r.glInvoiceId,
-        glbillId: r.glbillId,
-        version: r.version,
-      })),
+      glreceiptPaymentDetails: computedRows.map((r) => {
+        const rowCurrency = currencies.find((c) => c.currencyId === r.currencyId);
+        const rowCharge = charges.find((ch) => ch.chargesMasterId === r.chargesId);
+        return {
+          glreceiptPaymentDetailId: r.glreceiptPaymentDetailId,
+          glreceiptPaymentId: editingRecord?.glreceiptPaymentId ?? 0,
+          chargesId: r.chargesId,
+          charges: rowCharge
+            ? {
+                chargesMasterId: rowCharge.chargesMasterId,
+                chargesCode: rowCharge.chargesCode,
+                chargesName: rowCharge.chargesName,
+              }
+            : null,
+          cost: r.cost,
+          amount: r.amount,
+          qty: r.qty,
+          exchangeRate: r.exchangeRate,
+          currencyId: r.currencyId,
+          currency: rowCurrency
+            ? {
+                currencyId: rowCurrency.currencyId,
+                currencyCode: rowCurrency.currencyCode,
+                currencyName: rowCurrency.currencyName,
+                symbol: rowCurrency.symbol,
+                isDefault: rowCurrency.isDefault,
+              }
+            : null,
+          costLc: r.costLc,
+          amountLc: r.amountLc,
+          tax: r.tax,
+          taxFc: r.taxFc,
+          discount: r.discount,
+          discountFc: r.discountFc,
+          netAmount: r.netAmount,
+          netAmountFc: r.netAmountFc,
+          fromCoaId: r.fromCoaId,
+          toCoaId: r.toCoaId,
+          costCenterId: r.costCenterId,
+          glInvoiceId: r.glInvoiceId,
+          glbillId: r.glbillId,
+          version: r.version,
+        };
+      }),
     };
 
     setIsSaving(true);
