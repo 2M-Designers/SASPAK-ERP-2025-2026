@@ -383,6 +383,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   // ── Inline search for big dropdowns ───────────────────────────────────────
   const [partySearch, setPartySearch] = useState("");
   const [jobSearch, setJobSearch] = useState("");
+  const [detailSearches, setDetailSearches] = useState<Record<string, string>>({});
 
   const { toast } = useToast();
 
@@ -648,6 +649,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
     setDetailRows([blankRow(1, def?.currencyId ?? 0)]);
     setPartySearch("");
     setJobSearch("");
+    setDetailSearches({});
     setShowForm(true);
   };
 
@@ -694,6 +696,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
     );
     setPartySearch("");
     setJobSearch("");
+    setDetailSearches({});
     setShowForm(true);
   };
 
@@ -776,15 +779,28 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        const txt = await res.text();
-        let msg = `Failed (${res.status})`;
+        let msg = `Request failed (${res.status})`;
         try {
-          const p = JSON.parse(txt);
-          if (p.title) msg = p.title;
-          else if (p.message) msg = p.message;
-          else if (Array.isArray(p)) msg = p.join(", ");
-          else msg = txt || msg;
-        } catch { msg = txt || msg; }
+          const txt = await res.text();
+          if (txt) {
+            const p = JSON.parse(txt);
+            if (p.errors) {
+              msg = Object.values(p.errors as Record<string, string[]>).flat().join(", ");
+            } else if (p.title) {
+              msg = p.title;
+            } else if (p.message) {
+              msg = p.message;
+            } else if (p.detail) {
+              msg = p.detail;
+            } else if (Array.isArray(p)) {
+              msg = p.join(", ");
+            } else if (typeof p === "string") {
+              msg = p;
+            } else {
+              msg = txt || msg;
+            }
+          }
+        } catch { /* keep default message */ }
         throw new Error(msg);
       }
       toast({
@@ -1472,12 +1488,27 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                       : "Select charge..."}
                                   </SelectValue>
                                 </SelectTrigger>
-                                <SelectContent className='max-h-[200px]'>
-                                  {charges.map((ch) => (
-                                    <SelectItem key={ch.chargesMasterId} value={ch.chargesMasterId.toString()}>
-                                      {ch.chargesName}
-                                    </SelectItem>
-                                  ))}
+                                <SelectContent className='max-h-[260px]'>
+                                  <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
+                                    <Input
+                                      placeholder='Search charge...'
+                                      value={detailSearches[`${row._key}_charge`] ?? ""}
+                                      onChange={(e) => setDetailSearches((p) => ({ ...p, [`${row._key}_charge`]: e.target.value }))}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onKeyDown={(e) => e.stopPropagation()}
+                                      className='h-6 text-xs'
+                                    />
+                                  </div>
+                                  {charges
+                                    .filter((ch) => {
+                                      const q = (detailSearches[`${row._key}_charge`] ?? "").toLowerCase();
+                                      return !q || ch.chargesName.toLowerCase().includes(q) || ch.chargesCode.toLowerCase().includes(q);
+                                    })
+                                    .map((ch) => (
+                                      <SelectItem key={ch.chargesMasterId} value={ch.chargesMasterId.toString()}>
+                                        {ch.chargesName}
+                                      </SelectItem>
+                                    ))}
                                 </SelectContent>
                               </Select>
                             </td>
@@ -1559,13 +1590,28 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                       : "From CoA..."}
                                   </SelectValue>
                                 </SelectTrigger>
-                                <SelectContent className='max-h-[220px] w-[300px]'>
-                                  {transactionalAccounts.map((a) => (
-                                    <SelectItem key={a.accountId} value={a.accountId.toString()}>
-                                      <span className='font-mono text-blue-600 mr-1.5 text-[11px]'>{a.accountCode}</span>
-                                      {a.accountName}
-                                    </SelectItem>
-                                  ))}
+                                <SelectContent className='max-h-[280px] w-[320px]'>
+                                  <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
+                                    <Input
+                                      placeholder='Search account...'
+                                      value={detailSearches[`${row._key}_fromCoa`] ?? ""}
+                                      onChange={(e) => setDetailSearches((p) => ({ ...p, [`${row._key}_fromCoa`]: e.target.value }))}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onKeyDown={(e) => e.stopPropagation()}
+                                      className='h-6 text-xs'
+                                    />
+                                  </div>
+                                  {transactionalAccounts
+                                    .filter((a) => {
+                                      const q = (detailSearches[`${row._key}_fromCoa`] ?? "").toLowerCase();
+                                      return !q || a.accountCode.toLowerCase().includes(q) || a.accountName.toLowerCase().includes(q);
+                                    })
+                                    .map((a) => (
+                                      <SelectItem key={a.accountId} value={a.accountId.toString()}>
+                                        <span className='font-mono text-blue-600 mr-1.5 text-[11px]'>{a.accountCode}</span>
+                                        {a.accountName}
+                                      </SelectItem>
+                                    ))}
                                 </SelectContent>
                               </Select>
                             </td>
@@ -1586,13 +1632,28 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                       : "To CoA..."}
                                   </SelectValue>
                                 </SelectTrigger>
-                                <SelectContent className='max-h-[220px] w-[300px]'>
-                                  {transactionalAccounts.map((a) => (
-                                    <SelectItem key={a.accountId} value={a.accountId.toString()}>
-                                      <span className='font-mono text-blue-600 mr-1.5 text-[11px]'>{a.accountCode}</span>
-                                      {a.accountName}
-                                    </SelectItem>
-                                  ))}
+                                <SelectContent className='max-h-[280px] w-[320px]'>
+                                  <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
+                                    <Input
+                                      placeholder='Search account...'
+                                      value={detailSearches[`${row._key}_toCoa`] ?? ""}
+                                      onChange={(e) => setDetailSearches((p) => ({ ...p, [`${row._key}_toCoa`]: e.target.value }))}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onKeyDown={(e) => e.stopPropagation()}
+                                      className='h-6 text-xs'
+                                    />
+                                  </div>
+                                  {transactionalAccounts
+                                    .filter((a) => {
+                                      const q = (detailSearches[`${row._key}_toCoa`] ?? "").toLowerCase();
+                                      return !q || a.accountCode.toLowerCase().includes(q) || a.accountName.toLowerCase().includes(q);
+                                    })
+                                    .map((a) => (
+                                      <SelectItem key={a.accountId} value={a.accountId.toString()}>
+                                        <span className='font-mono text-blue-600 mr-1.5 text-[11px]'>{a.accountCode}</span>
+                                        {a.accountName}
+                                      </SelectItem>
+                                    ))}
                                 </SelectContent>
                               </Select>
                             </td>
@@ -1645,13 +1706,28 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                       : "— None —"}
                                   </SelectValue>
                                 </SelectTrigger>
-                                <SelectContent>
+                                <SelectContent className='max-h-[260px]'>
+                                  <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
+                                    <Input
+                                      placeholder='Search cost center...'
+                                      value={detailSearches[`${row._key}_cc`] ?? ""}
+                                      onChange={(e) => setDetailSearches((p) => ({ ...p, [`${row._key}_cc`]: e.target.value }))}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onKeyDown={(e) => e.stopPropagation()}
+                                      className='h-6 text-xs'
+                                    />
+                                  </div>
                                   <SelectItem value=''>— None —</SelectItem>
-                                  {costCenters.map((cc) => (
-                                    <SelectItem key={cc.costCenterId} value={cc.costCenterId.toString()}>
-                                      {cc.costCenterName}
-                                    </SelectItem>
-                                  ))}
+                                  {costCenters
+                                    .filter((cc) => {
+                                      const q = (detailSearches[`${row._key}_cc`] ?? "").toLowerCase();
+                                      return !q || cc.costCenterName.toLowerCase().includes(q) || cc.costCenterCode.toLowerCase().includes(q);
+                                    })
+                                    .map((cc) => (
+                                      <SelectItem key={cc.costCenterId} value={cc.costCenterId.toString()}>
+                                        {cc.costCenterName}
+                                      </SelectItem>
+                                    ))}
                                 </SelectContent>
                               </Select>
                             </td>
