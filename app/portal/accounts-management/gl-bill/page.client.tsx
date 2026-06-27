@@ -530,19 +530,21 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
         const exRate = masterForm.exchangeRate;
         const currId = masterForm.currencyId ?? currencies.find((c) => c.isDefault)?.currencyId ?? 0;
 
-        // Query detail tables directly — both have JobId as a column so we
-        // can filter server-side.
+        // Query detail tables directly — both have JobId as a column.
+        // OnAccountOfId = billing party (→ fromCoaId / FROM COA)
+        // HeadCoaId     = GL expense account (→ toCoaId / TO COA)
+        // CostCenterId  = cost center
         const [cashDetails, bankDetails] = await Promise.all([
           postList(
             "InternalCashFundsRequestDetail/GetList",
-            "InternalFundsRequestCashId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, CostCenterId, SubRequestStatus, CashFundRequestMasterId",
+            "InternalFundsRequestCashId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, OnAccountOfId, CostCenterId, SubRequestStatus, CashFundRequestMasterId",
             `JobId == ${jobId}`,
             "InternalFundsRequestCashId ASC",
             "5000",
           ),
           postList(
             "InternalBankFundsRequestDetail/GetList",
-            "InternalFundsRequestBankId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, CostCenterId, SubRequestStatus, BankFundRequestMasterId",
+            "InternalFundsRequestBankId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, OnAccountOfId, CostCenterId, SubRequestStatus, BankFundRequestMasterId",
             `JobId == ${jobId}`,
             "InternalFundsRequestBankId ASC",
             "5000",
@@ -550,10 +552,9 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
         ]);
 
         // Map a detail line to a GL Bill DetailRow.
-        // ChargesId   → chargesId
-        // HeadCoaId   → fromCoaId  (expense head account / debit side)
-        // BeneficiaryCoaId → toCoaId (customer GL Account / credit side)
-        // CostCenterId → costCenterId
+        // FROM COA (fromCoaId)  = billing party → OnAccountOfId
+        // TO COA   (toCoaId)    = GL expense/head account → HeadCoaId
+        // CostCenterId          = cost center
         const toDetailRow = (item: any): DetailRow => ({
           _key: Math.random().toString(36).slice(2),
           glbillDetailId: 0,
@@ -564,8 +565,8 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
           currencyId: currId,
           tax: 0,
           discount: 0,
-          fromCoaId: item.headCoaId ?? item.HeadCoaId ?? 0,
-          toCoaId: item.beneficiaryCoaId ?? item.BeneficiaryCoaId ?? 0,
+          fromCoaId: item.onAccountOfId ?? item.OnAccountOfId ?? 0,
+          toCoaId: item.headCoaId ?? item.HeadCoaId ?? 0,
           costCenterId: item.costCenterId ?? item.CostCenterId ?? null,
           version: 1,
           _autoFilled: true,
@@ -1492,8 +1493,8 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                       <TableHead className='min-w-[80px]'>Tax</TableHead>
                       <TableHead className='min-w-[80px]'>Discount</TableHead>
                       <TableHead className='min-w-[90px]'>Net Amount</TableHead>
-                      <TableHead className='min-w-[160px]'>From CoA *</TableHead>
-                      <TableHead className='min-w-[160px]'>To CoA *</TableHead>
+                      <TableHead className='min-w-[160px]'>Billing Party *</TableHead>
+                      <TableHead className='min-w-[160px]'>GL Account *</TableHead>
                       <TableHead className='min-w-[140px]'>Cost Center</TableHead>
                       <TableHead className='min-w-[80px]'>Exch Rate</TableHead>
                       <TableHead className='w-8'></TableHead>
@@ -1524,16 +1525,16 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                         return base;
                       })();
 
-                      // From CoA — use ALL accounts (header + transactional) so
-                      // auto-filled HeadCoaId values are always visible.
+                      // From CoA — billing party (OnAccountOfId from fund request),
+                      // so show Parties list (Party/GetList).
                       const filteredFromCoa = (() => {
                         const base = qFrom
-                          ? accounts.filter(a =>
-                              a.accountName.toLowerCase().includes(qFrom) ||
-                              a.accountCode.toLowerCase().includes(qFrom))
-                          : accounts;
-                        const sel = accounts.find(a => a.accountId === row.fromCoaId);
-                        if (sel && !base.find(a => a.accountId === sel.accountId))
+                          ? parties.filter(p =>
+                              p.partyName.toLowerCase().includes(qFrom) ||
+                              p.partyCode.toLowerCase().includes(qFrom))
+                          : parties.slice(0, 150);
+                        const sel = parties.find(p => p.partyId === row.fromCoaId);
+                        if (sel && !base.find(p => p.partyId === sel.partyId))
                           return [sel, ...base];
                         return base;
                       })();
@@ -1658,19 +1659,19 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                             {fmt(row.netAmount)}
                           </TableCell>
 
-                          {/* From CoA */}
+                          {/* From CoA — Billing Party */}
                           <TableCell>
                             <Select
                               value={row.fromCoaId ? String(row.fromCoaId) : ""}
                               onValueChange={(v) => updateRow(row._key, { fromCoaId: Number(v) })}
                             >
                               <SelectTrigger className='h-7 text-xs'>
-                                <SelectValue placeholder='From CoA...' />
+                                <SelectValue placeholder='Billing Party...' />
                               </SelectTrigger>
                               <SelectContent className='max-h-[260px]'>
                                 <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
                                   <Input
-                                    placeholder='Search account...'
+                                    placeholder='Search party...'
                                     value={fromCoaSearch}
                                     onChange={(e) =>
                                       setDetailSearches((p) => ({ ...p, [`${row._key}_fromCoa`]: e.target.value }))
@@ -1680,9 +1681,9 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                                     className='h-6 text-xs'
                                   />
                                 </div>
-                                {filteredFromCoa.map((a) => (
-                                  <SelectItem key={a.accountId} value={String(a.accountId)}>
-                                    {a.accountCode} – {a.accountName}
+                                {filteredFromCoa.map((p) => (
+                                  <SelectItem key={p.partyId} value={String(p.partyId)}>
+                                    {p.partyName}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
