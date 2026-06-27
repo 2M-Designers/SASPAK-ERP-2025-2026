@@ -530,48 +530,62 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
         const exRate = masterForm.exchangeRate;
         const currId = masterForm.currencyId ?? currencies.find((c) => c.isDefault)?.currencyId ?? 0;
 
-        const [cashFundRows, bankFundRows] = await Promise.all([
+        // Fetch all approved masters — JobId is on the detail lines (nested),
+        // not on the master, so we filter by ApprovalStatus on the master and
+        // then filter detail lines by jobId client-side.
+        const [cashMasters, bankMasters] = await Promise.all([
           postList(
-            "CashFundRequest/GetList",
-            "CashFundRequestId, JobId, ChargesId, ApprovedExpenses, FromCoaId, ToCoaId, CostCenterId, CurrencyId, ExchangeRate",
-            `JobId=${jobId}`,
-            "CashFundRequestId ASC",
+            "InternalCashFundsRequest/GetList",
+            "cashFundRequestId, TotalApprovedAmount, ApprovalStatus",
+            "ApprovalStatus == 'Approved'",
+            "cashFundRequestId ASC",
+            "5000",
           ),
           postList(
-            "BankFundRequest/GetList",
-            "BankFundRequestId, JobId, ChargesId, ApprovedExpenses, FromCoaId, ToCoaId, CostCenterId, CurrencyId, ExchangeRate",
-            `JobId=${jobId}`,
-            "BankFundRequestId ASC",
+            "InternalBankFundsRequest/GetList",
+            "bankFundRequestId, TotalApprovedAmount, ApprovalStatus",
+            "ApprovalStatus == 'Approved'",
+            "bankFundRequestId ASC",
+            "5000",
           ),
         ]);
 
+        // Flatten nested detail lines and filter by the selected jobId
+        const cashDetails: any[] = cashMasters.flatMap(
+          (m: any) => m.internalCashFundsRequests ?? m.InternalCashFundsRequests ?? [],
+        ).filter((d: any) => (d.jobId ?? d.JobId) === jobId);
+
+        const bankDetails: any[] = bankMasters.flatMap(
+          (m: any) => m.internalBankFundsRequests ?? m.InternalBankFundsRequests ?? [],
+        ).filter((d: any) => (d.jobId ?? d.JobId) === jobId);
+
+        // Map a detail line to a DetailRow.
+        // API fields: chargesId, approvedAmount, headCoaId (from), beneficiaryCoaId (to)
         const toDetailRow = (item: any): DetailRow => {
           const approvedCost =
-            item.approvedExpenses ?? item.ApprovedExpenses ?? item.approvedAmount ?? item.ApprovedAmount ?? 0;
-          const rowCurrId = item.currencyId ?? item.CurrencyId ?? currId;
-          const rowExRate = item.exchangeRate ?? item.ExchangeRate ?? exRate;
+            item.approvedAmount ?? item.ApprovedAmount ?? 0;
           return {
             _key: Math.random().toString(36).slice(2),
             glbillDetailId: 0,
             chargesId: item.chargesId ?? item.ChargesId ?? 0,
             cost: approvedCost,
             qty: 1,
-            exchangeRate: rowExRate,
-            currencyId: rowCurrId,
+            exchangeRate: exRate,
+            currencyId: currId,
             tax: 0,
             discount: 0,
-            fromCoaId: item.fromCoaId ?? item.FromCoaId ?? 0,
-            toCoaId: item.toCoaId ?? item.ToCoaId ?? 0,
-            costCenterId: item.costCenterId ?? item.CostCenterId ?? null,
+            fromCoaId: item.headCoaId ?? item.HeadCoaId ?? 0,
+            toCoaId: item.beneficiaryCoaId ?? item.BeneficiaryCoaId ?? 0,
+            costCenterId: null,
             version: 1,
             _autoFilled: true,
           };
         };
 
         const autoRows = [
-          ...cashFundRows.map(toDetailRow),
-          ...bankFundRows.map(toDetailRow),
-        ].filter((r) => r.chargesId > 0);
+          ...cashDetails.map(toDetailRow),
+          ...bankDetails.map(toDetailRow),
+        ].filter((r) => r.chargesId > 0 && r.cost > 0);
 
         if (autoRows.length === 0) {
           toast({
