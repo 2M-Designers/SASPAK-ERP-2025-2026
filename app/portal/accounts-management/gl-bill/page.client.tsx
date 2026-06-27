@@ -442,7 +442,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
           postList("GlAccount/GetList", "AccountId, AccountCode, AccountName, IsHeader", "", "AccountCode ASC", "9999"),
           postList("CostCenter/GetList", "CostCenterId, CostCenterCode, CostCenterName", "", "CostCenterCode ASC"),
           getTypeValues("Bill_Status"),
-          getTypeValues("Bill_Type"),
+          getTypeValues("Invoice_Types"),
         ]);
 
       const curr: Currency[] = currRaw.map((c: any) => ({
@@ -768,7 +768,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
     }
 
     const { billAmount, totalTax, discountTotal, totalAmount } = masterTotals;
-    const exRate = masterForm.exchangeRate;
+    const exRate = masterForm.exchangeRate || 1;
     const isEdit = !!editingRecord;
 
     const payload = {
@@ -1230,7 +1230,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                       setMasterForm((p) => ({
                         ...p,
                         jobId: sel?.jobId ?? null,
-                        exchangeRate: sel?.jobInvoiceExchRate ?? p.exchangeRate,
+                        exchangeRate: sel?.jobInvoiceExchRate || p.exchangeRate || 1,
                         payToPartyId: sel?.terminalPartyId ?? sel?.principalId ?? sel?.consigneePartyId ?? p.payToPartyId,
                       }));
                       if (sel?.jobId) autoFillFromJob(sel.jobId);
