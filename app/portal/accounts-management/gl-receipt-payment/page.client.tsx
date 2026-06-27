@@ -457,7 +457,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           getTypeValues("Payment_Status"),
           getTypeValues("ReceiptPayment_Type_Ids"),
           postList("GLVoucher/GetList", "VoucherId, VoucherNumber", "", "VoucherId DESC"),
-          getTypeValues("ReceiptPaymentMode_Description"),
+          getTypeValues("ReceiptPayment_Mode_Description"),
         ]);
 
       const curr: Currency[] = currRaw.map((c: any) => ({
@@ -727,7 +727,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
       GlreceiptPaymentId: editingRecord?.glreceiptPaymentId ?? 0,
       ReceiptPaymentDate: masterForm.receiptPaymentDate,
       ReceiptPaymentNumber: masterForm.receiptPaymentNumber ?? "",
-      JobId: masterForm.jobId ?? 0,
+      JobId: masterForm.jobId || null,
       ReceiptPaymentType: masterForm.receiptPaymentType,
       ReceiptPaymentAmount: receiptPaymentAmount,
       ReceiptPaymentAmountFc: receiptPaymentAmount * exRate,
@@ -743,7 +743,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
       PayToPartyId: masterForm.payToPartyId ?? 0,
       ReceiptPaymentStatus: masterForm.receiptPaymentStatus,
       ReceiptPaymentDescription: masterForm.receiptPaymentDescription ?? "",
-      GlVoucherId: editingRecord?.glVoucherId ?? 0,
+      GlVoucherId: editingRecord?.glVoucherId || null,
       Version: editingRecord?.version ?? 1,
       GlreceiptPaymentDetails: computedRows.map((r) => ({
         GlreceiptPaymentDetailId: r.glreceiptPaymentDetailId,
@@ -764,9 +764,9 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
         NetAmountFc: r.netAmountFc,
         FromCoaId: r.fromCoaId,
         ToCoaId: r.toCoaId,
-        CostCenterId: r.costCenterId ?? 0,
-        GlInvoiceId: r.glInvoiceId ?? 0,
-        GlbillId: r.glbillId ?? 0,
+        CostCenterId: r.costCenterId || null,
+        GlInvoiceId: r.glInvoiceId || null,
+        GlbillId: r.glbillId || null,
         Version: r.version,
       })),
     };
