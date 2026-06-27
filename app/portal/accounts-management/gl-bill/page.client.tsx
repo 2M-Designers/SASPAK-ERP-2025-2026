@@ -531,18 +531,18 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
         const currId = masterForm.currencyId ?? currencies.find((c) => c.isDefault)?.currencyId ?? 0;
 
         // Query detail tables directly — both have JobId as a column so we
-        // can filter server-side. Only fetch lines with ApprovedAmount > 0.
+        // can filter server-side.
         const [cashDetails, bankDetails] = await Promise.all([
           postList(
             "InternalCashFundsRequestDetail/GetList",
-            "InternalFundsRequestCashId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, SubRequestStatus, CashFundRequestMasterId",
+            "InternalFundsRequestCashId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, CostCenterId, SubRequestStatus, CashFundRequestMasterId",
             `JobId == ${jobId}`,
             "InternalFundsRequestCashId ASC",
             "5000",
           ),
           postList(
             "InternalBankFundsRequestDetail/GetList",
-            "InternalFundsRequestBankId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, SubRequestStatus, BankFundRequestMasterId",
+            "InternalFundsRequestBankId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, CostCenterId, SubRequestStatus, BankFundRequestMasterId",
             `JobId == ${jobId}`,
             "InternalFundsRequestBankId ASC",
             "5000",
@@ -550,8 +550,10 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
         ]);
 
         // Map a detail line to a GL Bill DetailRow.
-        // headCoaId → fromCoaId (expense head / debit side)
-        // beneficiaryCoaId → toCoaId (creditor / payable side)
+        // ChargesId   → chargesId
+        // HeadCoaId   → fromCoaId  (expense head account / debit side)
+        // BeneficiaryCoaId → toCoaId (customer GL Account / credit side)
+        // CostCenterId → costCenterId
         const toDetailRow = (item: any): DetailRow => ({
           _key: Math.random().toString(36).slice(2),
           glbillDetailId: 0,
@@ -564,7 +566,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
           discount: 0,
           fromCoaId: item.headCoaId ?? item.HeadCoaId ?? 0,
           toCoaId: item.beneficiaryCoaId ?? item.BeneficiaryCoaId ?? 0,
-          costCenterId: null,
+          costCenterId: item.costCenterId ?? item.CostCenterId ?? null,
           version: 1,
           _autoFilled: true,
         });
@@ -1503,38 +1505,64 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                       const fromCoaSearch = detailSearches[`${row._key}_fromCoa`] ?? "";
                       const toCoaSearch = detailSearches[`${row._key}_toCoa`] ?? "";
                       const ccSearch = detailSearches[`${row._key}_cc`] ?? "";
+                      const qCharge = chargeSearch.toLowerCase();
+                      const qFrom = fromCoaSearch.toLowerCase();
+                      const qTo = toCoaSearch.toLowerCase();
+                      const qCC = ccSearch.toLowerCase();
 
-                      const filteredCharges = chargeSearch
-                        ? charges.filter(
-                            (c) =>
-                              c.chargesName.toLowerCase().includes(chargeSearch.toLowerCase()) ||
-                              c.chargesCode.toLowerCase().includes(chargeSearch.toLowerCase()),
-                          )
-                        : charges;
+                      // Always include the currently selected item so SelectValue
+                      // can display its label even when the list is filtered.
+                      const filteredCharges = (() => {
+                        const base = qCharge
+                          ? charges.filter(c =>
+                              c.chargesName.toLowerCase().includes(qCharge) ||
+                              c.chargesCode.toLowerCase().includes(qCharge))
+                          : charges;
+                        const sel = charges.find(c => c.chargesMasterId === row.chargesId);
+                        if (sel && !base.find(c => c.chargesMasterId === sel.chargesMasterId))
+                          return [sel, ...base];
+                        return base;
+                      })();
 
-                      const filteredFromCoa = fromCoaSearch
-                        ? transactionalAccounts.filter(
-                            (a) =>
-                              a.accountName.toLowerCase().includes(fromCoaSearch.toLowerCase()) ||
-                              a.accountCode.toLowerCase().includes(fromCoaSearch.toLowerCase()),
-                          )
-                        : transactionalAccounts;
+                      // From CoA — use ALL accounts (header + transactional) so
+                      // auto-filled HeadCoaId values are always visible.
+                      const filteredFromCoa = (() => {
+                        const base = qFrom
+                          ? accounts.filter(a =>
+                              a.accountName.toLowerCase().includes(qFrom) ||
+                              a.accountCode.toLowerCase().includes(qFrom))
+                          : accounts;
+                        const sel = accounts.find(a => a.accountId === row.fromCoaId);
+                        if (sel && !base.find(a => a.accountId === sel.accountId))
+                          return [sel, ...base];
+                        return base;
+                      })();
 
-                      const filteredToCoa = toCoaSearch
-                        ? transactionalAccounts.filter(
-                            (a) =>
-                              a.accountName.toLowerCase().includes(toCoaSearch.toLowerCase()) ||
-                              a.accountCode.toLowerCase().includes(toCoaSearch.toLowerCase()),
-                          )
-                        : transactionalAccounts;
+                      // To CoA — use ALL accounts; BeneficiaryCoaId is the
+                      // customer's GL Account ID.
+                      const filteredToCoa = (() => {
+                        const base = qTo
+                          ? accounts.filter(a =>
+                              a.accountName.toLowerCase().includes(qTo) ||
+                              a.accountCode.toLowerCase().includes(qTo))
+                          : accounts;
+                        const sel = accounts.find(a => a.accountId === row.toCoaId);
+                        if (sel && !base.find(a => a.accountId === sel.accountId))
+                          return [sel, ...base];
+                        return base;
+                      })();
 
-                      const filteredCC = ccSearch
-                        ? costCenters.filter(
-                            (c) =>
-                              c.costCenterName.toLowerCase().includes(ccSearch.toLowerCase()) ||
-                              c.costCenterCode.toLowerCase().includes(ccSearch.toLowerCase()),
-                          )
-                        : costCenters;
+                      const filteredCC = (() => {
+                        const base = qCC
+                          ? costCenters.filter(c =>
+                              c.costCenterName.toLowerCase().includes(qCC) ||
+                              c.costCenterCode.toLowerCase().includes(qCC))
+                          : costCenters;
+                        const sel = costCenters.find(c => c.costCenterId === row.costCenterId);
+                        if (sel && !base.find(c => c.costCenterId === sel.costCenterId))
+                          return [sel, ...base];
+                        return base;
+                      })();
 
                       return (
                         <TableRow key={row._key} className={row._autoFilled ? "bg-indigo-50/40" : ""}>
