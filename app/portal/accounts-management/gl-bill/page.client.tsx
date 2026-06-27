@@ -1226,18 +1226,22 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                   <Select
                     value={masterForm.jobId ? String(masterForm.jobId) : ""}
                     onValueChange={(v) => {
-                      const jobId = Number(v);
-                      const job = jobs.find((j) => j.jobId === jobId);
+                      const sel = v ? jobs.find((j) => j.jobId === Number(v)) : null;
                       setMasterForm((p) => ({
                         ...p,
-                        jobId,
-                        exchangeRate: job?.jobInvoiceExchRate ?? p.exchangeRate,
+                        jobId: sel?.jobId ?? null,
+                        exchangeRate: sel?.jobInvoiceExchRate ?? p.exchangeRate,
+                        payToPartyId: sel?.terminalPartyId ?? sel?.principalId ?? sel?.consigneePartyId ?? p.payToPartyId,
                       }));
-                      if (jobId) autoFillFromJob(jobId);
+                      if (sel?.jobId) autoFillFromJob(sel.jobId);
                     }}
                   >
                     <SelectTrigger className='h-9 text-sm'>
-                      <SelectValue placeholder='Select Job...' />
+                      <SelectValue>
+                        {masterForm.jobId
+                          ? (jobs.find((j) => j.jobId === masterForm.jobId)?.jobNumber ?? `Job #${masterForm.jobId}`)
+                          : "Select Job..."}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent className='max-h-[260px]'>
                       <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
@@ -1272,7 +1276,9 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                     onValueChange={(v) => setMasterForm((p) => ({ ...p, billType: Number(v) }))}
                   >
                     <SelectTrigger className='h-9 text-sm'>
-                      <SelectValue placeholder='Select type...' />
+                      <SelectValue>
+                        {billTypeOptions.find((o) => o.value === String(masterForm.billType))?.label ?? "Select type..."}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {billTypeOptions.length > 0 ? (
@@ -1298,7 +1304,11 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                     onValueChange={(v) => setMasterForm((p) => ({ ...p, payToPartyId: Number(v) }))}
                   >
                     <SelectTrigger className='h-9 text-sm'>
-                      <SelectValue placeholder='Select party...' />
+                      <SelectValue>
+                        {masterForm.payToPartyId
+                          ? (parties.find((p) => p.partyId === masterForm.payToPartyId)?.partyName ?? `Party #${masterForm.payToPartyId}`)
+                          : "Select party..."}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent className='max-h-[260px]'>
                       <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
@@ -1328,7 +1338,13 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                     onValueChange={(v) => setMasterForm((p) => ({ ...p, currencyId: Number(v) }))}
                   >
                     <SelectTrigger className='h-9 text-sm'>
-                      <SelectValue placeholder='Select currency...' />
+                      <SelectValue>
+                        {masterForm.currencyId
+                          ? (currencies.find((c) => c.currencyId === masterForm.currencyId)
+                              ? `${currencies.find((c) => c.currencyId === masterForm.currencyId)!.currencyCode} – ${currencies.find((c) => c.currencyId === masterForm.currencyId)!.currencyName}`
+                              : `Currency #${masterForm.currencyId}`)
+                          : "Select currency..."}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {currencies.map((c) => (
@@ -1361,7 +1377,9 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                     onValueChange={(v) => setMasterForm((p) => ({ ...p, billStatus: v }))}
                   >
                     <SelectTrigger className='h-9 text-sm'>
-                      <SelectValue placeholder='Select status...' />
+                      <SelectValue>
+                        {statusOptions.find((o) => o.value === masterForm.billStatus)?.label ?? masterForm.billStatus ?? "Select status..."}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {statusOptions.length > 0 ? (
@@ -1378,53 +1396,6 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                       )}
                     </SelectContent>
                   </Select>
-                </div>
-
-                {/* Due Days */}
-                <div>
-                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Due Days</Label>
-                  <Input
-                    type='number'
-                    min='0'
-                    value={masterForm.dueDays}
-                    onChange={(e) => setMasterForm((p) => ({ ...p, dueDays: parseInt(e.target.value) || 0 }))}
-                    className='h-9 text-sm'
-                  />
-                </div>
-
-                {/* Partial Payment */}
-                <div>
-                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Partial Payment</Label>
-                  <Input
-                    type='number'
-                    min='0'
-                    step='0.01'
-                    value={masterForm.partialPayment}
-                    onChange={(e) => setMasterForm((p) => ({ ...p, partialPayment: parseFloat(e.target.value) || 0 }))}
-                    className='h-9 text-sm'
-                  />
-                </div>
-
-                {/* Vendor Invoice Date */}
-                <div>
-                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Vendor Invoice Date</Label>
-                  <Input
-                    type='date'
-                    value={masterForm.vendorInvoiceDate}
-                    onChange={(e) => setMasterForm((p) => ({ ...p, vendorInvoiceDate: e.target.value }))}
-                    className='h-9 text-sm'
-                  />
-                </div>
-
-                {/* Vendor Invoice Number */}
-                <div>
-                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Vendor Invoice No.</Label>
-                  <Input
-                    value={masterForm.vendorInvoiceNumber}
-                    onChange={(e) => setMasterForm((p) => ({ ...p, vendorInvoiceNumber: e.target.value }))}
-                    placeholder='Enter vendor invoice number...'
-                    className='h-9 text-sm'
-                  />
                 </div>
 
                 {/* Description */}
@@ -1489,14 +1460,10 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                       <TableHead className='min-w-[160px]'>Charge *</TableHead>
                       <TableHead className='min-w-[90px]'>Cost</TableHead>
                       <TableHead className='min-w-[60px]'>Qty</TableHead>
-                      <TableHead className='min-w-[90px]'>Amount</TableHead>
-                      <TableHead className='min-w-[80px]'>Tax</TableHead>
-                      <TableHead className='min-w-[80px]'>Discount</TableHead>
-                      <TableHead className='min-w-[90px]'>Net Amount</TableHead>
+                      <TableHead className='min-w-[90px] text-right'>Net Amount</TableHead>
                       <TableHead className='min-w-[160px]'>Billing Party *</TableHead>
                       <TableHead className='min-w-[160px]'>GL Account *</TableHead>
                       <TableHead className='min-w-[140px]'>Cost Center</TableHead>
-                      <TableHead className='min-w-[80px]'>Exch Rate</TableHead>
                       <TableHead className='w-8'></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1578,7 +1545,11 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                               onValueChange={(v) => updateRow(row._key, { chargesId: Number(v) })}
                             >
                               <SelectTrigger className='h-7 text-xs'>
-                                <SelectValue placeholder='Charge...' />
+                                <SelectValue>
+                                  {row.chargesId
+                                    ? (charges.find((c) => c.chargesMasterId === row.chargesId)?.chargesName ?? `#${row.chargesId}`)
+                                    : "Charge..."}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectContent className='max-h-[260px]'>
                                 <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
@@ -1625,35 +1596,6 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                             />
                           </TableCell>
 
-                          {/* Amount (computed) */}
-                          <TableCell className='text-xs text-right font-mono text-gray-700'>
-                            {fmt(row.amount)}
-                          </TableCell>
-
-                          {/* Tax */}
-                          <TableCell>
-                            <Input
-                              type='number'
-                              min='0'
-                              step='0.01'
-                              value={row.tax}
-                              onChange={(e) => updateRow(row._key, { tax: parseFloat(e.target.value) || 0 })}
-                              className='h-7 text-xs w-20'
-                            />
-                          </TableCell>
-
-                          {/* Discount */}
-                          <TableCell>
-                            <Input
-                              type='number'
-                              min='0'
-                              step='0.01'
-                              value={row.discount}
-                              onChange={(e) => updateRow(row._key, { discount: parseFloat(e.target.value) || 0 })}
-                              className='h-7 text-xs w-20'
-                            />
-                          </TableCell>
-
                           {/* Net Amount (computed) */}
                           <TableCell className='text-xs text-right font-mono font-semibold text-indigo-700'>
                             {fmt(row.netAmount)}
@@ -1666,7 +1608,11 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                               onValueChange={(v) => updateRow(row._key, { fromCoaId: Number(v) })}
                             >
                               <SelectTrigger className='h-7 text-xs'>
-                                <SelectValue placeholder='Billing Party...' />
+                                <SelectValue>
+                                  {row.fromCoaId
+                                    ? (parties.find((p) => p.partyId === row.fromCoaId)?.partyName ?? `#${row.fromCoaId}`)
+                                    : "Billing Party..."}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectContent className='max-h-[260px]'>
                                 <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
@@ -1690,14 +1636,18 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                             </Select>
                           </TableCell>
 
-                          {/* To CoA */}
+                          {/* To CoA — GL Account */}
                           <TableCell>
                             <Select
                               value={row.toCoaId ? String(row.toCoaId) : ""}
                               onValueChange={(v) => updateRow(row._key, { toCoaId: Number(v) })}
                             >
                               <SelectTrigger className='h-7 text-xs'>
-                                <SelectValue placeholder='To CoA...' />
+                                <SelectValue>
+                                  {row.toCoaId
+                                    ? (accounts.find((a) => a.accountId === row.toCoaId)?.accountName ?? `#${row.toCoaId}`)
+                                    : "GL Account..."}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectContent className='max-h-[260px]'>
                                 <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
@@ -1728,7 +1678,11 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                               onValueChange={(v) => updateRow(row._key, { costCenterId: v === "none" ? null : Number(v) })}
                             >
                               <SelectTrigger className='h-7 text-xs'>
-                                <SelectValue placeholder='Optional...' />
+                                <SelectValue>
+                                  {row.costCenterId
+                                    ? (costCenters.find((c) => c.costCenterId === row.costCenterId)?.costCenterName ?? `#${row.costCenterId}`)
+                                    : "None"}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectContent className='max-h-[260px]'>
                                 <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
@@ -1753,20 +1707,6 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                             </Select>
                           </TableCell>
 
-                          {/* Exchange Rate */}
-                          <TableCell>
-                            <Input
-                              type='number'
-                              min='0'
-                              step='0.0001'
-                              value={row.exchangeRate}
-                              onChange={(e) =>
-                                updateRow(row._key, { exchangeRate: parseFloat(e.target.value) || 1 })
-                              }
-                              className='h-7 text-xs w-20'
-                            />
-                          </TableCell>
-
                           {/* Remove */}
                           <TableCell>
                             <Button
@@ -1784,7 +1724,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
 
                     {detailRows.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={13} className='text-center py-8 text-gray-400 text-sm'>
+                        <TableCell colSpan={9} className='text-center py-8 text-gray-400 text-sm'>
                           No charge lines. Select a Job Order to auto-fill, or click "Add Row".
                         </TableCell>
                       </TableRow>
