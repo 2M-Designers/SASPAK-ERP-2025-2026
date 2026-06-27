@@ -1277,7 +1277,9 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                   >
                     <SelectTrigger className='h-9 text-sm'>
                       <SelectValue>
-                        {billTypeOptions.find((o) => o.value === String(masterForm.billType))?.label ?? "Select type..."}
+                        {billTypeOptions.find((o) => o.value === String(masterForm.billType))?.label
+                          ?? ({ 1: "Standard", 2: "Credit", 3: "Debit" } as Record<number, string>)[masterForm.billType]
+                          ?? "Select type..."}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
