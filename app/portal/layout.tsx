@@ -350,7 +350,7 @@ export default function RootLayout({
                         </div>
                       </div>
                       <p className='text-[10px] text-gray-500 flex items-center gap-1'>
-                        <div className='w-1.5 h-1.5 rounded-full bg-green-500'></div>
+                        <span className='w-1.5 h-1.5 rounded-full bg-green-500 inline-block'></span>
                         Active
                       </p>
                     </DropdownMenuLabel>
