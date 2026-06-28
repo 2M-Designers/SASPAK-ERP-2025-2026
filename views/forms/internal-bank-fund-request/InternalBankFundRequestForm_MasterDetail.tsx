@@ -2022,7 +2022,7 @@ export default function InternalBankFundRequestForm({
               type === "edit"
                 ? (defaultState?.createdBy ?? defaultState?.CreatedBy ?? userId)
                 : userId;
-            return raw != null ? String(raw) : null;
+            return raw != null ? Number(raw) : 0;
           })(),
           Version:
             type === "edit"
