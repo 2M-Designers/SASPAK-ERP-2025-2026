@@ -1189,6 +1189,77 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   const updateRow = (key: string, patch: Partial<DetailRow>) =>
     setDetailRows((p) => p.map((r) => (r._key === key ? { ...r, ...patch } : r)));
 
+  // ── Fill detail rows from a selected GL Invoice (Receipt) ─────────────────
+  const fillFromGlInvoice = useCallback(async (invoiceId: number) => {
+    try {
+      const res = await fetch(`${getBaseUrl()}GLInvoice/${invoiceId}`, { headers: getAuthHeaders() });
+      if (!res.ok) return;
+      const raw = await res.json();
+      const details: any[] = raw.glInvoiceDetails ?? raw.GlInvoiceDetails ?? [];
+      const exRate = masterForm.exchangeRate;
+      const cid = masterForm.currencyId ?? 0;
+      if (details.length > 0) {
+        setDetailRows(
+          details.map((d: any) => ({
+            ...blankRow(exRate, cid),
+            chargesId:    d.chargesId    ?? d.ChargesId    ?? 0,
+            cost:         d.cost         ?? d.Cost         ?? 0,
+            qty:          d.qty          ?? d.Qty          ?? 1,
+            tax:          d.tax          ?? d.Tax          ?? 0,
+            discount:     d.discount     ?? d.Discount     ?? 0,
+            fromCoaId:    d.fromCoaId    ?? d.FromCoaId    ?? d.FromCoAId ?? 0,
+            toCoaId:      d.toCoaId      ?? d.ToCoaId      ?? d.ToCoAId   ?? 0,
+            costCenterId: d.costCenterId ?? d.CostCenterId ?? null,
+            exchangeRate: d.exchangeRate ?? d.ExchangeRate ?? exRate,
+            currencyId:   d.currencyId   ?? d.CurrencyId   ?? cid,
+            glInvoiceId:  invoiceId,
+          })),
+        );
+      } else {
+        // Invoice has no detail lines — at least set the cost from totalAmount
+        const total = raw.totalAmount ?? raw.TotalAmount ?? 0;
+        setDetailRows([{ ...blankRow(exRate, cid), cost: total, glInvoiceId: invoiceId }]);
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Failed to load invoice details." });
+    }
+  }, [masterForm.exchangeRate, masterForm.currencyId, toast]); // eslint-disable-line
+
+  // ── Fill detail rows from a selected GL Bill (Payment) ────────────────────
+  const fillFromGlBill = useCallback(async (billId: number) => {
+    try {
+      const res = await fetch(`${getBaseUrl()}GLBill/${billId}`, { headers: getAuthHeaders() });
+      if (!res.ok) return;
+      const raw = await res.json();
+      const details: any[] = raw.glbillDetails ?? raw.GlbillDetails ?? raw.glBillDetails ?? raw.GlBillDetails ?? [];
+      const exRate = masterForm.exchangeRate;
+      const cid = masterForm.currencyId ?? 0;
+      if (details.length > 0) {
+        setDetailRows(
+          details.map((d: any) => ({
+            ...blankRow(exRate, cid),
+            chargesId:    d.chargesId    ?? d.ChargesId    ?? 0,
+            cost:         d.cost         ?? d.Cost         ?? 0,
+            qty:          d.qty          ?? d.Qty          ?? 1,
+            tax:          d.tax          ?? d.Tax          ?? 0,
+            discount:     d.discount     ?? d.Discount     ?? 0,
+            fromCoaId:    d.fromCoaId    ?? d.FromCoaId    ?? d.FromCoAId ?? 0,
+            toCoaId:      d.toCoaId      ?? d.ToCoaId      ?? d.ToCoAId   ?? 0,
+            costCenterId: d.costCenterId ?? d.CostCenterId ?? null,
+            exchangeRate: d.exchangeRate ?? d.ExchangeRate ?? exRate,
+            currencyId:   d.currencyId   ?? d.CurrencyId   ?? cid,
+            glbillId:     billId,
+          })),
+        );
+      } else {
+        const total = raw.totalAmount ?? raw.TotalAmount ?? 0;
+        setDetailRows([{ ...blankRow(exRate, cid), cost: total, glbillId: billId }]);
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Failed to load bill details." });
+    }
+  }, [masterForm.exchangeRate, masterForm.currencyId, toast]); // eslint-disable-line
+
   // ─── FORM VIEW ─────────────────────────────────────────────────────────────
   if (showForm) {
     return (
@@ -1589,7 +1660,11 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                               {masterForm.receiptPaymentType === 1 ? (
                                 <Select
                                   value={row.glInvoiceId?.toString() ?? ""}
-                                  onValueChange={(v) => updateRow(row._key, { glInvoiceId: v ? parseInt(v, 10) : null })}
+                                  onValueChange={(v) => {
+                                    const id = v ? parseInt(v, 10) : null;
+                                    if (id) fillFromGlInvoice(id);
+                                    else updateRow(row._key, { glInvoiceId: null });
+                                  }}
                                 >
                                   <SelectTrigger className='h-7 text-xs bg-white'>
                                     <SelectValue>
@@ -1615,7 +1690,11 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                               ) : (
                                 <Select
                                   value={row.glbillId?.toString() ?? ""}
-                                  onValueChange={(v) => updateRow(row._key, { glbillId: v ? parseInt(v, 10) : null })}
+                                  onValueChange={(v) => {
+                                    const id = v ? parseInt(v, 10) : null;
+                                    if (id) fillFromGlBill(id);
+                                    else updateRow(row._key, { glbillId: null });
+                                  }}
                                 >
                                   <SelectTrigger className='h-7 text-xs bg-white'>
                                     <SelectValue>
