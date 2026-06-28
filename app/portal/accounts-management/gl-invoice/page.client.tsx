@@ -550,7 +550,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
 
   // ── Auto-fill from Job Order ───────────────────────────────────────────────
   const autoFillFromJob = useCallback(
-    async (jobId: number) => {
+    async (jobId: number, defaultFromCoaId = 0) => {
       if (!jobId) return;
       setIsAutoFilling(true);
       try {
@@ -585,7 +585,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
           taxPct: 0,
           tax: 0,
           discount: 0,
-          fromCoaId: 0,
+          fromCoaId: defaultFromCoaId,
           toCoaId: item.headCoaId ?? item.HeadCoaId ?? 0,
           costCenterId: item.costCenterId ?? item.CostCenterId ?? null,
           version: 1,
@@ -1352,7 +1352,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                       if (glId) {
                         setDetailRows((prev) => prev.map((r) => ({ ...r, fromCoaId: glId })));
                       }
-                      if (sel?.jobId) autoFillFromJob(sel.jobId);
+                      if (sel?.jobId) autoFillFromJob(sel.jobId, glId);
                     }}
                   >
                     <SelectTrigger className='h-9 text-sm'>
