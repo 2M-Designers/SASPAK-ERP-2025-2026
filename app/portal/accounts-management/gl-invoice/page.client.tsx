@@ -1202,11 +1202,12 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
   // ── Row mutation helpers ───────────────────────────────────────────────────
   const addRow = () => {
     const cid = masterForm.currencyId ?? currencies.find((c) => c.isDefault)?.currencyId ?? 0;
-    const billingGlId = masterForm.billingPartyId
-      ? (parties.find((p) => p.partyId === masterForm.billingPartyId)?.glAccountId ?? 0)
-      : 0;
+    const billingParty = masterForm.billingPartyId
+      ? parties.find((p) => p.partyId === masterForm.billingPartyId)
+      : null;
+    const fromGlId = billingParty?.glAccountId ?? accounts[0]?.accountId ?? 0;
     const newRow = blankRow(masterForm.exchangeRate, cid);
-    if (billingGlId) newRow.fromCoaId = billingGlId;
+    if (fromGlId) newRow.fromCoaId = fromGlId;
     setDetailRows((p) => [...p, newRow]);
   };
 
@@ -1310,90 +1311,46 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                   />
                 </div>
 
-                {/* Invoice Type */}
+                {/* Invoice Type — frozen to Sales Invoice */}
                 <div>
                   <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Invoice Type *</Label>
                   <Select
                     value={masterForm.invoiceType}
                     onValueChange={(v) => setMasterForm((p) => ({ ...p, invoiceType: v }))}
+                    disabled
                   >
-                    <SelectTrigger className='h-9 text-sm'>
+                    <SelectTrigger className='h-9 text-sm opacity-70 cursor-not-allowed bg-gray-50'>
                       <SelectValue>
-                        {invoiceTypeOptions.find((o) => o.value === masterForm.invoiceType)?.label
-                          ?? (masterForm.invoiceType ? `Type #${masterForm.invoiceType}` : "Select type...")}
+                        {invoiceTypeOptions.find((o) => o.value === masterForm.invoiceType)?.label ?? "Sales Invoice"}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      {invoiceTypeOptions.length > 0 ? (
-                        invoiceTypeOptions.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                        ))
-                      ) : (
-                        <>
-                          <SelectItem value='1'>Sales Invoice</SelectItem>
-                          <SelectItem value='2'>Credit Note</SelectItem>
-                          <SelectItem value='3'>Debit Note</SelectItem>
-                        </>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Billing Party */}
-                <div>
-                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Billing Party *</Label>
-                  <Select
-                    value={masterForm.billingPartyId ? String(masterForm.billingPartyId) : ""}
-                    onValueChange={(v) => {
-                      const partyId = Number(v);
-                      const party = parties.find((p) => p.partyId === partyId);
-                      setMasterForm((p) => ({ ...p, billingPartyId: partyId }));
-                      if (party?.glAccountId) {
-                        setDetailRows((prev) =>
-                          prev.map((r) => ({ ...r, fromCoaId: party.glAccountId! })),
-                        );
-                      }
-                    }}
-                  >
-                    <SelectTrigger className='h-9 text-sm'>
-                      <SelectValue>
-                        {masterForm.billingPartyId
-                          ? (parties.find((p) => p.partyId === masterForm.billingPartyId)?.partyName ?? `Party #${masterForm.billingPartyId}`)
-                          : "Select billing party..."}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className='max-h-[260px]'>
-                      <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
-                        <Input
-                          placeholder='Search party...'
-                          value={partySearch}
-                          onChange={(e) => setPartySearch(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          className='h-6 text-xs'
-                        />
-                      </div>
-                      {filteredParties.map((p) => (
-                        <SelectItem key={p.partyId} value={String(p.partyId)}>
-                          {p.partyName}
-                        </SelectItem>
+                      {invoiceTypeOptions.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
 
-                {/* Job Order */}
+                {/* Job Order — first, auto-fills Billing Party from consignee */}
                 <div>
                   <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Job Order</Label>
                   <Select
                     value={masterForm.jobId ? String(masterForm.jobId) : ""}
                     onValueChange={(v) => {
                       const sel = v ? jobs.find((j) => j.jobId === Number(v)) : null;
+                      const billingId = sel?.consigneePartyId ?? sel?.principalId ?? null;
+                      const billingParty = billingId ? parties.find((p) => p.partyId === billingId) : null;
+                      const glId = billingParty?.glAccountId ?? accounts[0]?.accountId ?? 0;
                       setMasterForm((p) => ({
                         ...p,
                         jobId: sel?.jobId ?? null,
                         exchangeRate: sel?.jobInvoiceExchRate || p.exchangeRate || 1,
+                        ...(billingId ? { billingPartyId: billingId } : {}),
                       }));
+                      if (glId) {
+                        setDetailRows((prev) => prev.map((r) => ({ ...r, fromCoaId: glId })));
+                      }
                       if (sel?.jobId) autoFillFromJob(sel.jobId);
                     }}
                   >
@@ -1427,6 +1384,50 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                       <FiLoader className='animate-spin h-3 w-3' /> Loading fund request charges...
                     </p>
                   )}
+                </div>
+
+                {/* Billing Party — auto-filled from job consignee, still editable */}
+                <div>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Billing Party *</Label>
+                  <Select
+                    value={masterForm.billingPartyId ? String(masterForm.billingPartyId) : ""}
+                    onValueChange={(v) => {
+                      const partyId = Number(v);
+                      const party = parties.find((p) => p.partyId === partyId);
+                      const glId = party?.glAccountId ?? accounts[0]?.accountId ?? 0;
+                      setMasterForm((p) => ({ ...p, billingPartyId: partyId }));
+                      if (glId) {
+                        setDetailRows((prev) =>
+                          prev.map((r) => ({ ...r, fromCoaId: glId })),
+                        );
+                      }
+                    }}
+                  >
+                    <SelectTrigger className='h-9 text-sm'>
+                      <SelectValue>
+                        {masterForm.billingPartyId
+                          ? (parties.find((p) => p.partyId === masterForm.billingPartyId)?.partyName ?? `Party #${masterForm.billingPartyId}`)
+                          : "Select billing party..."}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className='max-h-[260px]'>
+                      <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
+                        <Input
+                          placeholder='Search party...'
+                          value={partySearch}
+                          onChange={(e) => setPartySearch(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          className='h-6 text-xs'
+                        />
+                      </div>
+                      {filteredParties.map((p) => (
+                        <SelectItem key={p.partyId} value={String(p.partyId)}>
+                          {p.partyName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Currency */}
