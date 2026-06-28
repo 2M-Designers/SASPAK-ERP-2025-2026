@@ -556,7 +556,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
     partyId: number | null,
   ) => {
     if (type === 1) {
-      const parts = ["InvoiceStatus == 'Processed'"];
+      const parts = [`InvoiceStatus == "Processed"`];
       if (jobId) parts.push(`JobId == ${jobId}`);
       else if (partyId) parts.push(`BillingPartyId == ${partyId}`);
       const raw = await postList(
@@ -576,7 +576,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
         })),
       );
     } else {
-      const parts = ["BillStatus == 'Processed'"];
+      const parts = [`BillStatus == "Processed"`];
       if (jobId) parts.push(`JobId == ${jobId}`);
       else if (partyId) parts.push(`PayToPartyId == ${partyId}`);
       const raw = await postList(
