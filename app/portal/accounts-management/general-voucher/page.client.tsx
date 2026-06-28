@@ -1090,7 +1090,7 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
 
   // Systematic vouchers (auto-created from Receipt/Payment) must not be edited directly
   const isSystematicVoucher = (v: Voucher) =>
-    /^(PY|RC)-/i.test(v.voucherNumber || "") &&
+    /^(PY|RC)-/i.test(v.referenceNumber || "") &&
     (v.status || "").toLowerCase() === "draft";
 
   // ── Status styling ────────────────────────────────────────────────────────
