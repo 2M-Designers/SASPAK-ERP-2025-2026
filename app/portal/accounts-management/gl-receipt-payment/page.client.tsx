@@ -246,7 +246,7 @@ const mapRecord = (it: any): ReceiptPayment => ({
   totalAmountFc: it.totalAmountFc ?? it.TotalAmountFc ?? 0,
   payToPartyId: it.payToPartyId ?? it.PayToPartyId ?? 0,
   receiptPaymentStatus: it.receiptPaymentStatus ?? it.ReceiptPaymentStatus ?? "",
-  receiptPaymentDescription: it.receiptPaymentDescription ?? it.ReceiptPaymentDescription ?? "",
+  receiptPaymentDescription: String(it.receiptPaymentDescription ?? it.ReceiptPaymentDescription ?? ""),
   glVoucherId: it.glVoucherId ?? it.GlVoucherId ?? null,
   version: it.version ?? it.Version ?? 1,
   glreceiptPaymentDetails: [],
@@ -807,7 +807,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
       TotalAmountFc: totalAmount * exRate,
       PayToPartyId: masterForm.payToPartyId ?? 0,
       ReceiptPaymentStatus: masterForm.receiptPaymentStatus,
-      ReceiptPaymentDescription: masterForm.receiptPaymentDescription ?? "",
+      ReceiptPaymentDescription: String(masterForm.receiptPaymentDescription ?? ""),
       GlVoucherId: editingRecord?.glVoucherId || null,
       Version: editingRecord?.version ?? 1,
       GlreceiptPaymentDetails: computedRows.map((r) => ({
