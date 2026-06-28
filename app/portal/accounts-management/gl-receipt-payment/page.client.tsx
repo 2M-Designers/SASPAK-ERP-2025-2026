@@ -510,7 +510,15 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
 
       if (statusRaw.length) setStatusOptions(statusRaw);
       if (typeRaw.length) setTypeOptions(typeRaw);
-      if (modeRaw.length) setModeOptions(modeRaw);
+      if (modeRaw.length) {
+        // Normalize: API may return {"Cash":1,...} → swap so value is numeric string, label is text
+        const normalized = modeRaw.map((o: TypeOption) =>
+          !isNaN(Number(o.label)) && isNaN(Number(o.value))
+            ? { value: o.label, label: o.value }
+            : o,
+        );
+        setModeOptions(normalized);
+      }
       setGlVouchers(
         voucherRaw.map((v: any) => ({
           voucherId: v.voucherId ?? v.VoucherId ?? 0,
@@ -1407,22 +1415,24 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                   >
                     <SelectTrigger className='h-9 text-sm bg-white'>
                       <SelectValue>
-                        {masterForm.receiptPaymentDescription
-                          ? (modeOptions.find((o) => o.value === masterForm.receiptPaymentDescription)?.label ??
-                             modeOptions.find((o) => o.label === masterForm.receiptPaymentDescription)?.value ??
-                             masterForm.receiptPaymentDescription)
-                          : "Select mode..."}
+                        {(() => {
+                          const v = masterForm.receiptPaymentDescription;
+                          if (!v) return "Select mode...";
+                          const FALLBACK: Record<string, string> = { "1": "Cash", "2": "Cheque", "3": "Bank Transfer", "4": "Pay Order", "5": "Adjustment" };
+                          const opts = modeOptions.length ? modeOptions : Object.entries(FALLBACK).map(([val, lbl]) => ({ value: val, label: lbl }));
+                          return opts.find((o) => o.value === v)?.label ?? opts.find((o) => o.label === v)?.label ?? FALLBACK[v] ?? v;
+                        })()}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {(modeOptions.length
                         ? modeOptions
                         : [
-                            { value: "Cash", label: "Cash" },
-                            { value: "Cheque", label: "Cheque" },
-                            { value: "BankTransfer", label: "Bank Transfer" },
-                            { value: "Payorder", label: "Pay Order" },
-                            { value: "Adjustment", label: "Adjustment" },
+                            { value: "1", label: "Cash" },
+                            { value: "2", label: "Cheque" },
+                            { value: "3", label: "Bank Transfer" },
+                            { value: "4", label: "Pay Order" },
+                            { value: "5", label: "Adjustment" },
                           ]
                       ).map((o) => (
                         <SelectItem key={o.value} value={o.value}>
@@ -2274,9 +2284,12 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                       <div className='flex justify-between border-b border-gray-50 pb-1'>
                         <span className='text-gray-500 text-xs'>Description / Mode:</span>
                         <span className='font-medium text-gray-800 text-xs'>
-                          {modeOptions.find((o) => o.value === viewRecord.receiptPaymentDescription)?.label ??
-                           modeOptions.find((o) => o.label === viewRecord.receiptPaymentDescription)?.value ??
-                           viewRecord.receiptPaymentDescription}
+                          {(() => {
+                            const v = viewRecord.receiptPaymentDescription;
+                            const FALLBACK: Record<string, string> = { "1": "Cash", "2": "Cheque", "3": "Bank Transfer", "4": "Pay Order", "5": "Adjustment" };
+                            const opts = modeOptions.length ? modeOptions : Object.entries(FALLBACK).map(([val, lbl]) => ({ value: val, label: lbl }));
+                            return opts.find((o) => o.value === v)?.label ?? opts.find((o) => o.label === v)?.label ?? FALLBACK[v] ?? v;
+                          })()}
                         </span>
                       </div>
                     )}
