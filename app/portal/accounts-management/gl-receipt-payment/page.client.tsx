@@ -181,6 +181,8 @@ type MasterForm = {
 
 type TypeOption = { value: string; label: string };
 type GlVoucherLookup = { voucherId: number; voucherNumber: string };
+type GlInvoiceLookup = { glinvoiceId: number; invoiceNumber: string; jobId: number | null; totalAmount: number };
+type GlBillLookup   = { glbillId: number; billNumber: string; jobId: number | null; totalAmount: number };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -339,6 +341,8 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   const [accounts, setAccounts] = useState<GlAccount[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [glVouchers, setGlVouchers] = useState<GlVoucherLookup[]>([]);
+  const [glInvoices, setGlInvoices] = useState<GlInvoiceLookup[]>([]);
+  const [glBills, setGlBills] = useState<GlBillLookup[]>([]);
   const [lookupReady, setLookupReady] = useState(false);
 
   // ── Dynamic type-value options (from General/GetTypeValues) ────────────────
@@ -446,7 +450,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   // ── Fetch all lookups ──────────────────────────────────────────────────────
   const fetchLookups = useCallback(async () => {
     try {
-      const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw, statusRaw, typeRaw, voucherRaw, modeRaw] =
+      const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw, statusRaw, typeRaw, voucherRaw, modeRaw, invoiceRaw, billRaw] =
         await Promise.all([
           postList("SetupCurrency/GetList", "CurrencyId, CurrencyCode, CurrencyName, Symbol, IsDefault", "", "CurrencyCode ASC"),
           postList("Party/GetList", "PartyId, PartyCode, PartyName", "", "PartyName ASC"),
@@ -458,6 +462,8 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           getTypeValues("ReceiptPayment_Type_Ids"),
           postList("GLVoucher/GetList", "VoucherId, VoucherNumber", "", "VoucherId DESC"),
           getTypeValues("ReceiptPayment_Mode_Description"),
+          postList("GLInvoice/GetList", "GlinvoiceId, InvoiceNumber, JobId, TotalAmount", "InvoiceStatus == 'Processed'", "GlinvoiceId DESC", "5000"),
+          postList("GLBill/GetList", "GlbillId, BillNumber, JobId, TotalAmount", "BillStatus == 'Processed'", "GlbillId DESC", "5000"),
         ]);
 
       const curr: Currency[] = currRaw.map((c: any) => ({
@@ -523,6 +529,22 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
         voucherRaw.map((v: any) => ({
           voucherId: v.voucherId ?? v.VoucherId ?? 0,
           voucherNumber: v.voucherNumber ?? v.VoucherNumber ?? "",
+        })),
+      );
+      setGlInvoices(
+        invoiceRaw.map((i: any) => ({
+          glinvoiceId: i.glinvoiceId ?? i.GlinvoiceId ?? i.glInvoiceId ?? i.GlInvoiceId ?? 0,
+          invoiceNumber: i.invoiceNumber ?? i.InvoiceNumber ?? "",
+          jobId: i.jobId ?? i.JobId ?? null,
+          totalAmount: i.totalAmount ?? i.TotalAmount ?? 0,
+        })),
+      );
+      setGlBills(
+        billRaw.map((b: any) => ({
+          glbillId: b.glbillId ?? b.GlbillId ?? 0,
+          billNumber: b.billNumber ?? b.BillNumber ?? "",
+          jobId: b.jobId ?? b.JobId ?? null,
+          totalAmount: b.totalAmount ?? b.TotalAmount ?? 0,
         })),
       );
 
@@ -1312,13 +1334,34 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                     value={masterForm.jobId?.toString() ?? ""}
                     onValueChange={(v) => {
                       const sel = v ? jobs.find((j) => j.jobId === parseInt(v, 10)) : null;
+                      const exRate = sel?.jobInvoiceExchRate ?? masterForm.exchangeRate ?? 1;
+                      const cid = masterForm.currencyId ?? currencies.find((c) => c.isDefault)?.currencyId ?? 0;
                       setMasterForm((p) => ({
                         ...p,
                         jobId: sel?.jobId ?? null,
                         payToPartyId:
                           sel?.terminalPartyId ?? sel?.principalId ?? sel?.consigneePartyId ?? p.payToPartyId,
-                        exchangeRate: sel?.jobInvoiceExchRate ? sel.jobInvoiceExchRate : p.exchangeRate,
+                        exchangeRate: exRate,
                       }));
+                      if (sel?.jobId) {
+                        if (masterForm.receiptPaymentType === 1) {
+                          const rows = glInvoices.filter((i) => i.jobId === sel.jobId);
+                          if (rows.length > 0)
+                            setDetailRows(rows.map((inv) => ({
+                              ...blankRow(exRate, cid),
+                              cost: inv.totalAmount,
+                              glInvoiceId: inv.glinvoiceId,
+                            })));
+                        } else if (masterForm.receiptPaymentType === 2) {
+                          const rows = glBills.filter((b) => b.jobId === sel.jobId);
+                          if (rows.length > 0)
+                            setDetailRows(rows.map((bill) => ({
+                              ...blankRow(exRate, cid),
+                              cost: bill.totalAmount,
+                              glbillId: bill.glbillId,
+                            })));
+                        }
+                      }
                     }}
                   >
                     <SelectTrigger className='h-9 text-sm bg-white'>
@@ -1471,6 +1514,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                     <tr className='bg-gray-100 border-b border-gray-200'>
                       {[
                         ["#", "w-8 text-center"],
+                        [masterForm.receiptPaymentType === 1 ? "GL Invoice No." : "GL Bill No.", "min-w-[160px]"],
                         ["Charge *", "min-w-[180px]"],
                         ["Cost *", "min-w-[100px] text-right"],
                         ["Qty *", "w-16 text-right"],
@@ -1494,7 +1538,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                   <tbody>
                     {detailRows.length === 0 ? (
                       <tr>
-                        <td colSpan={14} className='px-4 py-10 text-center text-gray-400 italic text-sm'>
+                        <td colSpan={15} className='px-4 py-10 text-center text-gray-400 italic text-sm'>
                           No lines added. Click "Add Line" to start.
                         </td>
                       </tr>
@@ -1504,6 +1548,59 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                         return (
                           <tr key={row._key} className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
                             <td className='px-3 py-1.5 text-center text-gray-400'>{idx + 1}</td>
+
+                            {/* GL Invoice / GL Bill No. */}
+                            <td className='px-1.5 py-1'>
+                              {masterForm.receiptPaymentType === 1 ? (
+                                <Select
+                                  value={row.glInvoiceId?.toString() ?? ""}
+                                  onValueChange={(v) => updateRow(row._key, { glInvoiceId: v ? parseInt(v, 10) : null })}
+                                >
+                                  <SelectTrigger className='h-7 text-xs bg-white'>
+                                    <SelectValue>
+                                      {row.glInvoiceId
+                                        ? (glInvoices.find((i) => i.glinvoiceId === row.glInvoiceId)?.invoiceNumber ?? `#${row.glInvoiceId}`)
+                                        : "Select invoice..."}
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent className='max-h-[260px] w-[200px]'>
+                                    <SelectItem value=''>— None —</SelectItem>
+                                    {(masterForm.jobId
+                                      ? glInvoices.filter((i) => i.jobId === masterForm.jobId)
+                                      : glInvoices
+                                    ).map((inv) => (
+                                      <SelectItem key={inv.glinvoiceId} value={inv.glinvoiceId.toString()}>
+                                        {inv.invoiceNumber}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Select
+                                  value={row.glbillId?.toString() ?? ""}
+                                  onValueChange={(v) => updateRow(row._key, { glbillId: v ? parseInt(v, 10) : null })}
+                                >
+                                  <SelectTrigger className='h-7 text-xs bg-white'>
+                                    <SelectValue>
+                                      {row.glbillId
+                                        ? (glBills.find((b) => b.glbillId === row.glbillId)?.billNumber ?? `#${row.glbillId}`)
+                                        : "Select bill..."}
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent className='max-h-[260px] w-[200px]'>
+                                    <SelectItem value=''>— None —</SelectItem>
+                                    {(masterForm.jobId
+                                      ? glBills.filter((b) => b.jobId === masterForm.jobId)
+                                      : glBills
+                                    ).map((bill) => (
+                                      <SelectItem key={bill.glbillId} value={bill.glbillId.toString()}>
+                                        {bill.billNumber}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            </td>
 
                             {/* Charge */}
                             <td className='px-1.5 py-1'>
@@ -1781,7 +1878,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                   {detailRows.length > 0 && (
                     <tfoot>
                       <tr className='bg-blue-50 border-t-2 border-blue-200'>
-                        <td colSpan={4} className='px-3 py-2 text-right text-xs font-bold text-gray-700 uppercase tracking-wide'>
+                        <td colSpan={5} className='px-3 py-2 text-right text-xs font-bold text-gray-700 uppercase tracking-wide'>
                           Totals
                         </td>
                         <td className='px-3 py-2 text-right text-sm font-bold text-gray-800'>
