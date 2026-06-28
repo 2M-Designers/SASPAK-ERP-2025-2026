@@ -1211,7 +1211,10 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
 
                 {/* Job Order */}
                 <div>
-                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Job Order</Label>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>
+                    Job Order
+                    <span className='ml-1.5 text-[10px] text-gray-400 font-normal'>(optional)</span>
+                  </Label>
                   <Select
                     value={masterForm.jobId ? String(masterForm.jobId) : ""}
                     onValueChange={(v) => {
@@ -1227,7 +1230,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                       <SelectValue>
                         {masterForm.jobId
                           ? (jobs.find((j) => j.jobId === masterForm.jobId)?.jobNumber ?? `Job #${masterForm.jobId}`)
-                          : "Select Job..."}
+                          : "— No Job —"}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent className='max-h-[260px]'>
@@ -1241,6 +1244,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                           className='h-6 text-xs'
                         />
                       </div>
+                      <SelectItem value=''>— No Job —</SelectItem>
                       {filteredJobs.map((j) => (
                         <SelectItem key={j.jobId} value={String(j.jobId)}>
                           {j.jobNumber}
