@@ -1287,46 +1287,6 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                   </Select>
                 </div>
 
-                {/* Pay To Party */}
-                <div>
-                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Pay To Party *</Label>
-                  <Select
-                    value={masterForm.payToPartyId?.toString() ?? ""}
-                    onValueChange={(v) => setMasterForm((p) => ({ ...p, payToPartyId: v ? parseInt(v, 10) : null }))}
-                  >
-                    <SelectTrigger className='h-9 text-sm bg-white'>
-                      <SelectValue>
-                        {masterForm.payToPartyId
-                          ? (parties.find((p) => p.partyId === masterForm.payToPartyId)?.partyName ?? `Party #${masterForm.payToPartyId}`)
-                          : "Select party..."}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className='max-h-[300px] w-[340px]'>
-                      <div className='sticky top-0 bg-white p-2 border-b z-50'>
-                        <div className='relative'>
-                          <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-3.5 w-3.5' />
-                          <Input
-                            placeholder='Search party...'
-                            value={partySearch}
-                            onChange={(e) => setPartySearch(e.target.value)}
-                            className='pl-7 h-7 text-sm'
-                            onClick={(e) => e.stopPropagation()}
-                            onKeyDown={(e) => e.stopPropagation()}
-                          />
-                        </div>
-                      </div>
-                      <div className='max-h-[240px] overflow-y-auto'>
-                        {filteredParties.map((p) => (
-                          <SelectItem key={p.partyId} value={p.partyId.toString()}>
-                            <span className='font-medium'>{p.partyName}</span>
-                            <span className='ml-1.5 text-xs text-gray-400'>{p.partyCode}</span>
-                          </SelectItem>
-                        ))}
-                      </div>
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 {/* Job */}
                 <div>
                   <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Job</Label>
@@ -1389,6 +1349,46 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                         <SelectItem value=''>— No Job —</SelectItem>
                         {filteredJobs.map((j) => (
                           <SelectItem key={j.jobId} value={j.jobId.toString()}>{j.jobNumber}</SelectItem>
+                        ))}
+                      </div>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Pay To Party */}
+                <div>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Pay To Party *</Label>
+                  <Select
+                    value={masterForm.payToPartyId?.toString() ?? ""}
+                    onValueChange={(v) => setMasterForm((p) => ({ ...p, payToPartyId: v ? parseInt(v, 10) : null }))}
+                  >
+                    <SelectTrigger className='h-9 text-sm bg-white'>
+                      <SelectValue>
+                        {masterForm.payToPartyId
+                          ? (parties.find((p) => p.partyId === masterForm.payToPartyId)?.partyName ?? `Party #${masterForm.payToPartyId}`)
+                          : "Select party..."}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className='max-h-[300px] w-[340px]'>
+                      <div className='sticky top-0 bg-white p-2 border-b z-50'>
+                        <div className='relative'>
+                          <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-3.5 w-3.5' />
+                          <Input
+                            placeholder='Search party...'
+                            value={partySearch}
+                            onChange={(e) => setPartySearch(e.target.value)}
+                            className='pl-7 h-7 text-sm'
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                      </div>
+                      <div className='max-h-[240px] overflow-y-auto'>
+                        {filteredParties.map((p) => (
+                          <SelectItem key={p.partyId} value={p.partyId.toString()}>
+                            <span className='font-medium'>{p.partyName}</span>
+                            <span className='ml-1.5 text-xs text-gray-400'>{p.partyCode}</span>
+                          </SelectItem>
                         ))}
                       </div>
                     </SelectContent>
