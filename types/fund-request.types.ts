@@ -15,7 +15,7 @@ export interface CashFundRequestDetailPayload {
   ChargesId: number;
   CustomerName: string;
   RequestedTo: number;
-  OnAccountOfId: number;
+  OnAccountOfId: number | null;
   SubRequestStatus: string;
   Remarks: string;
   CostCenterId: number | null;
