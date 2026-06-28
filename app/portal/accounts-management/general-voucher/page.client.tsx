@@ -1093,6 +1093,15 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
     /^(PY|RC)-/i.test(v.referenceNumber || "") &&
     (v.status || "").toLowerCase() === "draft";
 
+  const isEditFrozen = (v: Voucher) =>
+    isSystematicVoucher(v) || (v.status || "").toLowerCase() === "posted";
+
+  const editFreezeReason = (v: Voucher) => {
+    if ((v.status || "").toLowerCase() === "posted") return "Posted voucher cannot be edited";
+    if (isSystematicVoucher(v)) return "System-generated voucher — edit via GL Receipt/Payment";
+    return "Edit Voucher";
+  };
+
   // ── Status styling ────────────────────────────────────────────────────────
   const getStatusBadge = (status: string) => {
     const s = (status || "").toLowerCase();
@@ -1158,7 +1167,7 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
               <TooltipTrigger asChild>
                 <button
                   className='p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none'
-                  disabled={isSystematicVoucher(row.original)}
+                  disabled={isEditFrozen(row.original)}
                   onClick={async () => {
                     const full = await fetchVoucherById(row.original.voucherId);
                     if (full) {
@@ -1171,11 +1180,7 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className='text-xs'>
-                  {isSystematicVoucher(row.original)
-                    ? "System-generated voucher — edit via GL Receipt/Payment"
-                    : "Edit Voucher"}
-                </p>
+                <p className='text-xs'>{editFreezeReason(row.original)}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
