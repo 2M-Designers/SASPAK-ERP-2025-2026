@@ -514,11 +514,13 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
       if (invTypeRaw.length) {
         setInvoiceTypeOptions(invTypeRaw);
         const salesInvoice =
-          invTypeRaw.find((o: TypeOption) =>
-            o.label.toLowerCase().includes("sales") ||
-            o.label.toLowerCase().includes("standard") ||
-            o.label.toLowerCase().includes("invoice"),
-          ) ?? invTypeRaw[0];
+          invTypeRaw.find((o: TypeOption) => o.label.toLowerCase().includes("sale")) ??
+          invTypeRaw.find((o: TypeOption) => o.label.toLowerCase().includes("standard")) ??
+          invTypeRaw.find((o: TypeOption) => {
+            const n = Number(o.value);
+            return Number.isFinite(n) && n === Math.min(...invTypeRaw.map((x: TypeOption) => Number(x.value)));
+          }) ??
+          invTypeRaw[0];
         if (salesInvoice) {
           setMasterForm((prev) =>
             !prev.invoiceType ? { ...prev, invoiceType: salesInvoice.value } : prev,
@@ -690,10 +692,13 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
       currencies[0];
     const defaultStatus = statusOptions.length ? statusOptions[0].value : "Draft";
     const defaultInvType = (
-      invoiceTypeOptions.find((o) =>
-        o.label.toLowerCase().includes("sales") ||
-        o.label.toLowerCase().includes("standard"),
-      ) ?? invoiceTypeOptions[0]
+      invoiceTypeOptions.find((o) => o.label.toLowerCase().includes("sale")) ??
+      invoiceTypeOptions.find((o) => o.label.toLowerCase().includes("standard")) ??
+      invoiceTypeOptions.find((o) => {
+        const n = Number(o.value);
+        return Number.isFinite(n) && n === Math.min(...invoiceTypeOptions.map((x) => Number(x.value)));
+      }) ??
+      invoiceTypeOptions[0]
     )?.value ?? "";
     setEditingRecord(null);
     setMasterForm({
