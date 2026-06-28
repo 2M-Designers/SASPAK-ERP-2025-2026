@@ -1088,6 +1088,11 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
     }
   };
 
+  // Systematic vouchers (auto-created from Receipt/Payment) must not be edited directly
+  const isSystematicVoucher = (v: Voucher) =>
+    /^(PY|RC)-/i.test(v.voucherNumber || "") &&
+    (v.status || "").toLowerCase() === "draft";
+
   // ── Status styling ────────────────────────────────────────────────────────
   const getStatusBadge = (status: string) => {
     const s = (status || "").toLowerCase();
@@ -1152,7 +1157,8 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className='p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors'
+                  className='p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none'
+                  disabled={isSystematicVoucher(row.original)}
                   onClick={async () => {
                     const full = await fetchVoucherById(row.original.voucherId);
                     if (full) {
@@ -1165,7 +1171,11 @@ export default function VoucherClientPage({ initialData }: VoucherPageProps) {
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className='text-xs'>Edit Voucher</p>
+                <p className='text-xs'>
+                  {isSystematicVoucher(row.original)
+                    ? "System-generated voucher — edit via GL Receipt/Payment"
+                    : "Edit Voucher"}
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
