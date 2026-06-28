@@ -1252,15 +1252,14 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
 
                 {/* Bill Type */}
                 <div>
-                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Bill Type *</Label>
-                  <Select
-                    value={masterForm.billType}
-                    onValueChange={(v) => setMasterForm((p) => ({ ...p, billType: v }))}
-                  >
-                    <SelectTrigger className='h-9 text-sm'>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>
+                    Bill Type *
+                    <span className='ml-1.5 text-[10px] text-blue-500 font-normal'>(fixed)</span>
+                  </Label>
+                  <Select value={masterForm.billType} disabled>
+                    <SelectTrigger className='h-9 text-sm bg-gray-50 text-gray-500 cursor-not-allowed opacity-75'>
                       <SelectValue>
-                        {billTypeOptions.find((o) => o.value === masterForm.billType)?.label
-                          ?? (masterForm.billType ? `Type #${masterForm.billType}` : "Select type...")}
+                        {billTypeOptions.find((o) => o.value === masterForm.billType)?.label ?? "Purchase Invoice"}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -1269,11 +1268,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                           <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                         ))
                       ) : (
-                        <>
-                          <SelectItem value='1'>Purchase Invoice</SelectItem>
-                          <SelectItem value='2'>Credit Note</SelectItem>
-                          <SelectItem value='3'>Debit Note</SelectItem>
-                        </>
+                        <SelectItem value='1'>Purchase Invoice</SelectItem>
                       )}
                     </SelectContent>
                   </Select>
