@@ -154,6 +154,7 @@ type DetailRow = {
   qty: number;
   exchangeRate: number;
   currencyId: number;
+  taxPct: number;
   tax: number;
   discount: number;
   fromCoaId: number;
@@ -212,6 +213,7 @@ const blankRow = (exRate: number, currencyId: number): DetailRow => ({
   qty: 1,
   exchangeRate: exRate,
   currencyId,
+  taxPct: 0,
   tax: 0,
   discount: 0,
   fromCoaId: 0,
@@ -650,21 +652,26 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
       partialPayment: full.partialPayment ?? 0,
     });
     setDetailRows(
-      full.glbillDetails.map((d) => ({
-        _key: Math.random().toString(36).slice(2),
-        glbillDetailId: d.glbillDetailId,
-        chargesId: d.chargesId,
-        cost: d.cost,
-        qty: d.qty,
-        exchangeRate: d.exchangeRate,
-        currencyId: d.currencyId,
-        tax: d.tax,
-        discount: d.discount,
-        fromCoaId: d.fromCoaId,
-        toCoaId: d.toCoaId,
-        costCenterId: d.costCenterId,
-        version: d.version,
-      })),
+      full.glbillDetails.map((d) => {
+        const amount = d.cost * d.qty;
+        const taxPct = amount > 0 ? parseFloat(((d.tax / amount) * 100).toFixed(4)) : 0;
+        return {
+          _key: Math.random().toString(36).slice(2),
+          glbillDetailId: d.glbillDetailId,
+          chargesId: d.chargesId,
+          cost: d.cost,
+          qty: d.qty,
+          exchangeRate: d.exchangeRate,
+          currencyId: d.currencyId,
+          taxPct,
+          tax: d.tax,
+          discount: d.discount,
+          fromCoaId: d.fromCoaId,
+          toCoaId: d.toCoaId,
+          costCenterId: d.costCenterId,
+          version: d.version,
+        };
+      }),
     );
     setPartySearch("");
     setJobSearch("");
@@ -714,23 +721,45 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
 
     const billId = toReqInt(editingRecord?.glbillId);
 
+    // Replacer that catches any stray ISO date strings in non-date fields and
+    // coerces them to null so ASP.NET Core doesn't try to assign a DateTime to int?.
+    const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T[\d:.Z+\-]+)?$/;
+    const DATE_FIELDS = new Set(["BillDate", "VendorInvoiceDate"]);
+    const sanitizeReplacer = (_key: string, value: unknown) => {
+      if (
+        !DATE_FIELDS.has(_key) &&
+        typeof value === "string" &&
+        ISO_DATE_RE.test(value)
+      ) {
+        console.warn(`[GLBill] Sanitized date string in field "${_key}":`, value);
+        return null;
+      }
+      return value;
+    };
+
+    const toFloat = (v: unknown, fallback = 0): number => {
+      if (v == null) return fallback;
+      const n = typeof v === "number" ? v : parseFloat(String(v));
+      return Number.isFinite(n) ? n : fallback;
+    };
+
     const payload = {
       GlbillId: billId,
       BillDate: masterForm.billDate,
       BillNumber: masterForm.billNumber ?? "",
       JobId: toInt(masterForm.jobId),
       BillType: toReqInt(masterForm.billType, 1) || 1,
-      BillAmount: billAmount,
-      BillAmountFc: billAmount * exRate,
-      ExchangeRate: exRate,
+      BillAmount: toFloat(billAmount),
+      BillAmountFc: toFloat(billAmount * exRate),
+      ExchangeRate: toFloat(exRate, 1),
       CurrencyId: toReqInt(masterForm.currencyId),
-      TotalTax: totalTax,
-      TotalTaxFc: totalTax * exRate,
-      DiscountTotal: discountTotal,
-      DiscountTotalFc: discountTotal * exRate,
-      PartialPayment: masterForm.partialPayment,
-      TotalAmount: totalAmount,
-      TotalAmountFc: totalAmount * exRate,
+      TotalTax: toFloat(totalTax),
+      TotalTaxFc: toFloat(totalTax * exRate),
+      DiscountTotal: toFloat(discountTotal),
+      DiscountTotalFc: toFloat(discountTotal * exRate),
+      PartialPayment: toFloat(masterForm.partialPayment),
+      TotalAmount: toFloat(totalAmount),
+      TotalAmountFc: toFloat(totalAmount * exRate),
       PayToPartyId: toReqInt(masterForm.payToPartyId),
       BillStatus: masterForm.billStatus,
       BillDescription: masterForm.billDescription ?? "",
@@ -743,19 +772,19 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
         GlbillDetailId: toReqInt(r.glbillDetailId),
         GlbillId: billId,
         ChargesId: toReqInt(r.chargesId),
-        Cost: r.cost,
-        Amount: r.amount,
+        Cost: toFloat(r.cost),
+        Amount: toFloat(r.amount),
         Qty: toReqInt(r.qty, 1),
-        ExchangeRate: r.exchangeRate,
+        ExchangeRate: toFloat(r.exchangeRate, 1),
         CurrencyId: toReqInt(r.currencyId),
-        CostLc: r.costLc,
-        AmountLc: r.amountLc,
-        Tax: r.tax,
-        TaxFc: r.taxFc,
-        Discount: r.discount,
-        DiscountFc: r.discountFc,
-        NetAmount: r.netAmount,
-        NetAmountFc: r.netAmountFc,
+        CostLc: toFloat(r.costLc),
+        AmountLc: toFloat(r.amountLc),
+        Tax: toFloat(r.tax),
+        TaxFc: toFloat(r.taxFc),
+        Discount: toFloat(r.discount),
+        DiscountFc: toFloat(r.discountFc),
+        NetAmount: toFloat(r.netAmount),
+        NetAmountFc: toFloat(r.netAmountFc),
         FromCoaId: toReqInt(r.fromCoaId),
         ToCoaId: toReqInt(r.toCoaId),
         CostCenterId: toInt(r.costCenterId),
@@ -763,22 +792,21 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
       })),
     };
 
+    const bodyJson = JSON.stringify(payload, sanitizeReplacer);
     setIsSaving(true);
-    console.debug("[GLBill] Submitting payload:", JSON.stringify(payload, null, 2));
+    console.debug("[GLBill] Submitting payload:", bodyJson);
     try {
       let res: Response;
       try {
         res = await fetch(`${getBaseUrl()}GLBill`, {
           method: isEdit ? "PUT" : "POST",
           headers: getAuthHeaders(),
-          body: JSON.stringify(payload),
+          body: bodyJson,
         });
       } catch (networkErr) {
-        console.error("[GLBill] Network/CORS error:", networkErr, "Payload was:", payload);
+        console.error("[GLBill] Network/CORS error:", networkErr);
         throw new Error(
-          "Server returned an error and the browser could not read the response (CORS). " +
-            "Open DevTools → Network tab → find the failed request to GLBill → " +
-            "check the response body there for the actual server error.",
+          "Network error — check DevTools → Network tab for the failed GLBill request.",
         );
       }
 
@@ -792,7 +820,9 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
           if (txt) {
             const p = JSON.parse(txt);
             if (p.errors) {
-              msg = Object.values(p.errors as Record<string, string[]>).flat().join(", ");
+              const fields = Object.keys(p.errors as Record<string, string[]>).join(", ");
+              const msgs = Object.values(p.errors as Record<string, string[]>).flat().join(" | ");
+              msg = fields ? `Fields: ${fields} — ${msgs}` : msgs;
             } else if (p.title) { msg = p.title; }
             else if (p.message) { msg = p.message; }
             else if (p.detail) { msg = p.detail; }
@@ -1086,7 +1116,17 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
   };
   const removeRow = (key: string) => setDetailRows((p) => p.filter((r) => r._key !== key));
   const updateRow = (key: string, patch: Partial<DetailRow>) =>
-    setDetailRows((p) => p.map((r) => (r._key === key ? { ...r, ...patch } : r)));
+    setDetailRows((p) =>
+      p.map((r) => {
+        if (r._key !== key) return r;
+        const next = { ...r, ...patch };
+        // Recalculate tax when taxPct changes or when amount changes with taxPct set
+        if ("taxPct" in patch || (("cost" in patch || "qty" in patch) && r.taxPct > 0)) {
+          next.tax = parseFloat(((next.cost * next.qty) * (next.taxPct / 100)).toFixed(4));
+        }
+        return next;
+      }),
+    );
 
   // ─── FORM VIEW ─────────────────────────────────────────────────────────────
   if (showForm) {
@@ -1456,7 +1496,8 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                       <TableHead className='min-w-[90px]'>Cost</TableHead>
                       <TableHead className='min-w-[60px]'>Qty</TableHead>
                       <TableHead className='min-w-[90px] text-right'>Amount</TableHead>
-                      <TableHead className='min-w-[80px]'>Tax</TableHead>
+                      <TableHead className='min-w-[70px]'>Tax %</TableHead>
+                      <TableHead className='min-w-[80px]'>Tax Amt</TableHead>
                       <TableHead className='min-w-[80px]'>Discount</TableHead>
                       <TableHead className='min-w-[90px] text-right'>Net Amount</TableHead>
                       <TableHead className='min-w-[180px]'>Bank/Cash Account *</TableHead>
@@ -1605,7 +1646,21 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                             {fmt(row.amount)}
                           </TableCell>
 
-                          {/* Tax */}
+                          {/* Tax % (UI helper — recalculates Tax Amt) */}
+                          <TableCell>
+                            <Input
+                              type='number'
+                              min='0'
+                              max='100'
+                              step='0.01'
+                              value={row.taxPct}
+                              onChange={(e) => updateRow(row._key, { taxPct: parseFloat(e.target.value) || 0 })}
+                              className='h-7 text-xs w-16'
+                              placeholder='%'
+                            />
+                          </TableCell>
+
+                          {/* Tax Amount */}
                           <TableCell>
                             <Input
                               type='number'
@@ -1770,7 +1825,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
 
                     {detailRows.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={13} className='text-center py-8 text-gray-400 text-sm'>
+                        <TableCell colSpan={14} className='text-center py-8 text-gray-400 text-sm'>
                           No charge lines. Click "Add Row" to add a vendor bill line.
                         </TableCell>
                       </TableRow>
