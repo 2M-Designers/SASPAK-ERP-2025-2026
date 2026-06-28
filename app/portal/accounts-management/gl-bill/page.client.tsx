@@ -527,13 +527,14 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
       if (!jobId) return;
       setIsAutoFilling(true);
       try {
-        const exRate = masterForm.exchangeRate;
+        const exRate = masterForm.exchangeRate || 1;
         const currId = masterForm.currencyId ?? currencies.find((c) => c.isDefault)?.currencyId ?? 0;
 
-        // Query detail tables directly — both have JobId as a column.
-        // OnAccountOfId = billing party (→ fromCoaId / FROM COA)
-        // HeadCoaId     = GL expense account (→ toCoaId / TO COA)
-        // CostCenterId  = cost center
+        // Default billing party = job's consignee; fall back to shipper (principalId).
+        const currentJob = jobs.find((j) => j.jobId === jobId);
+        const defaultBillingPartyId =
+          currentJob?.consigneePartyId ?? currentJob?.principalId ?? 0;
+
         const [cashDetails, bankDetails] = await Promise.all([
           postList(
             "InternalCashFundsRequestDetail/GetList",
@@ -552,9 +553,8 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
         ]);
 
         // Map a detail line to a GL Bill DetailRow.
-        // FROM COA (fromCoaId)  = billing party → OnAccountOfId
-        // TO COA   (toCoaId)    = GL expense/head account → HeadCoaId
-        // CostCenterId          = cost center
+        // fromCoaId = consignee (default) or shipper from job
+        // toCoaId   = GL expense/head account (HeadCoaId)
         const toDetailRow = (item: any): DetailRow => ({
           _key: Math.random().toString(36).slice(2),
           glbillDetailId: 0,
@@ -565,7 +565,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
           currencyId: currId,
           tax: 0,
           discount: 0,
-          fromCoaId: item.onAccountOfId ?? item.OnAccountOfId ?? 0,
+          fromCoaId: defaultBillingPartyId || (item.onAccountOfId ?? item.OnAccountOfId ?? 0),
           toCoaId: item.headCoaId ?? item.HeadCoaId ?? 0,
           costCenterId: item.costCenterId ?? item.CostCenterId ?? null,
           version: 1,
@@ -605,7 +605,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
         setIsAutoFilling(false);
       }
     },
-    [masterForm.exchangeRate, masterForm.currencyId, currencies, toast], // eslint-disable-line
+    [masterForm.exchangeRate, masterForm.currencyId, currencies, jobs, toast], // eslint-disable-line
   );
 
   // ── Filtered list ──────────────────────────────────────────────────────────
@@ -670,15 +670,15 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
     [accounts],
   );
 
-  // Billing Party options for detail rows — scoped to the selected job's
-  // shipper (principalId), consignee (consigneePartyId), and terminal (terminalPartyId).
-  // Falls back to all parties when no job is selected or no matching parties found.
+  // Billing Party options for detail rows — only Shipper (principalId) and
+  // Consignee (consigneePartyId) from the selected job.
+  // Falls back to all parties when no job is selected or no matches found.
   const jobParties = useMemo(() => {
     if (!masterForm.jobId) return parties;
     const job = jobs.find((j) => j.jobId === masterForm.jobId);
     if (!job) return parties;
     const ids = new Set(
-      [job.terminalPartyId, job.principalId, job.consigneePartyId].filter(
+      [job.principalId, job.consigneePartyId].filter(
         (id): id is number => id != null && id > 0,
       ),
     );
