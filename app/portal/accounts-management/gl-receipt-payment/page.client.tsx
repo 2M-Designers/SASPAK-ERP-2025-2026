@@ -181,8 +181,8 @@ type MasterForm = {
 
 type TypeOption = { value: string; label: string };
 type GlVoucherLookup = { voucherId: number; voucherNumber: string };
-type GlInvoiceLookup = { glinvoiceId: number; invoiceNumber: string; jobId: number | null; totalAmount: number };
-type GlBillLookup   = { glbillId: number; billNumber: string; jobId: number | null; totalAmount: number };
+type GlInvoiceLookup = { glinvoiceId: number; invoiceNumber: string; jobId: number | null; billingPartyId: number | null; totalAmount: number };
+type GlBillLookup   = { glbillId: number; billNumber: string; jobId: number | null; payToPartyId: number | null; totalAmount: number };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -462,8 +462,8 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           getTypeValues("ReceiptPayment_Type_Ids"),
           postList("GLVoucher/GetList", "VoucherId, VoucherNumber", "", "VoucherId DESC"),
           getTypeValues("ReceiptPayment_Mode_Description"),
-          postList("GLInvoice/GetList", "GlinvoiceId, InvoiceNumber, JobId, TotalAmount", "InvoiceStatus == 'Processed'", "GlinvoiceId DESC", "5000"),
-          postList("GLBill/GetList", "GlbillId, BillNumber, JobId, TotalAmount", "BillStatus == 'Processed'", "GlbillId DESC", "5000"),
+          postList("GLInvoice/GetList", "GlinvoiceId, InvoiceNumber, JobId, BillingPartyId, TotalAmount", "InvoiceStatus == 'Processed'", "GlinvoiceId DESC", "5000"),
+          postList("GLBill/GetList", "GlbillId, BillNumber, JobId, PayToPartyId, TotalAmount", "BillStatus == 'Processed'", "GlbillId DESC", "5000"),
         ]);
 
       const curr: Currency[] = currRaw.map((c: any) => ({
@@ -536,6 +536,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           glinvoiceId: i.glinvoiceId ?? i.GlinvoiceId ?? i.glInvoiceId ?? i.GlInvoiceId ?? 0,
           invoiceNumber: i.invoiceNumber ?? i.InvoiceNumber ?? "",
           jobId: i.jobId ?? i.JobId ?? null,
+          billingPartyId: i.billingPartyId ?? i.BillingPartyId ?? null,
           totalAmount: i.totalAmount ?? i.TotalAmount ?? 0,
         })),
       );
@@ -544,6 +545,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           glbillId: b.glbillId ?? b.GlbillId ?? 0,
           billNumber: b.billNumber ?? b.BillNumber ?? "",
           jobId: b.jobId ?? b.JobId ?? null,
+          payToPartyId: b.payToPartyId ?? b.PayToPartyId ?? null,
           totalAmount: b.totalAmount ?? b.TotalAmount ?? 0,
         })),
       );
@@ -1567,6 +1569,8 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                     <SelectItem value=''>— None —</SelectItem>
                                     {(masterForm.jobId
                                       ? glInvoices.filter((i) => i.jobId === masterForm.jobId)
+                                      : masterForm.payToPartyId
+                                      ? glInvoices.filter((i) => i.billingPartyId === masterForm.payToPartyId)
                                       : glInvoices
                                     ).map((inv) => (
                                       <SelectItem key={inv.glinvoiceId} value={inv.glinvoiceId.toString()}>
@@ -1591,6 +1595,8 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                                     <SelectItem value=''>— None —</SelectItem>
                                     {(masterForm.jobId
                                       ? glBills.filter((b) => b.jobId === masterForm.jobId)
+                                      : masterForm.payToPartyId
+                                      ? glBills.filter((b) => b.payToPartyId === masterForm.payToPartyId)
                                       : glBills
                                     ).map((bill) => (
                                       <SelectItem key={bill.glbillId} value={bill.glbillId.toString()}>
