@@ -9,7 +9,7 @@ export default async function GLInvoicePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         select:
-          "GlInvoiceId, InvoiceDate, InvoiceNumber, JobId, InvoiceType, InvoiceAmount, TotalAmount, PayToPartyId, InvoiceStatus, InvoiceDescription, CurrencyId, ExchangeRate, GlVoucherId, Version",
+          "GlinvoiceId, InvoiceDate, InvoiceNumber, JobId, InvoiceType, BillingPartyId, InvoiceStatus, InvoiceDescription, CurrencyId, ExchangeRate, GlVoucherId, DueDays, PartialPayment, Version",
         where: "",
         sortOn: "GlInvoiceId DESC",
         page: "1",

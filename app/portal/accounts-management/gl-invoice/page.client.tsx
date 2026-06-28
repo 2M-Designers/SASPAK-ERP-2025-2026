@@ -38,7 +38,6 @@ import {
   FiFilePlus,
   FiRefreshCw,
   FiSearch,
-  FiX,
   FiEye,
   FiEdit,
   FiTrash2,
@@ -50,7 +49,7 @@ import {
   FiFileText,
   FiList,
 } from "react-icons/fi";
-import { AlertCircle, Receipt } from "lucide-react";
+import { AlertCircle, Receipt, Scissors } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import moment from "moment";
@@ -65,7 +64,13 @@ type Currency = {
   isDefault: boolean;
 };
 
-type Party = { partyId: number; partyCode: string; partyName: string };
+type Party = {
+  partyId: number;
+  partyCode: string;
+  partyName: string;
+  glAccountId: number | null;
+};
+
 type Job = {
   jobId: number;
   jobNumber: string;
@@ -74,27 +79,31 @@ type Job = {
   consigneePartyId: number | null;
   jobInvoiceExchRate: number | null;
 };
+
 type ChargeMaster = {
   chargesMasterId: number;
   chargesCode: string;
   chargesName: string;
 };
+
 type GlAccount = {
   accountId: number;
   accountCode: string;
   accountName: string;
   isHeader: boolean;
 };
+
 type CostCenter = {
   costCenterId: number;
   costCenterCode: string;
   costCenterName: string;
 };
+
 type TypeOption = { value: string; label: string };
 
 type GlInvoiceDetail = {
-  glInvoiceDetailId: number;
-  glInvoiceId: number;
+  glinvoiceDetailId: number;
+  glinvoiceId: number;
   chargesId: number;
   cost: number;
   amount: number;
@@ -116,7 +125,7 @@ type GlInvoiceDetail = {
 };
 
 type GlInvoice = {
-  glInvoiceId: number;
+  glinvoiceId: number;
   invoiceDate: string;
   invoiceNumber: string;
   jobId: number | null;
@@ -132,28 +141,27 @@ type GlInvoice = {
   partialPayment: number;
   totalAmount: number;
   totalAmountFc: number;
-  payToPartyId: number;
+  billingPartyId: number;
   invoiceStatus: string;
   invoiceDescription: string;
   dueDays: number;
   glVoucherId: number | null;
-  vendorInvoiceDate: string;
-  vendorInvoiceNumber: string;
   version: number;
-  glInvoiceDetails: GlInvoiceDetail[];
-  payToParty?: { partyId: number; partyName: string; partyCode: string };
+  glinvoiceDetails: GlInvoiceDetail[];
+  billingParty?: { partyId: number; partyName: string; partyCode: string };
   currency?: { currencyId: number; currencyCode: string };
   job?: { jobId: number; jobNumber: string };
 };
 
 type DetailRow = {
   _key: string;
-  glInvoiceDetailId: number;
+  glinvoiceDetailId: number;
   chargesId: number;
   cost: number;
   qty: number;
   exchangeRate: number;
   currencyId: number;
+  taxPct: number;
   tax: number;
   discount: number;
   fromCoaId: number;
@@ -167,15 +175,13 @@ type MasterForm = {
   invoiceDate: string;
   invoiceNumber: string;
   jobId: number | null;
-  payToPartyId: number | null;
-  invoiceType: number;
+  billingPartyId: number | null;
+  invoiceType: string;
   currencyId: number | null;
   exchangeRate: number;
   invoiceStatus: string;
   invoiceDescription: string;
   dueDays: number;
-  vendorInvoiceDate: string;
-  vendorInvoiceNumber: string;
   partialPayment: number;
 };
 
@@ -206,12 +212,13 @@ const computeRow = (row: DetailRow) => {
 
 const blankRow = (exRate: number, currencyId: number): DetailRow => ({
   _key: Math.random().toString(36).slice(2),
-  glInvoiceDetailId: 0,
+  glinvoiceDetailId: 0,
   chargesId: 0,
   cost: 0,
   qty: 1,
   exchangeRate: exRate,
   currencyId,
+  taxPct: 0,
   tax: 0,
   discount: 0,
   fromCoaId: 0,
@@ -221,7 +228,7 @@ const blankRow = (exRate: number, currencyId: number): DetailRow => ({
 });
 
 const mapInvoice = (it: any): GlInvoice => ({
-  glInvoiceId: it.glInvoiceId ?? it.GlInvoiceId ?? 0,
+  glinvoiceId: it.glinvoiceId ?? it.GlinvoiceId ?? it.glInvoiceId ?? it.GlInvoiceId ?? 0,
   invoiceDate: it.invoiceDate ?? it.InvoiceDate ?? "",
   invoiceNumber: it.invoiceNumber ?? it.InvoiceNumber ?? "",
   jobId: it.jobId ?? it.JobId ?? null,
@@ -237,23 +244,21 @@ const mapInvoice = (it: any): GlInvoice => ({
   partialPayment: it.partialPayment ?? it.PartialPayment ?? 0,
   totalAmount: it.totalAmount ?? it.TotalAmount ?? 0,
   totalAmountFc: it.totalAmountFc ?? it.TotalAmountFc ?? 0,
-  payToPartyId: it.payToPartyId ?? it.PayToPartyId ?? 0,
+  billingPartyId: it.billingPartyId ?? it.BillingPartyId ?? it.payToPartyId ?? it.PayToPartyId ?? 0,
   invoiceStatus: it.invoiceStatus ?? it.InvoiceStatus ?? "",
   invoiceDescription: it.invoiceDescription ?? it.InvoiceDescription ?? "",
   dueDays: it.dueDays ?? it.DueDays ?? 0,
   glVoucherId: it.glVoucherId ?? it.GlVoucherId ?? null,
-  vendorInvoiceDate: it.vendorInvoiceDate ?? it.VendorInvoiceDate ?? "",
-  vendorInvoiceNumber: it.vendorInvoiceNumber ?? it.VendorInvoiceNumber ?? "",
   version: it.version ?? it.Version ?? 1,
-  glInvoiceDetails: [],
-  payToParty: it.payToParty ?? undefined,
-  currency: it.currency ?? undefined,
-  job: it.job ?? undefined,
+  glinvoiceDetails: [],
+  billingParty: it.billingParty ?? it.BillingParty ?? undefined,
+  currency: it.currency ?? it.Currency ?? undefined,
+  job: it.job ?? it.Job ?? undefined,
 });
 
 const mapDetail = (d: any): GlInvoiceDetail => ({
-  glInvoiceDetailId: d.glInvoiceDetailId ?? d.GlInvoiceDetailId ?? 0,
-  glInvoiceId: d.glInvoiceId ?? d.GlInvoiceId ?? 0,
+  glinvoiceDetailId: d.glinvoiceDetailId ?? d.GlinvoiceDetailId ?? d.glInvoiceDetailId ?? d.GlInvoiceDetailId ?? 0,
+  glinvoiceId: d.glinvoiceId ?? d.GlinvoiceId ?? d.glInvoiceId ?? d.GlInvoiceId ?? 0,
   chargesId: d.chargesId ?? d.ChargesId ?? 0,
   cost: d.cost ?? d.Cost ?? 0,
   amount: d.amount ?? d.Amount ?? 0,
@@ -339,15 +344,13 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
     invoiceDate: new Date().toISOString().slice(0, 10),
     invoiceNumber: "",
     jobId: null,
-    payToPartyId: null,
-    invoiceType: 1,
+    billingPartyId: null,
+    invoiceType: "",
     currencyId: null,
     exchangeRate: 1,
     invoiceStatus: "Draft",
     invoiceDescription: "",
     dueDays: 0,
-    vendorInvoiceDate: new Date().toISOString().slice(0, 10),
-    vendorInvoiceNumber: "",
     partialPayment: 0,
   });
   const [detailRows, setDetailRows] = useState<DetailRow[]>([]);
@@ -360,8 +363,9 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
   const [deleteTarget, setDeleteTarget] = useState<GlInvoice | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // ── Process Invoice state ─────────────────────────────────────────────────────
+  // ── Process / Split state ─────────────────────────────────────────────────
   const [processingId, setProcessingId] = useState<number | null>(null);
+  const [splittingId, setSplittingId] = useState<number | null>(null);
 
   // ── Search for big dropdowns ───────────────────────────────────────────────
   const [partySearch, setPartySearch] = useState("");
@@ -400,9 +404,9 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
     try {
       const rows = await postList(
         "GLInvoice/GetList",
-        "GlInvoiceId, InvoiceDate, InvoiceNumber, JobId, InvoiceType, InvoiceAmount, TotalAmount, PayToPartyId, InvoiceStatus, InvoiceDescription, CurrencyId, ExchangeRate, GlVoucherId, Version",
+        "GlinvoiceId, InvoiceDate, InvoiceNumber, JobId, InvoiceType, InvoiceAmount, TotalAmount, BillingPartyId, InvoiceStatus, InvoiceDescription, CurrencyId, ExchangeRate, GlVoucherId, Version",
         "",
-        "GlInvoiceId DESC",
+        "GlinvoiceId DESC",
       );
       setData(rows.map(mapInvoice));
     } catch {
@@ -423,7 +427,13 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
       const raw = await res.json();
       return {
         ...mapInvoice(raw),
-        glInvoiceDetails: (raw.glInvoiceDetails ?? raw.GlInvoiceDetails ?? []).map(mapDetail),
+        glinvoiceDetails: (
+          raw.glinvoiceDetails ??
+          raw.GlinvoiceDetails ??
+          raw.glInvoiceDetails ??
+          raw.GlInvoiceDetails ??
+          []
+        ).map(mapDetail),
       };
     } catch {
       return null;
@@ -433,10 +443,10 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
   // ── Fetch all lookups ──────────────────────────────────────────────────────
   const fetchLookups = useCallback(async () => {
     try {
-      const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw, statusRaw, invoiceTypeRaw] =
+      const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw, statusRaw, invTypeRaw] =
         await Promise.all([
           postList("SetupCurrency/GetList", "CurrencyId, CurrencyCode, CurrencyName, Symbol, IsDefault", "", "CurrencyCode ASC"),
-          postList("Party/GetList", "PartyId, PartyCode, PartyName", "", "PartyName ASC"),
+          postList("Party/GetList", "PartyId, PartyCode, PartyName, GlaccountId", "", "PartyName ASC"),
           postList("Job/GetList", "JobId, JobNumber, TerminalPartyId, PrincipalId, ConsigneePartyId, JobInvoiceExchRate", "", "JobId DESC"),
           postList("ChargesMaster/GetList", "ChargeId, ChargeCode, ChargeName", "", "ChargeName ASC"),
           postList("GlAccount/GetList", "AccountId, AccountCode, AccountName, IsHeader", "", "AccountCode ASC", "9999"),
@@ -459,6 +469,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
           partyId: p.partyId ?? p.PartyId ?? 0,
           partyCode: p.partyCode ?? p.PartyCode ?? "",
           partyName: p.partyName ?? p.PartyName ?? "",
+          glAccountId: p.glaccountId ?? p.GlaccountId ?? p.glAccountId ?? p.GlAccountId ?? null,
         })),
       );
 
@@ -499,7 +510,21 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
       );
 
       if (statusRaw.length) setStatusOptions(statusRaw);
-      if (invoiceTypeRaw.length) setInvoiceTypeOptions(invoiceTypeRaw);
+
+      if (invTypeRaw.length) {
+        setInvoiceTypeOptions(invTypeRaw);
+        const salesInvoice =
+          invTypeRaw.find((o: TypeOption) =>
+            o.label.toLowerCase().includes("sales") ||
+            o.label.toLowerCase().includes("standard") ||
+            o.label.toLowerCase().includes("invoice"),
+          ) ?? invTypeRaw[0];
+        if (salesInvoice) {
+          setMasterForm((prev) =>
+            !prev.invoiceType ? { ...prev, invoiceType: salesInvoice.value } : prev,
+          );
+        }
+      }
 
       const def =
         curr.find((c) => c.currencyCode === "PKR") ??
@@ -521,7 +546,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
     fetchLookups();
   }, [fetchLookups]);
 
-  // ── Auto-fill from Job Order (Cash + Bank Fund Request details) ──────────────
+  // ── Auto-fill from Job Order ───────────────────────────────────────────────
   const autoFillFromJob = useCallback(
     async (jobId: number) => {
       if (!jobId) return;
@@ -530,42 +555,35 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
         const exRate = masterForm.exchangeRate || 1;
         const currId = masterForm.currencyId ?? currencies.find((c) => c.isDefault)?.currencyId ?? 0;
 
-        // Default billing party = job's consignee; fall back to shipper (principalId).
-        const currentJob = jobs.find((j) => j.jobId === jobId);
-        const defaultBillingPartyId =
-          currentJob?.consigneePartyId ?? currentJob?.principalId ?? 0;
-
         const [cashDetails, bankDetails] = await Promise.all([
           postList(
             "InternalCashFundsRequestDetail/GetList",
-            "InternalFundsRequestCashId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, OnAccountOfId, CostCenterId, SubRequestStatus, CashFundRequestMasterId",
+            "InternalFundsRequestCashId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, OnAccountOfId, CostCenterId, SubRequestStatus",
             `JobId == ${jobId}`,
             "InternalFundsRequestCashId ASC",
             "5000",
           ),
           postList(
             "InternalBankFundsRequestDetail/GetList",
-            "InternalFundsRequestBankId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, OnAccountOfId, CostCenterId, SubRequestStatus, BankFundRequestMasterId",
+            "InternalFundsRequestBankId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, OnAccountOfId, CostCenterId, SubRequestStatus",
             `JobId == ${jobId}`,
             "InternalFundsRequestBankId ASC",
             "5000",
           ),
         ]);
 
-        // Map a detail line to a GL Invoice DetailRow.
-        // fromCoaId = consignee (default) or shipper from job
-        // toCoaId   = GL expense/head account (HeadCoaId)
         const toDetailRow = (item: any): DetailRow => ({
           _key: Math.random().toString(36).slice(2),
-          glInvoiceDetailId: 0,
+          glinvoiceDetailId: 0,
           chargesId: item.chargesId ?? item.ChargesId ?? 0,
           cost: item.approvedAmount ?? item.ApprovedAmount ?? 0,
           qty: 1,
           exchangeRate: exRate,
           currencyId: currId,
+          taxPct: 0,
           tax: 0,
           discount: 0,
-          fromCoaId: defaultBillingPartyId || (item.onAccountOfId ?? item.OnAccountOfId ?? 0),
+          fromCoaId: 0,
           toCoaId: item.headCoaId ?? item.HeadCoaId ?? 0,
           costCenterId: item.costCenterId ?? item.CostCenterId ?? null,
           version: 1,
@@ -580,7 +598,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
         if (autoRows.length === 0) {
           toast({
             title: "No Approved Charges Found",
-            description: "No Cash or Bank Fund Request lines with approved amounts were found for this job. You can add charges manually.",
+            description: "No fund request lines with approved amounts were found. Add charges manually.",
           });
           return;
         }
@@ -605,7 +623,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
         setIsAutoFilling(false);
       }
     },
-    [masterForm.exchangeRate, masterForm.currencyId, currencies, jobs, toast], // eslint-disable-line
+    [masterForm.exchangeRate, masterForm.currencyId, currencies, toast], // eslint-disable-line
   );
 
   // ── Filtered list ──────────────────────────────────────────────────────────
@@ -617,9 +635,8 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
         (r.invoiceNumber || "").toLowerCase().includes(q) ||
         (r.invoiceStatus || "").toLowerCase().includes(q) ||
         (r.invoiceDescription || "").toLowerCase().includes(q) ||
-        String(r.glInvoiceId).includes(q) ||
-        (r.vendorInvoiceNumber || "").toLowerCase().includes(q) ||
-        (r.payToParty?.partyName || "").toLowerCase().includes(q),
+        String(r.glinvoiceId).includes(q) ||
+        (r.billingParty?.partyName || "").toLowerCase().includes(q),
     );
   }, [data, searchText]);
 
@@ -645,12 +662,12 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
       ? parties.filter((p) => p.partyName.toLowerCase().includes(q) || p.partyCode.toLowerCase().includes(q))
       : parties;
     const sliced = base.slice(0, 150);
-    if (masterForm.payToPartyId) {
-      const sel = parties.find((p) => p.partyId === masterForm.payToPartyId);
+    if (masterForm.billingPartyId) {
+      const sel = parties.find((p) => p.partyId === masterForm.billingPartyId);
       if (sel && !sliced.find((p) => p.partyId === sel.partyId)) sliced.push(sel);
     }
     return sliced;
-  }, [parties, partySearch, masterForm.payToPartyId]);
+  }, [parties, partySearch, masterForm.billingPartyId]);
 
   const filteredJobs = useMemo(() => {
     const q = jobSearch.toLowerCase();
@@ -665,27 +682,6 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
     return sliced;
   }, [jobs, jobSearch, masterForm.jobId]);
 
-  const transactionalAccounts = useMemo(
-    () => accounts.filter((a) => !a.isHeader),
-    [accounts],
-  );
-
-  // Billing Party options for detail rows — only Shipper (principalId) and
-  // Consignee (consigneePartyId) from the selected job.
-  // Falls back to all parties when no job is selected or no matches found.
-  const jobParties = useMemo(() => {
-    if (!masterForm.jobId) return parties;
-    const job = jobs.find((j) => j.jobId === masterForm.jobId);
-    if (!job) return parties;
-    const ids = new Set(
-      [job.principalId, job.consigneePartyId].filter(
-        (id): id is number => id != null && id > 0,
-      ),
-    );
-    const filtered = parties.filter((p) => ids.has(p.partyId));
-    return filtered.length > 0 ? filtered : parties;
-  }, [masterForm.jobId, jobs, parties]);
-
   // ── Open add form ──────────────────────────────────────────────────────────
   const openAdd = () => {
     const def =
@@ -693,20 +689,24 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
       currencies.find((c) => c.isDefault) ??
       currencies[0];
     const defaultStatus = statusOptions.length ? statusOptions[0].value : "Draft";
+    const defaultInvType = (
+      invoiceTypeOptions.find((o) =>
+        o.label.toLowerCase().includes("sales") ||
+        o.label.toLowerCase().includes("standard"),
+      ) ?? invoiceTypeOptions[0]
+    )?.value ?? "";
     setEditingRecord(null);
     setMasterForm({
       invoiceDate: new Date().toISOString().slice(0, 10),
       invoiceNumber: "",
       jobId: null,
-      payToPartyId: null,
-      invoiceType: 1,
+      billingPartyId: null,
+      invoiceType: defaultInvType,
       currencyId: def?.currencyId ?? null,
       exchangeRate: 1,
       invoiceStatus: defaultStatus,
       invoiceDescription: "",
       dueDays: 0,
-      vendorInvoiceDate: new Date().toISOString().slice(0, 10),
-      vendorInvoiceNumber: "",
       partialPayment: 0,
     });
     setDetailRows([blankRow(1, def?.currencyId ?? 0)]);
@@ -719,7 +719,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
   // ── Open edit form ─────────────────────────────────────────────────────────
   const openEdit = async (rec: GlInvoice) => {
     setIsLoading(true);
-    const full = await fetchById(rec.glInvoiceId);
+    const full = await fetchById(rec.glinvoiceId);
     setIsLoading(false);
     if (!full) {
       toast({ variant: "destructive", title: "Error", description: "Could not load record." });
@@ -730,33 +730,36 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
       invoiceDate: full.invoiceDate?.slice(0, 10) ?? "",
       invoiceNumber: full.invoiceNumber,
       jobId: full.jobId,
-      payToPartyId: full.payToPartyId,
-      invoiceType: full.invoiceType,
+      billingPartyId: full.billingPartyId,
+      invoiceType: String(full.invoiceType),
       currencyId: full.currencyId,
       exchangeRate: full.exchangeRate,
       invoiceStatus: full.invoiceStatus,
       invoiceDescription: full.invoiceDescription ?? "",
       dueDays: full.dueDays ?? 0,
-      vendorInvoiceDate: full.vendorInvoiceDate?.slice(0, 10) ?? "",
-      vendorInvoiceNumber: full.vendorInvoiceNumber ?? "",
       partialPayment: full.partialPayment ?? 0,
     });
     setDetailRows(
-      full.glInvoiceDetails.map((d) => ({
-        _key: Math.random().toString(36).slice(2),
-        glInvoiceDetailId: d.glInvoiceDetailId,
-        chargesId: d.chargesId,
-        cost: d.cost,
-        qty: d.qty,
-        exchangeRate: d.exchangeRate,
-        currencyId: d.currencyId,
-        tax: d.tax,
-        discount: d.discount,
-        fromCoaId: d.fromCoaId,
-        toCoaId: d.toCoaId,
-        costCenterId: d.costCenterId,
-        version: d.version,
-      })),
+      full.glinvoiceDetails.map((d) => {
+        const amount = d.cost * d.qty;
+        const taxPct = amount > 0 ? parseFloat(((d.tax / amount) * 100).toFixed(4)) : 0;
+        return {
+          _key: Math.random().toString(36).slice(2),
+          glinvoiceDetailId: d.glinvoiceDetailId,
+          chargesId: d.chargesId,
+          cost: d.cost,
+          qty: d.qty,
+          exchangeRate: d.exchangeRate,
+          currencyId: d.currencyId,
+          taxPct,
+          tax: d.tax,
+          discount: d.discount,
+          fromCoaId: d.fromCoaId,
+          toCoaId: d.toCoaId,
+          costCenterId: d.costCenterId,
+          version: d.version,
+        };
+      }),
     );
     setPartySearch("");
     setJobSearch("");
@@ -766,8 +769,8 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
 
   // ── Save ───────────────────────────────────────────────────────────────────
   const handleSave = async () => {
-    if (!masterForm.payToPartyId) {
-      toast({ variant: "destructive", title: "Validation", description: "Pay To Party is required." });
+    if (!masterForm.billingPartyId) {
+      toast({ variant: "destructive", title: "Validation", description: "Billing Party is required." });
       return;
     }
     if (!masterForm.currencyId) {
@@ -778,8 +781,15 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
       toast({ variant: "destructive", title: "Validation", description: "At least one charge line is required." });
       return;
     }
-    if (detailRows.some((r) => !r.chargesId || !r.fromCoaId || !r.toCoaId)) {
-      toast({ variant: "destructive", title: "Validation", description: "Each line needs Charge, From CoA and To CoA." });
+    const missingFields: string[] = [];
+    detailRows.forEach((r, i) => {
+      const n = i + 1;
+      if (!r.chargesId) missingFields.push(`Row ${n}: Charge`);
+      if (!r.fromCoaId) missingFields.push(`Row ${n}: Customer GL Account`);
+      if (!r.toCoaId) missingFields.push(`Row ${n}: Revenue GL Account`);
+    });
+    if (missingFields.length > 0) {
+      toast({ variant: "destructive", title: "Validation", description: missingFields.join(" | ") });
       return;
     }
 
@@ -787,75 +797,92 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
     const exRate = masterForm.exchangeRate || 1;
     const isEdit = !!editingRecord;
 
+    const toInt = (v: unknown): number | null => {
+      if (v == null) return null;
+      const n = typeof v === "number" ? v : parseInt(String(v), 10);
+      return Number.isFinite(n) ? n : null;
+    };
+    const toReqInt = (v: unknown, fallback = 0): number => toInt(v) ?? fallback;
+    const toFloat = (v: unknown, fallback = 0): number => {
+      if (v == null) return fallback;
+      const n = typeof v === "number" ? v : parseFloat(String(v));
+      return Number.isFinite(n) ? n : fallback;
+    };
+
+    const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T[\d:.Z+\-]+)?$/;
+    const DATE_FIELDS = new Set(["InvoiceDate"]);
+    const sanitizeReplacer = (_key: string, value: unknown) => {
+      if (!DATE_FIELDS.has(_key) && typeof value === "string" && ISO_DATE_RE.test(value)) {
+        console.warn(`[GLInvoice] Sanitized date string in field "${_key}":`, value);
+        return null;
+      }
+      return value;
+    };
+
+    const invoiceId = toReqInt(editingRecord?.glinvoiceId);
+
     const payload = {
-      GlInvoiceId: editingRecord?.glInvoiceId ?? 0,
+      GlinvoiceId: invoiceId,
       InvoiceDate: masterForm.invoiceDate,
       InvoiceNumber: masterForm.invoiceNumber ?? "",
-      JobId: masterForm.jobId || null,
-      InvoiceType: masterForm.invoiceType,
-      InvoiceAmount: invoiceAmount,
-      InvoiceAmountFc: invoiceAmount * exRate,
-      ExchangeRate: exRate,
-      CurrencyId: masterForm.currencyId ?? 0,
-      TotalTax: totalTax,
-      TotalTaxFc: totalTax * exRate,
-      DiscountTotal: discountTotal,
-      DiscountTotalFc: discountTotal * exRate,
-      PartialPayment: masterForm.partialPayment,
-      TotalAmount: totalAmount,
-      TotalAmountFc: totalAmount * exRate,
-      PayToPartyId: masterForm.payToPartyId ?? 0,
+      JobId: toInt(masterForm.jobId),
+      InvoiceType: toReqInt(masterForm.invoiceType, 1) || 1,
+      InvoiceAmount: toFloat(invoiceAmount),
+      InvoiceAmountFc: toFloat(invoiceAmount * exRate),
+      ExchangeRate: toFloat(exRate, 1),
+      CurrencyId: toReqInt(masterForm.currencyId),
+      TotalTax: toFloat(totalTax),
+      TotalTaxFc: toFloat(totalTax * exRate),
+      DiscountTotal: toFloat(discountTotal),
+      DiscountTotalFc: toFloat(discountTotal * exRate),
+      PartialPayment: toFloat(masterForm.partialPayment),
+      TotalAmount: toFloat(totalAmount),
+      TotalAmountFc: toFloat(totalAmount * exRate),
+      BillingPartyId: toReqInt(masterForm.billingPartyId),
       InvoiceStatus: masterForm.invoiceStatus,
       InvoiceDescription: masterForm.invoiceDescription ?? "",
-      DueDays: masterForm.dueDays ?? 0,
-      GlVoucherId: editingRecord?.glVoucherId || null,
-      VendorInvoiceDate: masterForm.vendorInvoiceDate || new Date().toISOString(),
-      VendorInvoiceNumber: masterForm.vendorInvoiceNumber ?? "",
-      Version: editingRecord?.version ?? 1,
-      GlInvoiceDetails: computedRows.map((r) => ({
-        GlInvoiceDetailId: r.glInvoiceDetailId,
-        GlInvoiceId: editingRecord?.glInvoiceId ?? 0,
-        ChargesId: r.chargesId,
-        Cost: r.cost,
-        Amount: r.amount,
-        Qty: r.qty,
-        ExchangeRate: r.exchangeRate,
-        CurrencyId: r.currencyId,
-        CostLc: r.costLc,
-        AmountLc: r.amountLc,
-        Tax: r.tax,
-        TaxFc: r.taxFc,
-        Discount: r.discount,
-        DiscountFc: r.discountFc,
-        NetAmount: r.netAmount,
-        NetAmountFc: r.netAmountFc,
-        FromCoaId: r.fromCoaId,
-        ToCoaId: r.toCoaId,
-        CostCenterId: r.costCenterId || null,
-        Version: r.version,
+      DueDays: toReqInt(masterForm.dueDays),
+      GlVoucherId: toInt(editingRecord?.glVoucherId),
+      Version: toReqInt(editingRecord?.version, 1),
+      GlinvoiceDetails: computedRows.map((r) => ({
+        GlinvoiceDetailId: toReqInt(r.glinvoiceDetailId),
+        GlinvoiceId: invoiceId,
+        ChargesId: toReqInt(r.chargesId),
+        Cost: toFloat(r.cost),
+        Amount: toFloat(r.amount),
+        Qty: toReqInt(r.qty, 1),
+        ExchangeRate: toFloat(r.exchangeRate, 1),
+        CurrencyId: toReqInt(r.currencyId),
+        CostLc: toFloat(r.costLc),
+        AmountLc: toFloat(r.amountLc),
+        Tax: toFloat(r.tax),
+        TaxFc: toFloat(r.taxFc),
+        Discount: toFloat(r.discount),
+        DiscountFc: toFloat(r.discountFc),
+        NetAmount: toFloat(r.netAmount),
+        NetAmountFc: toFloat(r.netAmountFc),
+        FromCoaId: toReqInt(r.fromCoaId),
+        ToCoaId: toReqInt(r.toCoaId),
+        CostCenterId: toInt(r.costCenterId),
+        Version: toReqInt(r.version),
       })),
     };
 
+    const bodyJson = JSON.stringify(payload, sanitizeReplacer);
     setIsSaving(true);
-    console.debug("[GLInvoice] Submitting payload:", JSON.stringify(payload, null, 2));
+    console.debug("[GLInvoice] Submitting payload:", bodyJson);
     try {
       let res: Response;
       try {
         res = await fetch(`${getBaseUrl()}GLInvoice`, {
           method: isEdit ? "PUT" : "POST",
           headers: getAuthHeaders(),
-          body: JSON.stringify(payload),
+          body: bodyJson,
         });
       } catch (networkErr) {
-        console.error("[GLInvoice] Network/CORS error:", networkErr, "Payload was:", payload);
-        throw new Error(
-          "Server returned an error and the browser could not read the response (CORS). " +
-            "Open DevTools → Network tab → find the failed request to GLInvoice → " +
-            "check the response body there for the actual server error.",
-        );
+        console.error("[GLInvoice] Network/CORS error:", networkErr);
+        throw new Error("Network error — check DevTools → Network tab for the failed GLInvoice request.");
       }
-
-      console.debug("[GLInvoice] Response:", res.status, res.statusText);
 
       if (!res.ok) {
         let msg = `Request failed (${res.status})`;
@@ -865,7 +892,9 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
           if (txt) {
             const p = JSON.parse(txt);
             if (p.errors) {
-              msg = Object.values(p.errors as Record<string, string[]>).flat().join(", ");
+              const fields = Object.keys(p.errors as Record<string, string[]>).join(", ");
+              const msgs = Object.values(p.errors as Record<string, string[]>).flat().join(" | ");
+              msg = fields ? `Fields: ${fields} — ${msgs}` : msgs;
             } else if (p.title) { msg = p.title; }
             else if (p.message) { msg = p.message; }
             else if (p.detail) { msg = p.detail; }
@@ -879,7 +908,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
 
       toast({
         title: isEdit ? "Invoice Updated" : "Invoice Created",
-        description: `${masterForm.invoiceNumber || "Bill"} saved successfully.`,
+        description: `${masterForm.invoiceNumber || "Invoice"} saved successfully.`,
       });
       setShowForm(false);
       setEditingRecord(null);
@@ -901,13 +930,13 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const res = await fetch(`${getBaseUrl()}GLInvoice/${deleteTarget.glInvoiceId}`, {
+      const res = await fetch(`${getBaseUrl()}GLInvoice/${deleteTarget.glinvoiceId}`, {
         method: "DELETE",
         headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error(`${res.status}`);
-      setData((prev) => prev.filter((r) => r.glInvoiceId !== deleteTarget.glInvoiceId));
-      toast({ title: "Deleted", description: `${deleteTarget.invoiceNumber || `Invoice #${deleteTarget.glInvoiceId}`} removed.` });
+      setData((prev) => prev.filter((r) => r.glinvoiceId !== deleteTarget.glinvoiceId));
+      toast({ title: "Deleted", description: `${deleteTarget.invoiceNumber || `Invoice #${deleteTarget.glinvoiceId}`} removed.` });
       setDeleteTarget(null);
     } catch {
       toast({ variant: "destructive", title: "Error", description: "Failed to delete invoice." });
@@ -919,18 +948,18 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
   // ── View ───────────────────────────────────────────────────────────────────
   const handleView = async (rec: GlInvoice) => {
     setIsLoading(true);
-    const full = await fetchById(rec.glInvoiceId);
+    const full = await fetchById(rec.glinvoiceId);
     setIsLoading(false);
     setViewRecord(full ?? rec);
     setViewOpen(true);
   };
 
-  // ── Process Invoice ───────────────────────────────────────────────────────────
+  // ── Process Invoice ────────────────────────────────────────────────────────
   const handleProcessInvoice = async (rec: GlInvoice) => {
-    setProcessingId(rec.glInvoiceId);
+    setProcessingId(rec.glinvoiceId);
     try {
       const res = await fetch(
-        `${getBaseUrl()}GLInvoice/ProcessInvoice?invoiceId=${rec.glInvoiceId}`,
+        `${getBaseUrl()}GLInvoice/ProcessInvoice?InvoiceId=${rec.glinvoiceId}`,
         { method: "PUT", headers: getAuthHeaders() },
       );
       if (!res.ok) {
@@ -946,7 +975,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
         } catch { /* keep */ }
         throw new Error(msg);
       }
-      toast({ title: "Bill Processed", description: `${rec.invoiceNumber || `#${rec.glInvoiceId}`} has been processed.` });
+      toast({ title: "Invoice Processed", description: `${rec.invoiceNumber || `#${rec.glinvoiceId}`} has been processed.` });
       fetchRecords();
     } catch (err) {
       toast({
@@ -956,6 +985,40 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
       });
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  // ── Split Invoice ──────────────────────────────────────────────────────────
+  const handleSplitInvoice = async (rec: GlInvoice) => {
+    setSplittingId(rec.glinvoiceId);
+    try {
+      const res = await fetch(
+        `${getBaseUrl()}GLInvoice/SplitInvoice?InvoiceId=${rec.glinvoiceId}`,
+        { method: "PUT", headers: getAuthHeaders() },
+      );
+      if (!res.ok) {
+        let msg = `Split failed (${res.status})`;
+        try {
+          const txt = await res.text();
+          if (txt) {
+            const p = JSON.parse(txt);
+            if (p.message) msg = p.message;
+            else if (p.title) msg = p.title;
+            else if (typeof p === "string") msg = p;
+          }
+        } catch { /* keep */ }
+        throw new Error(msg);
+      }
+      toast({ title: "Invoice Split", description: `${rec.invoiceNumber || `#${rec.glinvoiceId}`} has been split.` });
+      fetchRecords();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Split Failed",
+        description: err instanceof Error ? err.message : "Could not split invoice.",
+      });
+    } finally {
+      setSplittingId(null);
     }
   };
 
@@ -978,11 +1041,9 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
 
         const sv = (rec.invoiceStatus || "").toLowerCase();
         const sc: [number, number, number] =
-          sv === "processed" || sv === "approved"
-            ? [22, 163, 74]
-            : sv === "cancelled"
-            ? [220, 38, 38]
-            : [202, 138, 4];
+          sv === "processed" || sv === "approved" ? [22, 163, 74]
+          : sv === "cancelled" ? [220, 38, 38]
+          : [202, 138, 4];
         doc.setFillColor(...sc);
         doc.roundedRect(W - 54, 17, 40, 8, 2, 2, "F");
         doc.setTextColor(255, 255, 255);
@@ -1008,11 +1069,10 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
         info("Due Days", String(rec.dueDays || 0), 140, y);
         y += 14;
 
-        const party = parties.find((p) => p.partyId === rec.payToPartyId);
-        info("Pay To Party", party?.partyName || `Party #${rec.payToPartyId}`, 14, y);
+        const party = parties.find((p) => p.partyId === rec.billingPartyId);
+        info("Billing Party", party?.partyName || `Party #${rec.billingPartyId}`, 14, y);
         const job = jobs.find((j) => j.jobId === rec.jobId);
         info("Job", job?.jobNumber || (rec.jobId ? `#${rec.jobId}` : "—"), 75, y);
-        info("Vendor Invoice No", rec.vendorInvoiceNumber || "—", 140, y);
         y += 14;
 
         if (rec.invoiceDescription) {
@@ -1034,7 +1094,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
         doc.line(14, y, W - 14, y);
         y += 6;
 
-        const details = rec.glInvoiceDetails || [];
+        const details = rec.glinvoiceDetails || [];
         autoTable(doc, {
           startY: y,
           head: [["#", "Charge", "Cost", "Qty", "Amount", "Tax", "Discount", "Net Amount"]],
@@ -1051,21 +1111,14 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
               fmt(d.netAmount),
             ];
           }),
-          foot: [
-            [
-              "",
-              "",
-              "",
-              { content: "TOTALS", styles: { fontStyle: "bold", halign: "right" } },
-              fmt(details.reduce((s, d) => s + d.amount, 0)),
-              fmt(details.reduce((s, d) => s + d.tax, 0)),
-              fmt(details.reduce((s, d) => s + d.discount, 0)),
-              {
-                content: fmt(details.reduce((s, d) => s + d.netAmount, 0)),
-                styles: { fontStyle: "bold", textColor: [30, 64, 175] },
-              },
-            ],
-          ],
+          foot: [[
+            "", "",
+            { content: "TOTALS", colSpan: 2, styles: { fontStyle: "bold", halign: "right" } },
+            fmt(details.reduce((s, d) => s + d.amount, 0)),
+            fmt(details.reduce((s, d) => s + d.tax, 0)),
+            fmt(details.reduce((s, d) => s + d.discount, 0)),
+            { content: fmt(details.reduce((s, d) => s + d.netAmount, 0)), styles: { fontStyle: "bold", textColor: [30, 64, 175] } },
+          ]],
           theme: "grid",
           headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8, cellPadding: 3 },
           footStyles: { fillColor: [241, 245, 249], fontSize: 8, cellPadding: 3 },
@@ -1086,7 +1139,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
 
         const fy = (doc as any).lastAutoTable.finalY + 6;
         const summaryRows: [string, string, boolean][] = [
-          ["Bill Amount", fmt(rec.invoiceAmount), false],
+          ["Invoice Amount", fmt(rec.invoiceAmount), false],
           ["Total Tax", fmt(rec.totalTax), false],
           ["Discount Total", `(${fmt(rec.discountTotal)})`, false],
           ["Partial Payment", fmt(rec.partialPayment), false],
@@ -1127,8 +1180,8 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
         doc.text("System generated document.", 14, pH - 8);
         doc.text(`Generated: ${moment().format("DD MMM YYYY HH:mm")}`, W - 14, pH - 8, { align: "right" });
 
-        doc.save(`GLInvoice_${rec.invoiceNumber || rec.glInvoiceId}_${moment().format("YYYYMMDD")}.pdf`);
-        toast({ title: "PDF Downloaded", description: rec.invoiceNumber || `#${rec.glInvoiceId}` });
+        doc.save(`GLInvoice_${rec.invoiceNumber || rec.glinvoiceId}_${moment().format("YYYYMMDD")}.pdf`);
+        toast({ title: "PDF Downloaded", description: rec.invoiceNumber || `#${rec.glinvoiceId}` });
       } catch {
         toast({ variant: "destructive", title: "Error", description: "Failed to generate PDF." });
       }
@@ -1139,7 +1192,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
   const handlePrintFromList = useCallback(
     async (rec: GlInvoice) => {
       setIsLoading(true);
-      const full = await fetchById(rec.glInvoiceId);
+      const full = await fetchById(rec.glinvoiceId);
       setIsLoading(false);
       handlePDF(full ?? rec);
     },
@@ -1149,14 +1202,35 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
   // ── Row mutation helpers ───────────────────────────────────────────────────
   const addRow = () => {
     const cid = masterForm.currencyId ?? currencies.find((c) => c.isDefault)?.currencyId ?? 0;
-    setDetailRows((p) => [...p, blankRow(masterForm.exchangeRate, cid)]);
+    const billingGlId = masterForm.billingPartyId
+      ? (parties.find((p) => p.partyId === masterForm.billingPartyId)?.glAccountId ?? 0)
+      : 0;
+    const newRow = blankRow(masterForm.exchangeRate, cid);
+    if (billingGlId) newRow.fromCoaId = billingGlId;
+    setDetailRows((p) => [...p, newRow]);
   };
+
   const removeRow = (key: string) => setDetailRows((p) => p.filter((r) => r._key !== key));
+
   const updateRow = (key: string, patch: Partial<DetailRow>) =>
-    setDetailRows((p) => p.map((r) => (r._key === key ? { ...r, ...patch } : r)));
+    setDetailRows((p) =>
+      p.map((r) => {
+        if (r._key !== key) return r;
+        const next = { ...r, ...patch };
+        if ("taxPct" in patch || (("cost" in patch || "qty" in patch) && r.taxPct > 0)) {
+          next.tax = parseFloat(((next.cost * next.qty) * (next.taxPct / 100)).toFixed(4));
+        }
+        return next;
+      }),
+    );
 
   // ─── FORM VIEW ─────────────────────────────────────────────────────────────
   if (showForm) {
+    const selectedParty = masterForm.billingPartyId
+      ? parties.find((p) => p.partyId === masterForm.billingPartyId)
+      : null;
+    const customerGlLocked = !!(selectedParty?.glAccountId);
+
     return (
       <div className='p-4 bg-gray-50 min-h-screen'>
         <div className='max-w-[1440px] mx-auto space-y-4'>
@@ -1177,7 +1251,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                   <Receipt className='h-5 w-5 text-indigo-600' />
                   {editingRecord ? "Edit GL Invoice" : "New GL Invoice"}
                 </h1>
-                <p className='text-xs text-gray-500 mt-0.5'>Customer Invoice for Job Orders</p>
+                <p className='text-xs text-gray-500 mt-0.5'>Customer Invoice</p>
               </div>
             </div>
             <div className='flex gap-2'>
@@ -1236,6 +1310,78 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                   />
                 </div>
 
+                {/* Invoice Type */}
+                <div>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Invoice Type *</Label>
+                  <Select
+                    value={masterForm.invoiceType}
+                    onValueChange={(v) => setMasterForm((p) => ({ ...p, invoiceType: v }))}
+                  >
+                    <SelectTrigger className='h-9 text-sm'>
+                      <SelectValue>
+                        {invoiceTypeOptions.find((o) => o.value === masterForm.invoiceType)?.label
+                          ?? (masterForm.invoiceType ? `Type #${masterForm.invoiceType}` : "Select type...")}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {invoiceTypeOptions.length > 0 ? (
+                        invoiceTypeOptions.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))
+                      ) : (
+                        <>
+                          <SelectItem value='1'>Sales Invoice</SelectItem>
+                          <SelectItem value='2'>Credit Note</SelectItem>
+                          <SelectItem value='3'>Debit Note</SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Billing Party */}
+                <div>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Billing Party *</Label>
+                  <Select
+                    value={masterForm.billingPartyId ? String(masterForm.billingPartyId) : ""}
+                    onValueChange={(v) => {
+                      const partyId = Number(v);
+                      const party = parties.find((p) => p.partyId === partyId);
+                      setMasterForm((p) => ({ ...p, billingPartyId: partyId }));
+                      if (party?.glAccountId) {
+                        setDetailRows((prev) =>
+                          prev.map((r) => ({ ...r, fromCoaId: party.glAccountId! })),
+                        );
+                      }
+                    }}
+                  >
+                    <SelectTrigger className='h-9 text-sm'>
+                      <SelectValue>
+                        {masterForm.billingPartyId
+                          ? (parties.find((p) => p.partyId === masterForm.billingPartyId)?.partyName ?? `Party #${masterForm.billingPartyId}`)
+                          : "Select billing party..."}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className='max-h-[260px]'>
+                      <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
+                        <Input
+                          placeholder='Search party...'
+                          value={partySearch}
+                          onChange={(e) => setPartySearch(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          className='h-6 text-xs'
+                        />
+                      </div>
+                      {filteredParties.map((p) => (
+                        <SelectItem key={p.partyId} value={String(p.partyId)}>
+                          {p.partyName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Job Order */}
                 <div>
                   <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Job Order</Label>
@@ -1247,7 +1393,6 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                         ...p,
                         jobId: sel?.jobId ?? null,
                         exchangeRate: sel?.jobInvoiceExchRate || p.exchangeRate || 1,
-                        payToPartyId: sel?.terminalPartyId ?? sel?.principalId ?? sel?.consigneePartyId ?? p.payToPartyId,
                       }));
                       if (sel?.jobId) autoFillFromJob(sel.jobId);
                     }}
@@ -1284,70 +1429,6 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                   )}
                 </div>
 
-                {/* Invoice Type */}
-                <div>
-                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Invoice Type *</Label>
-                  <Select
-                    value={String(masterForm.invoiceType)}
-                    onValueChange={(v) => setMasterForm((p) => ({ ...p, invoiceType: Number(v) }))}
-                  >
-                    <SelectTrigger className='h-9 text-sm'>
-                      <SelectValue>
-                        {invoiceTypeOptions.find((o) => o.value === String(masterForm.invoiceType))?.label
-                          ?? ({ 1: "Standard", 2: "Credit", 3: "Debit" } as Record<number, string>)[masterForm.invoiceType]
-                          ?? "Select type..."}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {invoiceTypeOptions.length > 0 ? (
-                        invoiceTypeOptions.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                        ))
-                      ) : (
-                        <>
-                          <SelectItem value='1'>Standard</SelectItem>
-                          <SelectItem value='2'>Credit</SelectItem>
-                          <SelectItem value='3'>Debit</SelectItem>
-                        </>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Pay To Party */}
-                <div>
-                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Pay To Party *</Label>
-                  <Select
-                    value={masterForm.payToPartyId ? String(masterForm.payToPartyId) : ""}
-                    onValueChange={(v) => setMasterForm((p) => ({ ...p, payToPartyId: Number(v) }))}
-                  >
-                    <SelectTrigger className='h-9 text-sm'>
-                      <SelectValue>
-                        {masterForm.payToPartyId
-                          ? (parties.find((p) => p.partyId === masterForm.payToPartyId)?.partyName ?? `Party #${masterForm.payToPartyId}`)
-                          : "Select party..."}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className='max-h-[260px]'>
-                      <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
-                        <Input
-                          placeholder='Search party...'
-                          value={partySearch}
-                          onChange={(e) => setPartySearch(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          className='h-6 text-xs'
-                        />
-                      </div>
-                      {filteredParties.map((p) => (
-                        <SelectItem key={p.partyId} value={String(p.partyId)}>
-                          {p.partyName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 {/* Currency */}
                 <div>
                   <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Currency *</Label>
@@ -1358,9 +1439,10 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                     <SelectTrigger className='h-9 text-sm'>
                       <SelectValue>
                         {masterForm.currencyId
-                          ? (currencies.find((c) => c.currencyId === masterForm.currencyId)
-                              ? `${currencies.find((c) => c.currencyId === masterForm.currencyId)!.currencyCode} – ${currencies.find((c) => c.currencyId === masterForm.currencyId)!.currencyName}`
-                              : `Currency #${masterForm.currencyId}`)
+                          ? (() => {
+                              const c = currencies.find((c) => c.currencyId === masterForm.currencyId);
+                              return c ? `${c.currencyCode} – ${c.currencyName}` : `Currency #${masterForm.currencyId}`;
+                            })()
                           : "Select currency..."}
                       </SelectValue>
                     </SelectTrigger>
@@ -1416,6 +1498,31 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                   </Select>
                 </div>
 
+                {/* Due Days */}
+                <div>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Due Days</Label>
+                  <Input
+                    type='number'
+                    min='0'
+                    value={masterForm.dueDays}
+                    onChange={(e) => setMasterForm((p) => ({ ...p, dueDays: parseInt(e.target.value) || 0 }))}
+                    className='h-9 text-sm'
+                  />
+                </div>
+
+                {/* Partial Payment */}
+                <div>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Partial Payment</Label>
+                  <Input
+                    type='number'
+                    min='0'
+                    step='0.01'
+                    value={masterForm.partialPayment}
+                    onChange={(e) => setMasterForm((p) => ({ ...p, partialPayment: parseFloat(e.target.value) || 0 }))}
+                    className='h-9 text-sm'
+                  />
+                </div>
+
                 {/* Description */}
                 <div className='md:col-span-3 lg:col-span-4'>
                   <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Invoice Description</Label>
@@ -1434,7 +1541,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
           {/* Totals */}
           <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
             {[
-              { label: "Bill Amount", value: masterTotals.invoiceAmount },
+              { label: "Invoice Amount", value: masterTotals.invoiceAmount },
               { label: "Total Tax", value: masterTotals.totalTax },
               { label: "Discount Total", value: masterTotals.discountTotal },
               { label: "Net Total", value: masterTotals.totalAmount },
@@ -1454,9 +1561,9 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
               <CardTitle className='text-sm font-semibold text-indigo-900 flex items-center gap-2'>
                 <Badge className='bg-indigo-600 text-white'>Details</Badge>
                 Charge Lines
-                {masterForm.jobId && (
+                {customerGlLocked && (
                   <span className='text-xs text-indigo-500 font-normal ml-1'>
-                    (auto-filled from fund requests)
+                    (Customer GL Account auto-filled from Billing Party)
                   </span>
                 )}
               </CardTitle>
@@ -1478,10 +1585,15 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                       <TableHead className='min-w-[160px]'>Charge *</TableHead>
                       <TableHead className='min-w-[90px]'>Cost</TableHead>
                       <TableHead className='min-w-[60px]'>Qty</TableHead>
+                      <TableHead className='min-w-[90px] text-right'>Amount</TableHead>
+                      <TableHead className='min-w-[70px]'>Tax %</TableHead>
+                      <TableHead className='min-w-[80px]'>Tax Amt</TableHead>
+                      <TableHead className='min-w-[80px]'>Discount</TableHead>
                       <TableHead className='min-w-[90px] text-right'>Net Amount</TableHead>
-                      <TableHead className='min-w-[160px]'>Billing Party *</TableHead>
-                      <TableHead className='min-w-[160px]'>GL Account *</TableHead>
+                      <TableHead className='min-w-[180px]'>Customer GL Account *</TableHead>
+                      <TableHead className='min-w-[180px]'>Revenue GL Account *</TableHead>
                       <TableHead className='min-w-[140px]'>Cost Center</TableHead>
+                      <TableHead className='min-w-[80px]'>Exch Rate</TableHead>
                       <TableHead className='w-8'></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1496,8 +1608,6 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                       const qTo = toCoaSearch.toLowerCase();
                       const qCC = ccSearch.toLowerCase();
 
-                      // Always include the currently selected item so SelectValue
-                      // can display its label even when the list is filtered.
                       const filteredCharges = (() => {
                         const base = qCharge
                           ? charges.filter(c =>
@@ -1510,22 +1620,18 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                         return base;
                       })();
 
-                      // Billing Party — scoped to the job's shipper/consignee/terminal.
-                      // jobParties already contains only those parties (or all if no job).
                       const filteredFromCoa = (() => {
                         const base = qFrom
-                          ? jobParties.filter(p =>
-                              p.partyName.toLowerCase().includes(qFrom) ||
-                              p.partyCode.toLowerCase().includes(qFrom))
-                          : jobParties;
-                        const sel = parties.find(p => p.partyId === row.fromCoaId);
-                        if (sel && !base.find(p => p.partyId === sel.partyId))
+                          ? accounts.filter(a =>
+                              a.accountName.toLowerCase().includes(qFrom) ||
+                              a.accountCode.toLowerCase().includes(qFrom))
+                          : accounts;
+                        const sel = accounts.find(a => a.accountId === row.fromCoaId);
+                        if (sel && !base.find(a => a.accountId === sel.accountId))
                           return [sel, ...base];
                         return base;
                       })();
 
-                      // To CoA — use ALL accounts; BeneficiaryCoaId is the
-                      // customer's GL Account ID.
                       const filteredToCoa = (() => {
                         const base = qTo
                           ? accounts.filter(a =>
@@ -1552,9 +1658,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
 
                       return (
                         <TableRow key={row._key} className={row._autoFilled ? "bg-indigo-50/40" : ""}>
-                          <TableCell className='text-xs text-gray-500 text-center'>
-                            {idx + 1}
-                          </TableCell>
+                          <TableCell className='text-xs text-gray-500 text-center'>{idx + 1}</TableCell>
 
                           {/* Charge */}
                           <TableCell>
@@ -1614,28 +1718,72 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                             />
                           </TableCell>
 
+                          {/* Amount (computed) */}
+                          <TableCell className='text-xs text-right font-mono text-gray-700'>
+                            {fmt(row.amount)}
+                          </TableCell>
+
+                          {/* Tax % */}
+                          <TableCell>
+                            <Input
+                              type='number'
+                              min='0'
+                              max='100'
+                              step='0.01'
+                              value={row.taxPct}
+                              onChange={(e) => updateRow(row._key, { taxPct: parseFloat(e.target.value) || 0 })}
+                              className='h-7 text-xs w-16'
+                              placeholder='%'
+                            />
+                          </TableCell>
+
+                          {/* Tax Amount */}
+                          <TableCell>
+                            <Input
+                              type='number'
+                              min='0'
+                              step='0.01'
+                              value={row.tax}
+                              onChange={(e) => updateRow(row._key, { tax: parseFloat(e.target.value) || 0 })}
+                              className='h-7 text-xs w-20'
+                            />
+                          </TableCell>
+
+                          {/* Discount */}
+                          <TableCell>
+                            <Input
+                              type='number'
+                              min='0'
+                              step='0.01'
+                              value={row.discount}
+                              onChange={(e) => updateRow(row._key, { discount: parseFloat(e.target.value) || 0 })}
+                              className='h-7 text-xs w-20'
+                            />
+                          </TableCell>
+
                           {/* Net Amount (computed) */}
                           <TableCell className='text-xs text-right font-mono font-semibold text-indigo-700'>
                             {fmt(row.netAmount)}
                           </TableCell>
 
-                          {/* From CoA — Billing Party */}
+                          {/* Customer GL Account (FromCoaId — locked when billing party has GL) */}
                           <TableCell>
                             <Select
                               value={row.fromCoaId ? String(row.fromCoaId) : ""}
                               onValueChange={(v) => updateRow(row._key, { fromCoaId: Number(v) })}
+                              disabled={customerGlLocked}
                             >
-                              <SelectTrigger className='h-7 text-xs'>
+                              <SelectTrigger className={`h-7 text-xs ${customerGlLocked ? "opacity-70 cursor-not-allowed bg-gray-50" : ""}`}>
                                 <SelectValue>
                                   {row.fromCoaId
-                                    ? (parties.find((p) => p.partyId === row.fromCoaId)?.partyName ?? `#${row.fromCoaId}`)
-                                    : "Billing Party..."}
+                                    ? (accounts.find((a) => a.accountId === row.fromCoaId)?.accountName ?? `#${row.fromCoaId}`)
+                                    : "Customer GL Account..."}
                                 </SelectValue>
                               </SelectTrigger>
                               <SelectContent className='max-h-[260px]'>
                                 <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
                                   <Input
-                                    placeholder='Search party...'
+                                    placeholder='Search account...'
                                     value={fromCoaSearch}
                                     onChange={(e) =>
                                       setDetailSearches((p) => ({ ...p, [`${row._key}_fromCoa`]: e.target.value }))
@@ -1645,16 +1793,16 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                                     className='h-6 text-xs'
                                   />
                                 </div>
-                                {filteredFromCoa.map((p) => (
-                                  <SelectItem key={p.partyId} value={String(p.partyId)}>
-                                    {p.partyName}
+                                {filteredFromCoa.map((a) => (
+                                  <SelectItem key={a.accountId} value={String(a.accountId)}>
+                                    {a.accountCode} – {a.accountName}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
                           </TableCell>
 
-                          {/* To CoA — GL Account */}
+                          {/* Revenue GL Account (ToCoaId) */}
                           <TableCell>
                             <Select
                               value={row.toCoaId ? String(row.toCoaId) : ""}
@@ -1664,7 +1812,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                                 <SelectValue>
                                   {row.toCoaId
                                     ? (accounts.find((a) => a.accountId === row.toCoaId)?.accountName ?? `#${row.toCoaId}`)
-                                    : "GL Account..."}
+                                    : "Revenue GL Account..."}
                                 </SelectValue>
                               </SelectTrigger>
                               <SelectContent className='max-h-[260px]'>
@@ -1725,6 +1873,18 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                             </Select>
                           </TableCell>
 
+                          {/* Exch Rate */}
+                          <TableCell>
+                            <Input
+                              type='number'
+                              min='0'
+                              step='0.0001'
+                              value={row.exchangeRate}
+                              onChange={(e) => updateRow(row._key, { exchangeRate: parseFloat(e.target.value) || 1 })}
+                              className='h-7 text-xs w-20'
+                            />
+                          </TableCell>
+
                           {/* Remove */}
                           <TableCell>
                             <Button
@@ -1742,7 +1902,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
 
                     {detailRows.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={9} className='text-center py-8 text-gray-400 text-sm'>
+                        <TableCell colSpan={14} className='text-center py-8 text-gray-400 text-sm'>
                           No charge lines. Select a Job Order to auto-fill, or click "Add Row".
                         </TableCell>
                       </TableRow>
@@ -1771,7 +1931,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
               <Receipt className='h-6 w-6 text-indigo-600' />
               GL Invoices
             </h1>
-            <p className='text-sm text-gray-500 mt-0.5'>Billing management for Job Orders</p>
+            <p className='text-sm text-gray-500 mt-0.5'>Customer billing management</p>
           </div>
           <div className='flex items-center gap-2'>
             <Button
@@ -1798,21 +1958,9 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
         <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
           {[
             { label: "Total Invoices", value: data.length, color: "text-gray-900" },
-            {
-              label: "Draft",
-              value: data.filter((r) => (r.invoiceStatus || "").toLowerCase() === "draft").length,
-              color: "text-yellow-700",
-            },
-            {
-              label: "Processed",
-              value: data.filter((r) => isAlreadyProcessed(r.invoiceStatus)).length,
-              color: "text-green-700",
-            },
-            {
-              label: "Total Amount",
-              value: `PKR ${fmt(data.reduce((s, r) => s + r.totalAmount, 0))}`,
-              color: "text-indigo-700",
-            },
+            { label: "Draft", value: data.filter((r) => (r.invoiceStatus || "").toLowerCase() === "draft").length, color: "text-yellow-700" },
+            { label: "Processed", value: data.filter((r) => isAlreadyProcessed(r.invoiceStatus)).length, color: "text-green-700" },
+            { label: "Total Amount", value: `PKR ${fmt(data.reduce((s, r) => s + r.totalAmount, 0))}`, color: "text-indigo-700" },
           ].map(({ label, value, color }) => (
             <Card key={label}>
               <CardContent className='py-3 px-4'>
@@ -1829,7 +1977,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
           <Input
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            placeholder='Search bills by number, status, vendor invoice, party...'
+            placeholder='Search by invoice number, status, billing party...'
             className='pl-9 h-9 text-sm'
           />
         </div>
@@ -1845,17 +1993,16 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                     <TableHead>Invoice No.</TableHead>
                     <TableHead>Invoice Date</TableHead>
                     <TableHead>Job</TableHead>
-                    <TableHead>Pay To</TableHead>
-                    <TableHead>Vendor Invoice No.</TableHead>
+                    <TableHead>Billing Party</TableHead>
                     <TableHead className='text-right'>Total Amount</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className='text-right w-52'>Actions</TableHead>
+                    <TableHead className='text-right w-56'>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className='text-center py-12 text-gray-400'>
+                      <TableCell colSpan={8} className='text-center py-12 text-gray-400'>
                         <FiFileText className='h-8 w-8 mx-auto mb-2 opacity-40' />
                         <p className='text-sm'>No invoices found</p>
                       </TableCell>
@@ -1863,13 +2010,14 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                   ) : (
                     filtered.map((rec, idx) => {
                       const job = jobs.find((j) => j.jobId === rec.jobId);
-                      const party = parties.find((p) => p.partyId === rec.payToPartyId);
+                      const party = parties.find((p) => p.partyId === rec.billingPartyId);
                       const processed = isAlreadyProcessed(rec.invoiceStatus);
-                      const isProcessingThis = processingId === rec.glInvoiceId;
+                      const isProcessingThis = processingId === rec.glinvoiceId;
+                      const isSplittingThis = splittingId === rec.glinvoiceId;
                       return (
-                        <TableRow key={rec.glInvoiceId} className='hover:bg-gray-50/80 text-sm'>
+                        <TableRow key={rec.glinvoiceId} className='hover:bg-gray-50/80 text-sm'>
                           <TableCell className='text-gray-400 text-xs'>{idx + 1}</TableCell>
-                          <TableCell className='font-medium'>{rec.invoiceNumber || `#${rec.glInvoiceId}`}</TableCell>
+                          <TableCell className='font-medium'>{rec.invoiceNumber || `#${rec.glinvoiceId}`}</TableCell>
                           <TableCell className='text-xs'>
                             {rec.invoiceDate ? moment(rec.invoiceDate).format("DD MMM YYYY") : "—"}
                           </TableCell>
@@ -1877,9 +2025,8 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                             {job?.jobNumber || (rec.jobId ? `#${rec.jobId}` : "—")}
                           </TableCell>
                           <TableCell className='text-xs'>
-                            {party?.partyName || (rec.payToPartyId ? `#${rec.payToPartyId}` : "—")}
+                            {party?.partyName || (rec.billingPartyId ? `#${rec.billingPartyId}` : "—")}
                           </TableCell>
-                          <TableCell className='text-xs'>{rec.vendorInvoiceNumber || "—"}</TableCell>
                           <TableCell className='text-right font-mono font-semibold'>
                             {fmt(rec.totalAmount)}
                           </TableCell>
@@ -1891,8 +2038,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                           <TableCell>
                             <div className='flex items-center justify-end gap-1'>
                               <Button
-                                variant='ghost'
-                                size='icon'
+                                variant='ghost' size='icon'
                                 className='h-7 w-7 text-gray-500 hover:text-indigo-700'
                                 title='View'
                                 onClick={() => handleView(rec)}
@@ -1900,8 +2046,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                                 <FiEye className='h-3.5 w-3.5' />
                               </Button>
                               <Button
-                                variant='ghost'
-                                size='icon'
+                                variant='ghost' size='icon'
                                 className='h-7 w-7 text-gray-500 hover:text-indigo-700'
                                 title='Edit'
                                 onClick={() => openEdit(rec)}
@@ -1910,22 +2055,29 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                                 <FiEdit className='h-3.5 w-3.5' />
                               </Button>
                               <Button
-                                variant='ghost'
-                                size='icon'
+                                variant='ghost' size='icon'
                                 className='h-7 w-7 text-gray-500 hover:text-green-700'
                                 title='Process Invoice'
                                 onClick={() => handleProcessInvoice(rec)}
                                 disabled={processed || isProcessingThis}
                               >
-                                {isProcessingThis ? (
-                                  <FiLoader className='h-3.5 w-3.5 animate-spin' />
-                                ) : (
-                                  <FiCheckCircle className='h-3.5 w-3.5' />
-                                )}
+                                {isProcessingThis
+                                  ? <FiLoader className='h-3.5 w-3.5 animate-spin' />
+                                  : <FiCheckCircle className='h-3.5 w-3.5' />}
                               </Button>
                               <Button
-                                variant='ghost'
-                                size='icon'
+                                variant='ghost' size='icon'
+                                className='h-7 w-7 text-gray-500 hover:text-blue-700'
+                                title='Split Invoice'
+                                onClick={() => handleSplitInvoice(rec)}
+                                disabled={isSplittingThis}
+                              >
+                                {isSplittingThis
+                                  ? <FiLoader className='h-3.5 w-3.5 animate-spin' />
+                                  : <Scissors className='h-3.5 w-3.5' />}
+                              </Button>
+                              <Button
+                                variant='ghost' size='icon'
                                 className='h-7 w-7 text-gray-500 hover:text-gray-900'
                                 title='Download PDF'
                                 onClick={() => handlePrintFromList(rec)}
@@ -1933,8 +2085,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                                 <FiPrinter className='h-3.5 w-3.5' />
                               </Button>
                               <Button
-                                variant='ghost'
-                                size='icon'
+                                variant='ghost' size='icon'
                                 className='h-7 w-7 text-gray-500 hover:text-red-600'
                                 title='Delete'
                                 onClick={() => setDeleteTarget(rec)}
@@ -1961,7 +2112,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
           <DialogHeader>
             <DialogTitle className='flex items-center gap-2'>
               <Receipt className='h-5 w-5 text-indigo-600' />
-              GL Invoice — {viewRecord?.invoiceNumber || `#${viewRecord?.glInvoiceId}`}
+              GL Invoice — {viewRecord?.invoiceNumber || `#${viewRecord?.glinvoiceId}`}
             </DialogTitle>
             <DialogDescription>
               {viewRecord?.invoiceDate ? moment(viewRecord.invoiceDate).format("DD MMM YYYY") : ""}
@@ -1975,14 +2126,14 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                   ["Invoice Number", viewRecord.invoiceNumber || "—"],
                   ["Invoice Date", viewRecord.invoiceDate ? moment(viewRecord.invoiceDate).format("DD MMM YYYY") : "—"],
                   ["Job", jobs.find((j) => j.jobId === viewRecord.jobId)?.jobNumber || (viewRecord.jobId ? `#${viewRecord.jobId}` : "—")],
-                  ["Pay To Party", parties.find((p) => p.partyId === viewRecord.payToPartyId)?.partyName || `#${viewRecord.payToPartyId}`],
+                  ["Billing Party", parties.find((p) => p.partyId === viewRecord.billingPartyId)?.partyName || `#${viewRecord.billingPartyId}`],
                   ["Status", viewRecord.invoiceStatus || "—"],
                   ["Currency", currencies.find((c) => c.currencyId === viewRecord.currencyId)?.currencyCode || "—"],
                   ["Exchange Rate", String(viewRecord.exchangeRate)],
                   ["Due Days", String(viewRecord.dueDays || 0)],
-                  ["Vendor Invoice No.", viewRecord.vendorInvoiceNumber || "—"],
-                  ["Vendor Invoice Date", viewRecord.vendorInvoiceDate ? moment(viewRecord.vendorInvoiceDate).format("DD MMM YYYY") : "—"],
-                  ["Bill Amount", fmt(viewRecord.invoiceAmount)],
+                  ["Partial Payment", fmt(viewRecord.partialPayment)],
+                  ["Invoice Amount", fmt(viewRecord.invoiceAmount)],
+                  ["Total Tax", fmt(viewRecord.totalTax)],
                   ["Total Amount", fmt(viewRecord.totalAmount)],
                 ].map(([label, value]) => (
                   <div key={label} className='bg-gray-50 rounded p-2.5'>
@@ -1999,7 +2150,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                 </div>
               )}
 
-              {viewRecord.glInvoiceDetails?.length > 0 && (
+              {viewRecord.glinvoiceDetails?.length > 0 && (
                 <div>
                   <p className='text-sm font-semibold text-gray-700 mb-2'>Charge Lines</p>
                   <div className='overflow-x-auto'>
@@ -2017,10 +2168,10 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {viewRecord.glInvoiceDetails.map((d, i) => {
+                        {viewRecord.glinvoiceDetails.map((d, i) => {
                           const ch = charges.find((c) => c.chargesMasterId === d.chargesId);
                           return (
-                            <TableRow key={d.glInvoiceDetailId} className='text-sm'>
+                            <TableRow key={d.glinvoiceDetailId} className='text-sm'>
                               <TableCell className='text-xs text-gray-400'>{i + 1}</TableCell>
                               <TableCell>{ch?.chargesName || `#${d.chargesId}`}</TableCell>
                               <TableCell className='text-right font-mono'>{fmt(d.cost)}</TableCell>
@@ -2060,10 +2211,7 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
           <DialogFooter>
             <Button variant='outline' onClick={() => setViewOpen(false)}>Close</Button>
             {viewRecord && (
-              <Button
-                onClick={() => { handlePDF(viewRecord); }}
-                className='gap-1.5'
-              >
+              <Button onClick={() => handlePDF(viewRecord)} className='gap-1.5'>
                 <FiPrinter className='h-3.5 w-3.5' /> Download PDF
               </Button>
             )}
@@ -2080,13 +2228,11 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
             </DialogTitle>
             <DialogDescription>
               Are you sure you want to delete invoice{" "}
-              <strong>{deleteTarget?.invoiceNumber || `#${deleteTarget?.glInvoiceId}`}</strong>? This action cannot be undone.
+              <strong>{deleteTarget?.invoiceNumber || `#${deleteTarget?.glinvoiceId}`}</strong>? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant='outline' onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
-              Cancel
-            </Button>
+            <Button variant='outline' onClick={() => setDeleteTarget(null)} disabled={isDeleting}>Cancel</Button>
             <Button variant='destructive' onClick={confirmDelete} disabled={isDeleting} className='gap-1.5'>
               {isDeleting ? <FiLoader className='h-3.5 w-3.5 animate-spin' /> : <FiTrash2 className='h-3.5 w-3.5' />}
               {isDeleting ? "Deleting..." : "Delete"}
