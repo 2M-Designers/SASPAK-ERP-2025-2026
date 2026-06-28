@@ -2045,7 +2045,7 @@ export default function InternalFundRequestForm({
           CreatedOn: isUpdate ? (defaultState?.createdOn ?? nowIso) : nowIso,
           CreatedBy: (() => {
             const raw = isUpdate ? (defaultState?.createdBy ?? userId) : userId;
-            return raw != null ? String(raw) : null;
+            return raw != null ? Number(raw) : 0;
           })(),
           CashHeadId: isUpdate
             ? (defaultState?.cashHeadId ?? defaultState?.CashHeadId ?? null)

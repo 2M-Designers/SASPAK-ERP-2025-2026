@@ -738,7 +738,7 @@ export default function InternalFundRequestApprovalForm({
         CreatedOn: req.createdOn || req.CreatedOn || new Date().toISOString(),
         CreatedBy: (() => {
           const raw = req.createdBy ?? req.CreatedBy ?? userId;
-          return raw != null ? String(raw) : null;
+          return raw != null ? Number(raw) : 0;
         })(),
         CashHeadId: req.cashHeadId ?? req.CashHeadId ?? null,
         RequestorUserId: req.requestorUserId || req.RequestorUserId,

@@ -747,7 +747,7 @@ export default function InternalBankFundRequestApprovalForm({
         CreatedOn: req.createdOn || req.CreatedOn,
         CreatedBy: (() => {
           const raw = req.createdBy ?? req.CreatedBy ?? userId;
-          return raw != null ? String(raw) : null;
+          return raw != null ? Number(raw) : 0;
         })(),
         RequestorUserId: req.requestorUserId || req.RequestorUserId,
         Remarks: masterRemarks,
