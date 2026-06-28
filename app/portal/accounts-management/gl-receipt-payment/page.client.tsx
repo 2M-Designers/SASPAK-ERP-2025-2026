@@ -929,7 +929,10 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   // ── View ───────────────────────────────────────────────────────────────────
   const handleView = async (rec: ReceiptPayment) => {
     setIsLoading(true);
-    const full = await fetchById(rec.glreceiptPaymentId);
+    const [full] = await Promise.all([
+      fetchById(rec.glreceiptPaymentId),
+      fetchGlDocs(rec.receiptPaymentType, rec.jobId, rec.payToPartyId),
+    ]);
     setIsLoading(false);
     setViewRecord(full ?? rec);
     setViewOpen(true);
@@ -1069,13 +1072,18 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
         y += 6;
 
         const details = rec.glreceiptPaymentDetails || [];
+        const docNumHeader = rec.receiptPaymentType === 1 ? "GL Invoice No." : "GL Bill No.";
         autoTable(doc, {
           startY: y,
-          head: [["#", "Charge", "Cost", "Qty", "Amount", "Tax", "Discount", "Net Amount"]],
+          head: [["#", docNumHeader, "Charge", "Cost", "Qty", "Amount", "Tax", "Discount", "Net Amount"]],
           body: details.map((d, i) => {
             const ch = charges.find((c) => c.chargesMasterId === d.chargesId);
+            const docNum = rec.receiptPaymentType === 1
+              ? (glInvoices.find((inv) => inv.glinvoiceId === d.glInvoiceId)?.invoiceNumber ?? (d.glInvoiceId ? `#${d.glInvoiceId}` : "—"))
+              : (glBills.find((b) => b.glbillId === d.glbillId)?.billNumber ?? (d.glbillId ? `#${d.glbillId}` : "—"));
             return [
               i + 1,
+              docNum,
               ch?.chargesName || `Charge #${d.chargesId}`,
               fmt(d.cost),
               d.qty,
@@ -1087,6 +1095,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           }),
           foot: [
             [
+              "",
               "",
               "",
               "",
@@ -1107,13 +1116,14 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           alternateRowStyles: { fillColor: [248, 250, 252] },
           columnStyles: {
             0: { cellWidth: 8, halign: "center" },
-            1: { cellWidth: 45 },
-            2: { cellWidth: 22, halign: "right" },
-            3: { cellWidth: 12, halign: "center" },
-            4: { cellWidth: 25, halign: "right" },
-            5: { cellWidth: 20, halign: "right" },
-            6: { cellWidth: 22, halign: "right" },
-            7: { cellWidth: 25, halign: "right" },
+            1: { cellWidth: 28 },
+            2: { cellWidth: 38 },
+            3: { cellWidth: 20, halign: "right" },
+            4: { cellWidth: 10, halign: "center" },
+            5: { cellWidth: 22, halign: "right" },
+            6: { cellWidth: 18, halign: "right" },
+            7: { cellWidth: 20, halign: "right" },
+            8: { cellWidth: 22, halign: "right" },
           },
           margin: { left: 14, right: 14 },
         });
@@ -1167,7 +1177,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
         toast({ variant: "destructive", title: "Error", description: "Failed to generate PDF." });
       }
     },
-    [charges, parties, jobs, toast],
+    [charges, parties, jobs, glInvoices, glBills, toast],
   );
 
   const handlePrintFromList = useCallback(
@@ -2526,6 +2536,9 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                         <TableHeader>
                           <TableRow className='bg-gray-50'>
                             <TableHead className='text-xs w-8'>#</TableHead>
+                            <TableHead className='text-xs'>
+                              {viewRecord.receiptPaymentType === 1 ? "GL Invoice No." : "GL Bill No."}
+                            </TableHead>
                             <TableHead className='text-xs'>Charge</TableHead>
                             <TableHead className='text-xs text-right'>Cost</TableHead>
                             <TableHead className='text-xs text-center'>Qty</TableHead>
@@ -2545,6 +2558,13 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                             return (
                               <TableRow key={d.glreceiptPaymentDetailId || i}>
                                 <TableCell className='text-xs text-gray-400'>{i + 1}</TableCell>
+                                <TableCell className='text-xs font-medium text-blue-700'>
+                                  {viewRecord.receiptPaymentType === 1
+                                    ? (glInvoices.find((inv) => inv.glinvoiceId === d.glInvoiceId)?.invoiceNumber
+                                        ?? (d.glInvoiceId ? `#${d.glInvoiceId}` : "—"))
+                                    : (glBills.find((b) => b.glbillId === d.glbillId)?.billNumber
+                                        ?? (d.glbillId ? `#${d.glbillId}` : "—"))}
+                                </TableCell>
                                 <TableCell className='text-xs font-medium text-gray-800'>
                                   {ch?.chargesName || `Charge #${d.chargesId}`}
                                 </TableCell>
@@ -2570,7 +2590,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                         </TableBody>
                         <tfoot>
                           <tr className='bg-gray-50 border-t font-semibold text-xs'>
-                            <td colSpan={4} className='px-4 py-2 text-right text-gray-600'>Totals:</td>
+                            <td colSpan={5} className='px-4 py-2 text-right text-gray-600'>Totals:</td>
                             <td className='px-4 py-2 text-right text-gray-800'>
                               {fmt(viewRecord.glreceiptPaymentDetails.reduce((s, d) => s + d.amount, 0))}
                             </td>
