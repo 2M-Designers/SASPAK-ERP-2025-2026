@@ -670,6 +670,22 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
     [accounts],
   );
 
+  // Billing Party options for detail rows — scoped to the selected job's
+  // shipper (principalId), consignee (consigneePartyId), and terminal (terminalPartyId).
+  // Falls back to all parties when no job is selected or no matching parties found.
+  const jobParties = useMemo(() => {
+    if (!masterForm.jobId) return parties;
+    const job = jobs.find((j) => j.jobId === masterForm.jobId);
+    if (!job) return parties;
+    const ids = new Set(
+      [job.terminalPartyId, job.principalId, job.consigneePartyId].filter(
+        (id): id is number => id != null && id > 0,
+      ),
+    );
+    const filtered = parties.filter((p) => ids.has(p.partyId));
+    return filtered.length > 0 ? filtered : parties;
+  }, [masterForm.jobId, jobs, parties]);
+
   // ── Open add form ──────────────────────────────────────────────────────────
   const openAdd = () => {
     const def =
@@ -1494,14 +1510,14 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                         return base;
                       })();
 
-                      // From CoA — billing party (OnAccountOfId from fund request),
-                      // so show Parties list (Party/GetList).
+                      // Billing Party — scoped to the job's shipper/consignee/terminal.
+                      // jobParties already contains only those parties (or all if no job).
                       const filteredFromCoa = (() => {
                         const base = qFrom
-                          ? parties.filter(p =>
+                          ? jobParties.filter(p =>
                               p.partyName.toLowerCase().includes(qFrom) ||
                               p.partyCode.toLowerCase().includes(qFrom))
-                          : parties.slice(0, 150);
+                          : jobParties;
                         const sel = parties.find(p => p.partyId === row.fromCoaId);
                         if (sel && !base.find(p => p.partyId === sel.partyId))
                           return [sel, ...base];
