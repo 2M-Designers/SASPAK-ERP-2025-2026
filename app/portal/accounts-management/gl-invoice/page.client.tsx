@@ -314,7 +314,7 @@ const statusClass = (s: string) => {
 };
 
 const isAlreadyProcessed = (status: string) =>
-  ["approved", "done", "processed"].includes((status || "").toLowerCase());
+  ["done", "processed"].includes((status || "").toLowerCase());
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
