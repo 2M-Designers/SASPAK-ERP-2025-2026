@@ -18,6 +18,7 @@ export interface CashFundRequestDetailPayload {
   OnAccountOfId: number;
   SubRequestStatus: string;
   Remarks: string;
+  CostCenterId: number | null;
   CashHeadId: number | null;
   IsBankLetterReleased: boolean;
   Version: number;
@@ -60,6 +61,7 @@ export interface BankFundRequestDetailPayload {
   BankId: number | null;
   SubRequestStatus: string;
   Remarks: string;
+  CostCenterId: number | null;
   Version: number;
   CreatedOn: string;
   CreatedBy: number;
