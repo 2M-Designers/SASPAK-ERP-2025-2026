@@ -1232,10 +1232,6 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
 
   // ─── FORM VIEW ─────────────────────────────────────────────────────────────
   if (showForm) {
-    const selectedParty = masterForm.billingPartyId
-      ? parties.find((p) => p.partyId === masterForm.billingPartyId)
-      : null;
-    const customerGlLocked = !!(selectedParty?.glAccountId);
 
     return (
       <div className='p-4 bg-gray-50 min-h-screen'>
@@ -1567,11 +1563,9 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
               <CardTitle className='text-sm font-semibold text-indigo-900 flex items-center gap-2'>
                 <Badge className='bg-indigo-600 text-white'>Details</Badge>
                 Charge Lines
-                {customerGlLocked && (
-                  <span className='text-xs text-indigo-500 font-normal ml-1'>
-                    (Customer GL Account auto-filled from Billing Party)
-                  </span>
-                )}
+                <span className='text-xs text-indigo-500 font-normal ml-1'>
+                  (Customer GL Account auto-filled from Job Order)
+                </span>
               </CardTitle>
               <Button
                 size='sm'
@@ -1777,9 +1771,8 @@ export default function GLInvoiceClient({ initialData }: { initialData: any[] })
                             <Select
                               value={row.fromCoaId ? String(row.fromCoaId) : ""}
                               onValueChange={(v) => updateRow(row._key, { fromCoaId: Number(v) })}
-                              disabled={customerGlLocked}
                             >
-                              <SelectTrigger className={`h-7 text-xs ${customerGlLocked ? "opacity-70 cursor-not-allowed bg-gray-50" : ""}`}>
+                              <SelectTrigger className='h-7 text-xs'>
                                 <SelectValue>
                                   {row.fromCoaId
                                     ? (accounts.find((a) => a.accountId === row.fromCoaId)?.accountName ?? `#${row.fromCoaId}`)
