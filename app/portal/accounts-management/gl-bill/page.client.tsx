@@ -352,7 +352,6 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
   });
   const [detailRows, setDetailRows] = useState<DetailRow[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const [isAutoFilling, setIsAutoFilling] = useState(false);
 
   // ── Dialog state ───────────────────────────────────────────────────────────
   const [viewOpen, setViewOpen] = useState(false);
@@ -521,93 +520,6 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
     fetchLookups();
   }, [fetchLookups]);
 
-  // ── Auto-fill from Job Order (Cash + Bank Fund Request details) ──────────────
-  const autoFillFromJob = useCallback(
-    async (jobId: number) => {
-      if (!jobId) return;
-      setIsAutoFilling(true);
-      try {
-        const exRate = masterForm.exchangeRate || 1;
-        const currId = masterForm.currencyId ?? currencies.find((c) => c.isDefault)?.currencyId ?? 0;
-
-        // Default billing party = job's consignee; fall back to shipper (principalId).
-        const currentJob = jobs.find((j) => j.jobId === jobId);
-        const defaultBillingPartyId =
-          currentJob?.consigneePartyId ?? currentJob?.principalId ?? 0;
-
-        const [cashDetails, bankDetails] = await Promise.all([
-          postList(
-            "InternalCashFundsRequestDetail/GetList",
-            "InternalFundsRequestCashId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, OnAccountOfId, CostCenterId, SubRequestStatus, CashFundRequestMasterId",
-            `JobId == ${jobId}`,
-            "InternalFundsRequestCashId ASC",
-            "5000",
-          ),
-          postList(
-            "InternalBankFundsRequestDetail/GetList",
-            "InternalFundsRequestBankId, JobId, ChargesId, ApprovedAmount, HeadCoaId, BeneficiaryCoaId, OnAccountOfId, CostCenterId, SubRequestStatus, BankFundRequestMasterId",
-            `JobId == ${jobId}`,
-            "InternalFundsRequestBankId ASC",
-            "5000",
-          ),
-        ]);
-
-        // Map a detail line to a GL Bill DetailRow.
-        // fromCoaId = consignee (default) or shipper from job
-        // toCoaId   = GL expense/head account (HeadCoaId)
-        const toDetailRow = (item: any): DetailRow => ({
-          _key: Math.random().toString(36).slice(2),
-          glbillDetailId: 0,
-          chargesId: item.chargesId ?? item.ChargesId ?? 0,
-          cost: item.approvedAmount ?? item.ApprovedAmount ?? 0,
-          qty: 1,
-          exchangeRate: exRate,
-          currencyId: currId,
-          tax: 0,
-          discount: 0,
-          fromCoaId: defaultBillingPartyId || (item.onAccountOfId ?? item.OnAccountOfId ?? 0),
-          toCoaId: item.headCoaId ?? item.HeadCoaId ?? 0,
-          costCenterId: item.costCenterId ?? item.CostCenterId ?? null,
-          version: 1,
-          _autoFilled: true,
-        });
-
-        const autoRows = [
-          ...cashDetails.map(toDetailRow),
-          ...bankDetails.map(toDetailRow),
-        ].filter((r) => r.chargesId > 0 && r.cost > 0);
-
-        if (autoRows.length === 0) {
-          toast({
-            title: "No Approved Charges Found",
-            description: "No Cash or Bank Fund Request lines with approved amounts were found for this job. You can add charges manually.",
-          });
-          return;
-        }
-
-        setDetailRows((prev) => {
-          const manualRows = prev.filter((r) => !r._autoFilled);
-          return [...autoRows, ...manualRows];
-        });
-
-        toast({
-          title: "Charges Auto-Filled",
-          description: `${autoRows.length} approved charge line(s) loaded from Fund Requests.`,
-        });
-      } catch (err) {
-        console.error("Auto-fill error:", err);
-        toast({
-          variant: "destructive",
-          title: "Auto-Fill Failed",
-          description: "Could not load fund request charges for this job.",
-        });
-      } finally {
-        setIsAutoFilling(false);
-      }
-    },
-    [masterForm.exchangeRate, masterForm.currencyId, currencies, jobs, toast], // eslint-disable-line
-  );
-
   // ── Filtered list ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     if (!searchText) return data;
@@ -665,26 +577,6 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
     return sliced;
   }, [jobs, jobSearch, masterForm.jobId]);
 
-  const transactionalAccounts = useMemo(
-    () => accounts.filter((a) => !a.isHeader),
-    [accounts],
-  );
-
-  // Billing Party options for detail rows — only Shipper (principalId) and
-  // Consignee (consigneePartyId) from the selected job.
-  // Falls back to all parties when no job is selected or no matches found.
-  const jobParties = useMemo(() => {
-    if (!masterForm.jobId) return parties;
-    const job = jobs.find((j) => j.jobId === masterForm.jobId);
-    if (!job) return parties;
-    const ids = new Set(
-      [job.principalId, job.consigneePartyId].filter(
-        (id): id is number => id != null && id > 0,
-      ),
-    );
-    const filtered = parties.filter((p) => ids.has(p.partyId));
-    return filtered.length > 0 ? filtered : parties;
-  }, [masterForm.jobId, jobs, parties]);
 
   // ── Open add form ──────────────────────────────────────────────────────────
   const openAdd = () => {
@@ -1247,9 +1139,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                         ...p,
                         jobId: sel?.jobId ?? null,
                         exchangeRate: sel?.jobInvoiceExchRate || p.exchangeRate || 1,
-                        payToPartyId: sel?.terminalPartyId ?? sel?.principalId ?? sel?.consigneePartyId ?? p.payToPartyId,
                       }));
-                      if (sel?.jobId) autoFillFromJob(sel.jobId);
                     }}
                   >
                     <SelectTrigger className='h-9 text-sm'>
@@ -1277,11 +1167,6 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                       ))}
                     </SelectContent>
                   </Select>
-                  {isAutoFilling && (
-                    <p className='text-xs text-indigo-600 mt-1 flex items-center gap-1'>
-                      <FiLoader className='animate-spin h-3 w-3' /> Loading fund request charges...
-                    </p>
-                  )}
                 </div>
 
                 {/* Bill Type */}
@@ -1416,6 +1301,53 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                   </Select>
                 </div>
 
+                {/* Due Days */}
+                <div>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Due Days</Label>
+                  <Input
+                    type='number'
+                    min='0'
+                    value={masterForm.dueDays}
+                    onChange={(e) => setMasterForm((p) => ({ ...p, dueDays: parseInt(e.target.value) || 0 }))}
+                    className='h-9 text-sm'
+                  />
+                </div>
+
+                {/* Partial Payment */}
+                <div>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Partial Payment</Label>
+                  <Input
+                    type='number'
+                    min='0'
+                    step='0.01'
+                    value={masterForm.partialPayment}
+                    onChange={(e) => setMasterForm((p) => ({ ...p, partialPayment: parseFloat(e.target.value) || 0 }))}
+                    className='h-9 text-sm'
+                  />
+                </div>
+
+                {/* Vendor Invoice Date */}
+                <div>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Vendor Invoice Date</Label>
+                  <Input
+                    type='date'
+                    value={masterForm.vendorInvoiceDate}
+                    onChange={(e) => setMasterForm((p) => ({ ...p, vendorInvoiceDate: e.target.value }))}
+                    className='h-9 text-sm'
+                  />
+                </div>
+
+                {/* Vendor Invoice Number */}
+                <div>
+                  <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Vendor Invoice No.</Label>
+                  <Input
+                    value={masterForm.vendorInvoiceNumber}
+                    onChange={(e) => setMasterForm((p) => ({ ...p, vendorInvoiceNumber: e.target.value }))}
+                    placeholder='Enter vendor invoice number...'
+                    className='h-9 text-sm'
+                  />
+                </div>
+
                 {/* Description */}
                 <div className='md:col-span-3 lg:col-span-4'>
                   <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Bill Description</Label>
@@ -1454,11 +1386,6 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
               <CardTitle className='text-sm font-semibold text-indigo-900 flex items-center gap-2'>
                 <Badge className='bg-indigo-600 text-white'>Details</Badge>
                 Charge Lines
-                {masterForm.jobId && (
-                  <span className='text-xs text-indigo-500 font-normal ml-1'>
-                    (auto-filled from fund requests)
-                  </span>
-                )}
               </CardTitle>
               <Button
                 size='sm'
@@ -1478,10 +1405,14 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                       <TableHead className='min-w-[160px]'>Charge *</TableHead>
                       <TableHead className='min-w-[90px]'>Cost</TableHead>
                       <TableHead className='min-w-[60px]'>Qty</TableHead>
+                      <TableHead className='min-w-[90px] text-right'>Amount</TableHead>
+                      <TableHead className='min-w-[80px]'>Tax</TableHead>
+                      <TableHead className='min-w-[80px]'>Discount</TableHead>
                       <TableHead className='min-w-[90px] text-right'>Net Amount</TableHead>
-                      <TableHead className='min-w-[160px]'>Billing Party *</TableHead>
-                      <TableHead className='min-w-[160px]'>GL Account *</TableHead>
+                      <TableHead className='min-w-[180px]'>Bank/Cash Account *</TableHead>
+                      <TableHead className='min-w-[180px]'>Vendor GL Account *</TableHead>
                       <TableHead className='min-w-[140px]'>Cost Center</TableHead>
+                      <TableHead className='min-w-[80px]'>Exch Rate</TableHead>
                       <TableHead className='w-8'></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1510,16 +1441,15 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                         return base;
                       })();
 
-                      // Billing Party — scoped to the job's shipper/consignee/terminal.
-                      // jobParties already contains only those parties (or all if no job).
+                      // FROM COA — Bank or Cash GL account (source of payment).
                       const filteredFromCoa = (() => {
                         const base = qFrom
-                          ? jobParties.filter(p =>
-                              p.partyName.toLowerCase().includes(qFrom) ||
-                              p.partyCode.toLowerCase().includes(qFrom))
-                          : jobParties;
-                        const sel = parties.find(p => p.partyId === row.fromCoaId);
-                        if (sel && !base.find(p => p.partyId === sel.partyId))
+                          ? accounts.filter(a =>
+                              a.accountName.toLowerCase().includes(qFrom) ||
+                              a.accountCode.toLowerCase().includes(qFrom))
+                          : accounts;
+                        const sel = accounts.find(a => a.accountId === row.fromCoaId);
+                        if (sel && !base.find(a => a.accountId === sel.accountId))
                           return [sel, ...base];
                         return base;
                       })();
@@ -1614,12 +1544,41 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                             />
                           </TableCell>
 
+                          {/* Amount (computed) */}
+                          <TableCell className='text-xs text-right font-mono text-gray-700'>
+                            {fmt(row.amount)}
+                          </TableCell>
+
+                          {/* Tax */}
+                          <TableCell>
+                            <Input
+                              type='number'
+                              min='0'
+                              step='0.01'
+                              value={row.tax}
+                              onChange={(e) => updateRow(row._key, { tax: parseFloat(e.target.value) || 0 })}
+                              className='h-7 text-xs w-20'
+                            />
+                          </TableCell>
+
+                          {/* Discount */}
+                          <TableCell>
+                            <Input
+                              type='number'
+                              min='0'
+                              step='0.01'
+                              value={row.discount}
+                              onChange={(e) => updateRow(row._key, { discount: parseFloat(e.target.value) || 0 })}
+                              className='h-7 text-xs w-20'
+                            />
+                          </TableCell>
+
                           {/* Net Amount (computed) */}
                           <TableCell className='text-xs text-right font-mono font-semibold text-indigo-700'>
                             {fmt(row.netAmount)}
                           </TableCell>
 
-                          {/* From CoA — Billing Party */}
+                          {/* From CoA — Bank/Cash GL Account */}
                           <TableCell>
                             <Select
                               value={row.fromCoaId ? String(row.fromCoaId) : ""}
@@ -1628,14 +1587,14 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                               <SelectTrigger className='h-7 text-xs'>
                                 <SelectValue>
                                   {row.fromCoaId
-                                    ? (parties.find((p) => p.partyId === row.fromCoaId)?.partyName ?? `#${row.fromCoaId}`)
-                                    : "Billing Party..."}
+                                    ? (accounts.find((a) => a.accountId === row.fromCoaId)?.accountName ?? `#${row.fromCoaId}`)
+                                    : "Bank/Cash Account..."}
                                 </SelectValue>
                               </SelectTrigger>
                               <SelectContent className='max-h-[260px]'>
                                 <div className='p-1.5 border-b sticky top-0 bg-white z-10'>
                                   <Input
-                                    placeholder='Search party...'
+                                    placeholder='Search account...'
                                     value={fromCoaSearch}
                                     onChange={(e) =>
                                       setDetailSearches((p) => ({ ...p, [`${row._key}_fromCoa`]: e.target.value }))
@@ -1645,9 +1604,9 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                                     className='h-6 text-xs'
                                   />
                                 </div>
-                                {filteredFromCoa.map((p) => (
-                                  <SelectItem key={p.partyId} value={String(p.partyId)}>
-                                    {p.partyName}
+                                {filteredFromCoa.map((a) => (
+                                  <SelectItem key={a.accountId} value={String(a.accountId)}>
+                                    {a.accountCode} – {a.accountName}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -1725,6 +1684,18 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                             </Select>
                           </TableCell>
 
+                          {/* Exch Rate */}
+                          <TableCell>
+                            <Input
+                              type='number'
+                              min='0'
+                              step='0.0001'
+                              value={row.exchangeRate}
+                              onChange={(e) => updateRow(row._key, { exchangeRate: parseFloat(e.target.value) || 1 })}
+                              className='h-7 text-xs w-20'
+                            />
+                          </TableCell>
+
                           {/* Remove */}
                           <TableCell>
                             <Button
@@ -1742,8 +1713,8 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
 
                     {detailRows.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={9} className='text-center py-8 text-gray-400 text-sm'>
-                          No charge lines. Select a Job Order to auto-fill, or click "Add Row".
+                        <TableCell colSpan={13} className='text-center py-8 text-gray-400 text-sm'>
+                          No charge lines. Click "Add Row" to add a vendor bill line.
                         </TableCell>
                       </TableRow>
                     )}
