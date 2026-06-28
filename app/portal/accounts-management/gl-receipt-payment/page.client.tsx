@@ -957,12 +957,12 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   };
 
   // ── Bulk Post ──────────────────────────────────────────────────────────────
+  const approvedRecords = data.filter(
+    (r) => (r.receiptPaymentStatus || "").toLowerCase() === "approved",
+  );
+
   const openBulkPost = () => {
-    setBulkSelectedIds(
-      data
-        .filter((r) => (r.receiptPaymentStatus || "").toLowerCase() !== "processed")
-        .map((r) => r.glreceiptPaymentId),
-    );
+    setBulkSelectedIds(approvedRecords.map((r) => r.glreceiptPaymentId));
     setBulkRemarks("");
     setBulkPostOpen(true);
   };
@@ -2718,9 +2718,9 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                     <TableHead className='w-10'>
                       <input
                         type='checkbox'
-                        checked={bulkSelectedIds.length === data.length && data.length > 0}
+                        checked={bulkSelectedIds.length === approvedRecords.length && approvedRecords.length > 0}
                         onChange={(e) =>
-                          setBulkSelectedIds(e.target.checked ? data.map((r) => r.glreceiptPaymentId) : [])
+                          setBulkSelectedIds(e.target.checked ? approvedRecords.map((r) => r.glreceiptPaymentId) : [])
                         }
                         className='rounded'
                       />
@@ -2733,7 +2733,13 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.map((rec) => (
+                  {approvedRecords.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className='text-center text-sm text-gray-400 italic py-6'>
+                        No approved records available for posting.
+                      </TableCell>
+                    </TableRow>
+                  ) : approvedRecords.map((rec) => (
                     <TableRow key={rec.glreceiptPaymentId} className='hover:bg-gray-50'>
                       <TableCell>
                         <input
