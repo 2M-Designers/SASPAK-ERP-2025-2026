@@ -435,7 +435,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
       const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw, statusRaw, billTypeRaw] =
         await Promise.all([
           postList("SetupCurrency/GetList", "CurrencyId, CurrencyCode, CurrencyName, Symbol, IsDefault", "", "CurrencyCode ASC"),
-          postList("Party/GetList", "PartyId, PartyCode, PartyName, GlAccountId", "", "PartyName ASC"),
+          postList("Party/GetList", "PartyId, PartyCode, PartyName, GlaccountId", "", "PartyName ASC"),
           postList("Job/GetList", "JobId, JobNumber, TerminalPartyId, PrincipalId, ConsigneePartyId, JobInvoiceExchRate", "", "JobId DESC"),
           postList("ChargesMaster/GetList", "ChargeId, ChargeCode, ChargeName", "", "ChargeName ASC"),
           postList("GlAccount/GetList", "AccountId, AccountCode, AccountName, IsHeader", "", "AccountCode ASC", "9999"),
@@ -458,7 +458,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
           partyId: p.partyId ?? p.PartyId ?? 0,
           partyCode: p.partyCode ?? p.PartyCode ?? "",
           partyName: p.partyName ?? p.PartyName ?? "",
-          glAccountId: p.glAccountId ?? p.GlAccountId ?? null,
+          glAccountId: p.glaccountId ?? p.GlaccountId ?? p.glAccountId ?? p.GlAccountId ?? null,
         })),
       );
 
@@ -1228,6 +1228,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                     onValueChange={(v) => {
                       const partyId = Number(v);
                       const party = parties.find((p) => p.partyId === partyId);
+                      console.debug("[GLBill] Party selected:", party, "glAccountId:", party?.glAccountId);
                       setMasterForm((p) => ({ ...p, payToPartyId: partyId }));
                       if (party?.glAccountId) {
                         setDetailRows((prev) =>
