@@ -450,7 +450,7 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   // ── Fetch all lookups ──────────────────────────────────────────────────────
   const fetchLookups = useCallback(async () => {
     try {
-      const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw, statusRaw, typeRaw, voucherRaw, modeRaw, invoiceRaw, billRaw] =
+      const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw, statusRaw, typeRaw, voucherRaw, modeRaw] =
         await Promise.all([
           postList("SetupCurrency/GetList", "CurrencyId, CurrencyCode, CurrencyName, Symbol, IsDefault", "", "CurrencyCode ASC"),
           postList("Party/GetList", "PartyId, PartyCode, PartyName", "", "PartyName ASC"),
@@ -462,8 +462,6 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           getTypeValues("ReceiptPayment_Type_Ids"),
           postList("GLVoucher/GetList", "VoucherId, VoucherNumber", "", "VoucherId DESC"),
           getTypeValues("ReceiptPayment_Mode_Description"),
-          postList("GLInvoice/GetList", "GlinvoiceId, InvoiceNumber, JobId, BillingPartyId, TotalAmount", "InvoiceStatus == 'Processed'", "GlinvoiceId DESC", "5000"),
-          postList("GLBill/GetList", "GlbillId, BillNumber, JobId, PayToPartyId, TotalAmount", "BillStatus == 'Processed'", "GlbillId DESC", "5000"),
         ]);
 
       const curr: Currency[] = currRaw.map((c: any) => ({
@@ -531,25 +529,6 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
           voucherNumber: v.voucherNumber ?? v.VoucherNumber ?? "",
         })),
       );
-      setGlInvoices(
-        invoiceRaw.map((i: any) => ({
-          glinvoiceId: i.glinvoiceId ?? i.GlinvoiceId ?? i.glInvoiceId ?? i.GlInvoiceId ?? 0,
-          invoiceNumber: i.invoiceNumber ?? i.InvoiceNumber ?? "",
-          jobId: i.jobId ?? i.JobId ?? null,
-          billingPartyId: i.billingPartyId ?? i.BillingPartyId ?? null,
-          totalAmount: i.totalAmount ?? i.TotalAmount ?? 0,
-        })),
-      );
-      setGlBills(
-        billRaw.map((b: any) => ({
-          glbillId: b.glbillId ?? b.GlbillId ?? 0,
-          billNumber: b.billNumber ?? b.BillNumber ?? "",
-          jobId: b.jobId ?? b.JobId ?? null,
-          payToPartyId: b.payToPartyId ?? b.PayToPartyId ?? null,
-          totalAmount: b.totalAmount ?? b.TotalAmount ?? 0,
-        })),
-      );
-
       const def =
         curr.find((c) => c.currencyCode === "PKR") ??
         curr.find((c) => c.isDefault) ??
@@ -569,6 +548,60 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
   useEffect(() => {
     fetchLookups();
   }, [fetchLookups]);
+
+  // ── Fetch processed GL Invoices or GL Bills (reactive, form only) ──────────
+  const fetchGlDocs = useCallback(async (
+    type: number,
+    jobId: number | null,
+    partyId: number | null,
+  ) => {
+    if (type === 1) {
+      const parts = ["InvoiceStatus == 'Processed'"];
+      if (jobId) parts.push(`JobId == ${jobId}`);
+      else if (partyId) parts.push(`BillingPartyId == ${partyId}`);
+      const raw = await postList(
+        "GLInvoice/GetList",
+        "GlinvoiceId, InvoiceNumber, JobId, BillingPartyId, TotalAmount",
+        parts.join(" && "),
+        "GlinvoiceId DESC",
+        "5000",
+      );
+      setGlInvoices(
+        raw.map((i: any) => ({
+          glinvoiceId: i.glinvoiceId ?? i.GlinvoiceId ?? 0,
+          invoiceNumber: i.invoiceNumber ?? i.InvoiceNumber ?? "",
+          jobId: i.jobId ?? i.JobId ?? null,
+          billingPartyId: i.billingPartyId ?? i.BillingPartyId ?? null,
+          totalAmount: i.totalAmount ?? i.TotalAmount ?? 0,
+        })),
+      );
+    } else {
+      const parts = ["BillStatus == 'Processed'"];
+      if (jobId) parts.push(`JobId == ${jobId}`);
+      else if (partyId) parts.push(`PayToPartyId == ${partyId}`);
+      const raw = await postList(
+        "GLBill/GetList",
+        "GlbillId, BillNumber, JobId, PayToPartyId, TotalAmount",
+        parts.join(" && "),
+        "GlbillId DESC",
+        "5000",
+      );
+      setGlBills(
+        raw.map((b: any) => ({
+          glbillId: b.glbillId ?? b.GlbillId ?? 0,
+          billNumber: b.billNumber ?? b.BillNumber ?? "",
+          jobId: b.jobId ?? b.JobId ?? null,
+          payToPartyId: b.payToPartyId ?? b.PayToPartyId ?? null,
+          totalAmount: b.totalAmount ?? b.TotalAmount ?? 0,
+        })),
+      );
+    }
+  }, []); // eslint-disable-line
+
+  useEffect(() => {
+    if (!showForm) return;
+    fetchGlDocs(masterForm.receiptPaymentType, masterForm.jobId, masterForm.payToPartyId);
+  }, [showForm, masterForm.receiptPaymentType, masterForm.jobId, masterForm.payToPartyId, fetchGlDocs]); // eslint-disable-line
 
   // ── Filtered list ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
