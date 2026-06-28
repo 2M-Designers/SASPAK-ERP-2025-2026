@@ -686,8 +686,15 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
       toast({ variant: "destructive", title: "Validation", description: "At least one charge line is required." });
       return;
     }
-    if (detailRows.some((r) => !r.chargesId || !r.fromCoaId || !r.toCoaId)) {
-      toast({ variant: "destructive", title: "Validation", description: "Each line needs Charge, From CoA and To CoA." });
+    const missingFields: string[] = [];
+    detailRows.forEach((r, i) => {
+      const n = i + 1;
+      if (!r.chargesId) missingFields.push(`Row ${n}: Charge`);
+      if (!r.fromCoaId) missingFields.push(`Row ${n}: Bank/Cash Account`);
+      if (!r.toCoaId) missingFields.push(`Row ${n}: Vendor GL Account`);
+    });
+    if (missingFields.length > 0) {
+      toast({ variant: "destructive", title: "Validation", description: missingFields.join(" | ") });
       return;
     }
 
