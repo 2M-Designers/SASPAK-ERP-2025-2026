@@ -1205,7 +1205,9 @@ export default function GLReceiptPaymentClient({ initialData }: { initialData: a
       const res = await fetch(`${getBaseUrl()}GLInvoice/${invoiceId}`, { headers: getAuthHeaders() });
       if (!res.ok) return;
       const raw = await res.json();
-      const details: any[] = raw.glInvoiceDetails ?? raw.GlInvoiceDetails ?? [];
+      const details: any[] =
+        raw.glinvoiceDetails ?? raw.GlinvoiceDetails ??
+        raw.glInvoiceDetails ?? raw.GlInvoiceDetails ?? [];
       const exRate = masterForm.exchangeRate;
       const cid = masterForm.currencyId ?? 0;
       if (details.length > 0) {
