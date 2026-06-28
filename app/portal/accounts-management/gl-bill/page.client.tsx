@@ -65,7 +65,7 @@ type Currency = {
   isDefault: boolean;
 };
 
-type Party = { partyId: number; partyCode: string; partyName: string };
+type Party = { partyId: number; partyCode: string; partyName: string; glAccountId: number | null };
 type Job = {
   jobId: number;
   jobNumber: string;
@@ -168,7 +168,7 @@ type MasterForm = {
   billNumber: string;
   jobId: number | null;
   payToPartyId: number | null;
-  billType: number;
+  billType: string;
   currencyId: number | null;
   exchangeRate: number;
   billStatus: string;
@@ -340,7 +340,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
     billNumber: "",
     jobId: null,
     payToPartyId: null,
-    billType: 1,
+    billType: "",
     currencyId: null,
     exchangeRate: 1,
     billStatus: "Draft",
@@ -435,7 +435,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
       const [currRaw, partyRaw, jobRaw, chargeRaw, acctRaw, ccRaw, statusRaw, billTypeRaw] =
         await Promise.all([
           postList("SetupCurrency/GetList", "CurrencyId, CurrencyCode, CurrencyName, Symbol, IsDefault", "", "CurrencyCode ASC"),
-          postList("Party/GetList", "PartyId, PartyCode, PartyName", "", "PartyName ASC"),
+          postList("Party/GetList", "PartyId, PartyCode, PartyName, GlAccountId", "", "PartyName ASC"),
           postList("Job/GetList", "JobId, JobNumber, TerminalPartyId, PrincipalId, ConsigneePartyId, JobInvoiceExchRate", "", "JobId DESC"),
           postList("ChargesMaster/GetList", "ChargeId, ChargeCode, ChargeName", "", "ChargeName ASC"),
           postList("GlAccount/GetList", "AccountId, AccountCode, AccountName, IsHeader", "", "AccountCode ASC", "9999"),
@@ -458,6 +458,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
           partyId: p.partyId ?? p.PartyId ?? 0,
           partyCode: p.partyCode ?? p.PartyCode ?? "",
           partyName: p.partyName ?? p.PartyName ?? "",
+          glAccountId: p.glAccountId ?? p.GlAccountId ?? null,
         })),
       );
 
@@ -498,7 +499,18 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
       );
 
       if (statusRaw.length) setStatusOptions(statusRaw);
-      if (billTypeRaw.length) setBillTypeOptions(billTypeRaw);
+      if (billTypeRaw.length) {
+        setBillTypeOptions(billTypeRaw);
+        const pi =
+          billTypeRaw.find((o: TypeOption) =>
+            o.label.toLowerCase().includes("purchase"),
+          ) ?? billTypeRaw[0];
+        if (pi) {
+          setMasterForm((prev) =>
+            !prev.billType ? { ...prev, billType: pi.value } : prev,
+          );
+        }
+      }
 
       const def =
         curr.find((c) => c.currencyCode === "PKR") ??
@@ -585,13 +597,17 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
       currencies.find((c) => c.isDefault) ??
       currencies[0];
     const defaultStatus = statusOptions.length ? statusOptions[0].value : "Draft";
+    const defaultBillType = (
+      billTypeOptions.find((o) => o.label.toLowerCase().includes("purchase")) ??
+      billTypeOptions[0]
+    )?.value ?? "";
     setEditingRecord(null);
     setMasterForm({
       billDate: new Date().toISOString().slice(0, 10),
       billNumber: "",
       jobId: null,
       payToPartyId: null,
-      billType: 1,
+      billType: defaultBillType,
       currencyId: def?.currencyId ?? null,
       exchangeRate: 1,
       billStatus: defaultStatus,
@@ -623,7 +639,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
       billNumber: full.billNumber,
       jobId: full.jobId,
       payToPartyId: full.payToPartyId,
-      billType: full.billType,
+      billType: String(full.billType),
       currencyId: full.currencyId,
       exchangeRate: full.exchangeRate,
       billStatus: full.billStatus,
@@ -684,7 +700,7 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
       BillDate: masterForm.billDate,
       BillNumber: masterForm.billNumber ?? "",
       JobId: masterForm.jobId || null,
-      BillType: masterForm.billType,
+      BillType: Number(masterForm.billType) || 1,
       BillAmount: billAmount,
       BillAmountFc: billAmount * exRate,
       ExchangeRate: exRate,
@@ -1041,7 +1057,13 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
   // ── Row mutation helpers ───────────────────────────────────────────────────
   const addRow = () => {
     const cid = masterForm.currencyId ?? currencies.find((c) => c.isDefault)?.currencyId ?? 0;
-    setDetailRows((p) => [...p, blankRow(masterForm.exchangeRate, cid)]);
+    const vendorGlId =
+      masterForm.payToPartyId
+        ? (parties.find((p) => p.partyId === masterForm.payToPartyId)?.glAccountId ?? 0)
+        : 0;
+    const newRow = blankRow(masterForm.exchangeRate, cid);
+    if (vendorGlId) newRow.toCoaId = vendorGlId;
+    setDetailRows((p) => [...p, newRow]);
   };
   const removeRow = (key: string) => setDetailRows((p) => p.filter((r) => r._key !== key));
   const updateRow = (key: string, patch: Partial<DetailRow>) =>
@@ -1173,14 +1195,13 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                 <div>
                   <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Bill Type *</Label>
                   <Select
-                    value={String(masterForm.billType)}
-                    onValueChange={(v) => setMasterForm((p) => ({ ...p, billType: Number(v) }))}
+                    value={masterForm.billType}
+                    onValueChange={(v) => setMasterForm((p) => ({ ...p, billType: v }))}
                   >
                     <SelectTrigger className='h-9 text-sm'>
                       <SelectValue>
-                        {billTypeOptions.find((o) => o.value === String(masterForm.billType))?.label
-                          ?? ({ 1: "Standard", 2: "Credit", 3: "Debit" } as Record<number, string>)[masterForm.billType]
-                          ?? "Select type..."}
+                        {billTypeOptions.find((o) => o.value === masterForm.billType)?.label
+                          ?? (masterForm.billType ? `Type #${masterForm.billType}` : "Select type...")}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -1190,9 +1211,9 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                         ))
                       ) : (
                         <>
-                          <SelectItem value='1'>Standard</SelectItem>
-                          <SelectItem value='2'>Credit</SelectItem>
-                          <SelectItem value='3'>Debit</SelectItem>
+                          <SelectItem value='1'>Purchase Invoice</SelectItem>
+                          <SelectItem value='2'>Credit Note</SelectItem>
+                          <SelectItem value='3'>Debit Note</SelectItem>
                         </>
                       )}
                     </SelectContent>
@@ -1204,7 +1225,16 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                   <Label className='text-xs font-medium text-gray-700 mb-1.5 block'>Pay To Party *</Label>
                   <Select
                     value={masterForm.payToPartyId ? String(masterForm.payToPartyId) : ""}
-                    onValueChange={(v) => setMasterForm((p) => ({ ...p, payToPartyId: Number(v) }))}
+                    onValueChange={(v) => {
+                      const partyId = Number(v);
+                      const party = parties.find((p) => p.partyId === partyId);
+                      setMasterForm((p) => ({ ...p, payToPartyId: partyId }));
+                      if (party?.glAccountId) {
+                        setDetailRows((prev) =>
+                          prev.map((r) => ({ ...r, toCoaId: party.glAccountId! })),
+                        );
+                      }
+                    }}
                   >
                     <SelectTrigger className='h-9 text-sm'>
                       <SelectValue>
@@ -1427,6 +1457,12 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                       const qTo = toCoaSearch.toLowerCase();
                       const qCC = ccSearch.toLowerCase();
 
+                      // Freeze Vendor GL Account when Pay To Party has a linked GL account.
+                      const selectedParty = masterForm.payToPartyId
+                        ? parties.find((p) => p.partyId === masterForm.payToPartyId)
+                        : null;
+                      const vendorGlLocked = !!(selectedParty?.glAccountId);
+
                       // Always include the currently selected item so SelectValue
                       // can display its label even when the list is filtered.
                       const filteredCharges = (() => {
@@ -1613,13 +1649,14 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
                             </Select>
                           </TableCell>
 
-                          {/* To CoA — GL Account */}
+                          {/* To CoA — Vendor GL Account (locked when party has linked GL account) */}
                           <TableCell>
                             <Select
                               value={row.toCoaId ? String(row.toCoaId) : ""}
                               onValueChange={(v) => updateRow(row._key, { toCoaId: Number(v) })}
+                              disabled={vendorGlLocked}
                             >
-                              <SelectTrigger className='h-7 text-xs'>
+                              <SelectTrigger className={`h-7 text-xs ${vendorGlLocked ? "opacity-70 cursor-not-allowed bg-gray-50" : ""}`}>
                                 <SelectValue>
                                   {row.toCoaId
                                     ? (accounts.find((a) => a.accountId === row.toCoaId)?.accountName ?? `#${row.toCoaId}`)
