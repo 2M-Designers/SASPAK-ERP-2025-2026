@@ -4,7 +4,7 @@ export interface CashFundRequestDetailPayload {
   InternalFundsRequestCashId: number;
   JobId: number;
   HeadCoaId: number | null;
-  BeneficiaryCoaId: number;
+  BeneficiaryCoaId: number | null;
   HeadOfAccount: string;
   Beneficiary: string;
   RequestedAmount: number;
@@ -46,7 +46,7 @@ export interface BankFundRequestDetailPayload {
   InternalFundsRequestBankId: number;
   JobId: number | null;
   HeadCoaId: number | null;
-  BeneficiaryCoaId: number;
+  BeneficiaryCoaId: number | null;
   HeadOfAccount: string;
   Beneficiary: string;
   AccountNo: string;
