@@ -702,16 +702,28 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
     const exRate = masterForm.exchangeRate || 1;
     const isEdit = !!editingRecord;
 
+    // Safely coerce a value to int or null — prevents DateTime strings from
+    // slipping through when the GET endpoint returns unexpected types.
+    const toInt = (v: unknown): number | null => {
+      if (v == null) return null;
+      const n = typeof v === "number" ? v : parseInt(String(v), 10);
+      return Number.isFinite(n) ? n : null;
+    };
+    const toReqInt = (v: unknown, fallback = 0): number =>
+      toInt(v) ?? fallback;
+
+    const billId = toReqInt(editingRecord?.glbillId);
+
     const payload = {
-      GlbillId: editingRecord?.glbillId ?? 0,
+      GlbillId: billId,
       BillDate: masterForm.billDate,
       BillNumber: masterForm.billNumber ?? "",
-      JobId: masterForm.jobId || null,
-      BillType: Number(masterForm.billType) || 1,
+      JobId: toInt(masterForm.jobId),
+      BillType: toReqInt(masterForm.billType, 1) || 1,
       BillAmount: billAmount,
       BillAmountFc: billAmount * exRate,
       ExchangeRate: exRate,
-      CurrencyId: masterForm.currencyId ?? 0,
+      CurrencyId: toReqInt(masterForm.currencyId),
       TotalTax: totalTax,
       TotalTaxFc: totalTax * exRate,
       DiscountTotal: discountTotal,
@@ -719,23 +731,23 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
       PartialPayment: masterForm.partialPayment,
       TotalAmount: totalAmount,
       TotalAmountFc: totalAmount * exRate,
-      PayToPartyId: masterForm.payToPartyId ?? 0,
+      PayToPartyId: toReqInt(masterForm.payToPartyId),
       BillStatus: masterForm.billStatus,
       BillDescription: masterForm.billDescription ?? "",
-      DueDays: masterForm.dueDays ?? 0,
-      GlVoucherId: editingRecord?.glVoucherId || null,
-      VendorInvoiceDate: masterForm.vendorInvoiceDate || new Date().toISOString(),
+      DueDays: toReqInt(masterForm.dueDays),
+      GlVoucherId: toInt(editingRecord?.glVoucherId),
+      VendorInvoiceDate: masterForm.vendorInvoiceDate || new Date().toISOString().slice(0, 10),
       VendorInvoiceNumber: masterForm.vendorInvoiceNumber ?? "",
-      Version: editingRecord?.version ?? 1,
+      Version: toReqInt(editingRecord?.version, 1),
       GlbillDetails: computedRows.map((r) => ({
-        GlbillDetailId: r.glbillDetailId,
-        GlbillId: editingRecord?.glbillId ?? 0,
-        ChargesId: r.chargesId,
+        GlbillDetailId: toReqInt(r.glbillDetailId),
+        GlbillId: billId,
+        ChargesId: toReqInt(r.chargesId),
         Cost: r.cost,
         Amount: r.amount,
-        Qty: r.qty,
+        Qty: toReqInt(r.qty, 1),
         ExchangeRate: r.exchangeRate,
-        CurrencyId: r.currencyId,
+        CurrencyId: toReqInt(r.currencyId),
         CostLc: r.costLc,
         AmountLc: r.amountLc,
         Tax: r.tax,
@@ -744,10 +756,10 @@ export default function GLBillClient({ initialData }: { initialData: any[] }) {
         DiscountFc: r.discountFc,
         NetAmount: r.netAmount,
         NetAmountFc: r.netAmountFc,
-        FromCoaId: r.fromCoaId,
-        ToCoaId: r.toCoaId,
-        CostCenterId: r.costCenterId || null,
-        Version: r.version,
+        FromCoaId: toReqInt(r.fromCoaId),
+        ToCoaId: toReqInt(r.toCoaId),
+        CostCenterId: toInt(r.costCenterId),
+        Version: toReqInt(r.version),
       })),
     };
 
