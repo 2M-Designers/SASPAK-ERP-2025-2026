@@ -303,7 +303,7 @@ export default function InternalFundRequestPage({
             where: "",
             sortOn: "FullName ASC",
             page: "1",
-            pageSize: "500",
+            pageSize: "2000",
           }),
         });
 

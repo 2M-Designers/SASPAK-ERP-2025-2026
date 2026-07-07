@@ -20,7 +20,7 @@ export default async function SecurityTypesPage() {
     where: "",
     sortOn: "SecurityTypeName",
     page: "1",
-    pageSize: "50",
+    pageSize: "5000",
   };
 
   try {

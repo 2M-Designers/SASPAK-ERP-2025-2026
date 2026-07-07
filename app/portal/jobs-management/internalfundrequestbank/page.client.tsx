@@ -312,7 +312,7 @@ export default function InternalBankFundRequestPage({
             where: "",
             sortOn: "FullName ASC",
             page: "1",
-            pageSize: "500",
+            pageSize: "2000",
           }),
         });
 
@@ -343,7 +343,7 @@ export default function InternalBankFundRequestPage({
             where: "",
             sortOn: "BankName ASC",
             page: "1",
-            pageSize: "200",
+            pageSize: "5000",
           }),
         });
 

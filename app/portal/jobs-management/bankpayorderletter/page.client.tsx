@@ -197,7 +197,7 @@ export default function BankPayOrderLetterClient() {
             search: "",
             sortOn: "BankName ASC",
             page: "1",
-            pageSize: "200",
+            pageSize: "5000",
           }),
         });
         if (!res.ok) return;
@@ -236,7 +236,7 @@ export default function BankPayOrderLetterClient() {
               search: "",
               sortOn: "BankFundRequestId DESC",
               page: "1",
-              pageSize: "500",
+              pageSize: "2000",
             }),
           }),
           fetch(`${getBaseUrl()}Job/GetList`, {
@@ -260,7 +260,7 @@ export default function BankPayOrderLetterClient() {
               search: "",
               sortOn: "PartyName ASC",
               page: "1",
-              pageSize: "500",
+              pageSize: "5000",
             }),
           }),
         ]);

@@ -503,7 +503,7 @@ export default function AirWaybillPage({ initialData }: AwbMasterPageProps) {
           where: "",
           sortOn: "AwbDate DESC",
           page: "1",
-          pageSize: "1000",
+          pageSize: "2000",
         }),
       });
 

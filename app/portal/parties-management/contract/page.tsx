@@ -20,7 +20,7 @@ export default async function ContractTariffPage() {
     where: "",
     sortOn: "ContractTarrifNo",
     page: "1",
-    pageSize: "50",
+    pageSize: "2000",
   };
 
   try {

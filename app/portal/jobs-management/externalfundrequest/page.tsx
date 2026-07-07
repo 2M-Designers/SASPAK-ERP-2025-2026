@@ -19,7 +19,7 @@ export default async function ExternalBankCashFundRequestPage() {
     where: "",
     sortOn: "ExternalBankCashFundRequestId DESC",
     page: "1",
-    pageSize: "100",
+    pageSize: "2000",
   };
 
   try {

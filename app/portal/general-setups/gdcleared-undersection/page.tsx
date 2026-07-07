@@ -20,7 +20,7 @@ export default async function GDClearedUnderSectionPage() {
     where: "",
     sortOn: "SectionName",
     page: "1",
-    pageSize: "50",
+    pageSize: "5000",
   };
 
   try {

@@ -99,7 +99,7 @@ export default function UNAirportsPage({ initialData }: UNAirportsPageProps) {
           where: "IsActive == true",
           sortOn: "locationName",
           page: "1",
-          pageSize: "100",
+          pageSize: "5000",
         }),
       });
 

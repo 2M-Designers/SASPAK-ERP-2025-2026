@@ -183,7 +183,7 @@ export default function RolesRightsPage() {
         where: "",
         sortOn: "RoleName",
         page: "1",
-        pageSize: "50",
+        pageSize: "5000",
       };
 
       const response = await fetch(`${baseUrl}Role/GetList`, {

@@ -20,7 +20,7 @@ export default async function HomePage() {
     where: "",
     sortOn: "BankFundRequestId DESC",
     page: "1",
-    pageSize: "100",
+    pageSize: "2000",
   };
 
   try {

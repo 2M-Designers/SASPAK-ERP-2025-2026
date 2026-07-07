@@ -17,7 +17,7 @@ export default async function GLReceiptPaymentPage() {
     where: "",
     sortOn: "GlreceiptPaymentId DESC",
     page: "1",
-    pageSize: "200",
+    pageSize: "2000",
   };
 
   try {

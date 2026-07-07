@@ -107,7 +107,7 @@ export default function ExchangeRatesPage({
           where: "IsActive == true",
           sortOn: "currencyCode",
           page: "1",
-          pageSize: "100",
+          pageSize: "5000",
         }),
       });
 

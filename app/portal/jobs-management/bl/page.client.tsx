@@ -529,7 +529,7 @@ export default function BillOfLadingPage({ initialData }: BlMasterPageProps) {
           where: "",
           sortOn: "BlDate DESC",
           page: "1",
-          pageSize: "1000",
+          pageSize: "2000",
         }),
       });
 

@@ -272,7 +272,7 @@ export default function JobOrderPage({ initialData }: JobMasterPageProps) {
           search: "",
           sortOn: "JobId DESC",
           page: "1",
-          pageSize: "100",
+          pageSize: "2000",
         }),
       });
       if (response.ok) {

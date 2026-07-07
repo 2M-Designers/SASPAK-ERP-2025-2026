@@ -13,7 +13,7 @@ export default async function GLInvoicePage() {
         where: "",
         sortOn: "GlInvoiceId DESC",
         page: "1",
-        pageSize: "200",
+        pageSize: "2000",
       }),
     });
 

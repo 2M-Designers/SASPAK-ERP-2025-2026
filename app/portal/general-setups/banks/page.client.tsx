@@ -145,7 +145,7 @@ export default function SetupBanksPage({ initialData }: BanksPageProps) {
             where: "IsActive == true",
             sortOn: "AccountCode ASC",
             page: "1",
-            pageSize: "500",
+            pageSize: "5000",
           }),
         });
         if (response.ok) {

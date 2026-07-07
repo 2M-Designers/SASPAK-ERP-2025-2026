@@ -143,7 +143,7 @@ export default function InternalFundRequestPage({
           where: "",
           sortOn: "cashFundRequestId DESC",
           page: "1",
-          pageSize: "100",
+          pageSize: "2000",
         }),
       });
 

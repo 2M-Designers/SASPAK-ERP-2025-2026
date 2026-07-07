@@ -128,7 +128,7 @@ export default function BankLetterClient() {
             where: "",
             sortOn: "BankName ASC",
             page: "1",
-            pageSize: "200",
+            pageSize: "5000",
           }),
         });
         if (!res.ok) return;
@@ -159,7 +159,7 @@ export default function BankLetterClient() {
           where: "",
           sortOn: "BankLetterId DESC",
           page: "1",
-          pageSize: "200",
+          pageSize: "2000",
         }),
       });
       if (!res.ok) throw new Error(`${res.status}`);

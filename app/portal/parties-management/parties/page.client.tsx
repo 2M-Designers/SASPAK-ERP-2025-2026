@@ -705,7 +705,7 @@ export default function PartiesPage({ initialData }: PartiesPageProps) {
           where: "",
           sortOn: "PartyName",
           page: "1",
-          pageSize: "1000",
+          pageSize: "5000",
         }),
       });
       if (res.ok) setData(await res.json());

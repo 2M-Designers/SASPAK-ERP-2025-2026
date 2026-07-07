@@ -336,7 +336,7 @@ export default function PurchaseInvoiceClient() {
         search: "",
         sortOn: sort,
         page: "1",
-        pageSize: "1000",
+        pageSize: "2000",
       }),
     });
     if (!res.ok) return [];

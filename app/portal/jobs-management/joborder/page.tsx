@@ -20,7 +20,7 @@ export default async function HomePage() {
     where: "",
     sortOn: "JobId desc",
     page: "1",
-    pageSize: "100", // Start with a reasonable page size
+    pageSize: "2000",
   };
 
   try {

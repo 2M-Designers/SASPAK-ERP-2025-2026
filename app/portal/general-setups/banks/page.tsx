@@ -20,7 +20,7 @@ export default async function BanksPage() {
     where: "",
     sortOn: "BankName",
     page: "1",
-    pageSize: "50",
+    pageSize: "5000",
   };
 
   try {

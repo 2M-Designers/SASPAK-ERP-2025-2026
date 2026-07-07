@@ -19,7 +19,7 @@ export default async function VoucherPage() {
     where: "",
     sortOn: "VoucherId DESC",
     page: "1",
-    pageSize: "100",
+    pageSize: "2000",
   };
 
   try {
