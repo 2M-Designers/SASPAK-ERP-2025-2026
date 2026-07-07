@@ -749,7 +749,7 @@ export default function GLAccountsPage({
           where: "",
           sortOn: "AccountCode",
           page: "1",
-          pageSize: "1000",
+          pageSize: "5000",
         }),
       });
 

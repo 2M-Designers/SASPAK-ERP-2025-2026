@@ -180,7 +180,7 @@ export default function ChargesPage({ initialData }: ChargesPageProps) {
           where: "",
           sortOn: "AccountCode",
           page: "1",
-          pageSize: "100",
+          pageSize: "5000",
         }),
       });
 

@@ -20,7 +20,7 @@ export default async function HomePage() {
     where: "",
     sortOn: "ChargeName",
     page: "1",
-    pageSize: "50", // Start with a reasonable page size
+    pageSize: "5000",
   };
 
   try {
