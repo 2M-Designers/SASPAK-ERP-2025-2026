@@ -549,7 +549,6 @@ export default function ExternalBankCashFundRequestForm({
     number | null
   >(null);
   const [customerPartyName, setCustomerPartyName] = useState("");
-  const [customerPartySearch, setCustomerPartySearch] = useState("");
   const [selectedRequestor, setSelectedRequestor] = useState<number | null>(
     null,
   );
@@ -603,9 +602,6 @@ export default function ExternalBankCashFundRequestForm({
   const [filteredBeneficiaries, setFilteredBeneficiaries] = useState<Party[]>(
     [],
   );
-  const [filteredCustomerParties, setFilteredCustomerParties] = useState<
-    Party[]
-  >([]);
 
   const [chargeSearch, setChargeSearch] = useState("");
   const [beneficiarySearch, setBeneficiarySearch] = useState("");
@@ -615,7 +611,6 @@ export default function ExternalBankCashFundRequestForm({
   const debouncedChargeSearch = useDebounce(chargeSearch, 300);
   const debouncedBeneficiarySearch = useDebounce(beneficiarySearch, 300);
   const debouncedRequestorSearch = useDebounce(requestorSearch, 300);
-  const debouncedCustomerPartySearch = useDebounce(customerPartySearch, 300);
 
   const [loadingState, setLoadingState] = useState<LoadingState>({
     jobs: false,
@@ -801,7 +796,6 @@ export default function ExternalBankCashFundRequestForm({
           const d = await res.json();
           setParties(d);
           setFilteredBeneficiaries(d);
-          setFilteredCustomerParties(d);
         }
       } catch (e) {
         console.error("Parties fetch:", e);
@@ -956,19 +950,6 @@ export default function ExternalBankCashFundRequestForm({
     );
   }, [debouncedBeneficiarySearch, parties]);
 
-  useEffect(() => {
-    const q = debouncedCustomerPartySearch.toLowerCase();
-    setFilteredCustomerParties(
-      q
-        ? parties.filter(
-            (p) =>
-              p.partyName.toLowerCase().includes(q) ||
-              p.partyCode.toLowerCase().includes(q),
-          )
-        : parties,
-    );
-  }, [debouncedCustomerPartySearch, parties]);
-
   const filteredRequestors = useMemo(() => {
     const q = debouncedRequestorSearch.toLowerCase();
     return q
@@ -1070,29 +1051,6 @@ export default function ExternalBankCashFundRequestForm({
   );
 
   // ── Manual customer party change ──────────────────────────────────────────
-  const handleCustomerPartyChange = useCallback(
-    async (partyIdStr: string) => {
-      const party = parties.find((p) => p.partyId.toString() === partyIdStr);
-      if (!party) return;
-      setSelectedCustomerPartyId(party.partyId);
-      setCustomerPartyName(party.partyName);
-
-      // Filter charges by party
-      const allowedIds = await fetchPartyCharges(party.partyId);
-      if (allowedIds.size > 0) {
-        setFilteredCharges(
-          chargesMasters.filter((c) => allowedIds.has(c.chargeId)),
-        );
-      } else {
-        const nonOp = chargesMasters.filter(
-          (c) => c.chargesNature?.toLowerCase() === "non-operational",
-        );
-        setFilteredCharges(nonOp.length > 0 ? nonOp : chargesMasters);
-      }
-    },
-    [parties, chargesMasters, fetchPartyCharges],
-  );
-
   const handleRequestorChange = useCallback(
     (uid: string) => {
       const user = users.find((u) => u.userId.toString() === uid);
@@ -1776,84 +1734,26 @@ export default function ExternalBankCashFundRequestForm({
                 )}
               </div>
 
-              {/* Customer Party — auto-filled or manual */}
+              {/* Customer Party — auto-filled from job (read-only) */}
               <div>
                 <Label className='text-sm font-medium text-gray-700 mb-2 block'>
                   Party Name (Consignee)
                   <span className='ml-2 text-xs text-gray-400 font-normal'>
-                    (auto-filled from job or select manually)
+                    (auto-filled from job)
                   </span>
                 </Label>
-                <Select
-                  value={selectedCustomerPartyId?.toString() || ""}
-                  onValueChange={handleCustomerPartyChange}
-                  disabled={loadingState.parties}
-                >
-                  <SelectTrigger
-                    className='w-full h-10'
-                    aria-label='Select customer party'
-                  >
-                    <SelectValue placeholder='Select Customer / Party'>
-                      {customerPartyName ? (
-                        <span className='flex items-center gap-1.5'>
-                          <FiUser className='h-3.5 w-3.5 text-purple-600' />
-                          {customerPartyName}
-                        </span>
-                      ) : (
-                        "Select Customer / Party"
-                      )}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent
-                    className='max-h-[300px] w-[400px]'
-                    position='popper'
-                    sideOffset={5}
-                  >
-                    <div className='sticky top-0 bg-white p-2 border-b z-50'>
-                      <div className='relative'>
-                        <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4' />
-                        <Input
-                          placeholder='Search parties...'
-                          value={customerPartySearch}
-                          onChange={(e) =>
-                            setCustomerPartySearch(e.target.value)
-                          }
-                          className='pl-8 h-8'
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                        />
-                      </div>
-                    </div>
-                    <div className='max-h-[250px] overflow-y-auto'>
-                      {loadingState.parties ? (
-                        <div className='p-4 text-center text-gray-500'>
-                          <FiLoader className='animate-spin inline mr-2' />{" "}
-                          Loading parties...
-                        </div>
-                      ) : filteredCustomerParties.length === 0 ? (
-                        <div className='p-4 text-center text-gray-500'>
-                          No parties found
-                        </div>
-                      ) : (
-                        filteredCustomerParties.map((party) => (
-                          <SelectItem
-                            key={party.partyId}
-                            value={party.partyId.toString()}
-                          >
-                            <div className='flex flex-col'>
-                              <span className='font-medium'>
-                                {party.partyName}
-                              </span>
-                              <span className='text-xs text-gray-500'>
-                                {party.partyCode}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))
-                      )}
-                    </div>
-                  </SelectContent>
-                </Select>
+                <div className='flex items-center gap-2 h-10 w-full rounded-md border border-input bg-gray-50 px-3 py-2 text-sm'>
+                  {customerPartyName ? (
+                    <span className='flex items-center gap-1.5 text-gray-800 truncate'>
+                      <FiUser className='h-3.5 w-3.5 text-purple-600 flex-shrink-0' />
+                      {customerPartyName}
+                    </span>
+                  ) : (
+                    <span className='text-gray-400 italic'>
+                      Select a Job to auto-fill
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Requested To */}
