@@ -83,6 +83,7 @@ type Job = {
   jobId: number;
   jobNumber: string;
   operationType: string;
+  operationMode?: string;
   status: string;
 };
 
@@ -90,6 +91,7 @@ type JobDetail = {
   jobId?: number;
   jobNumber?: string;
   operationType?: string;
+  operationMode?: string;
   consigneePartyId?: number;
   shipperPartyId?: number;
   consigneeParty?: {
@@ -541,6 +543,7 @@ export default function ExternalBankCashFundRequestForm({
   // ── Master state ──────────────────────────────────────────────────────────
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [jobNumber, setJobNumber] = useState("");
+  const [jobMode, setJobMode] = useState("");
   const [jobSearch, setJobSearch] = useState("");
   const [selectedCustomerPartyId, setSelectedCustomerPartyId] = useState<
     number | null
@@ -716,7 +719,7 @@ export default function ExternalBankCashFundRequestForm({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            select: "JobId, JobNumber, OperationType, Status",
+            select: "JobId, JobNumber, OperationType, OperationMode, Status",
             where: "",
             sortOn: "JobId DESC",
             page: "1",
@@ -984,6 +987,7 @@ export default function ExternalBankCashFundRequestForm({
       if (!jobIdStr) {
         setSelectedJobId(null);
         setJobNumber("");
+        setJobMode("");
         setSelectedCustomerPartyId(null);
         setCustomerPartyName("");
         // Reset charges to default
@@ -1002,17 +1006,42 @@ export default function ExternalBankCashFundRequestForm({
 
       const detail = await fetchJobDetail(job.jobId);
       if (detail) {
-        const linkedParty = extractLinkedParty(detail, job.operationType);
-        const customerName = extractCustomerName(detail, job.operationType);
-        if (linkedParty) {
-          setSelectedCustomerPartyId(linkedParty.partyId);
-          setCustomerPartyName(linkedParty.partyName);
+        // Set job mode (Air/Sea/Land) for display
+        const mode =
+          job.operationMode ||
+          detail.operationMode ||
+          (detail as any).OperationMode ||
+          "";
+        setJobMode(mode);
+
+        // Always prefer consignee, fall back to shipper
+        const consignee = detail.consigneeParty;
+        const shipper = detail.shipperParty;
+        const primaryParty = consignee
+          ? {
+              partyId: consignee.partyId,
+              partyCode: "CONSIGNEE",
+              partyName: consignee.partyName,
+            }
+          : shipper
+            ? {
+                partyId: shipper.partyId,
+                partyCode: "SHIPPER",
+                partyName: shipper.partyName,
+              }
+            : null;
+
+        if (primaryParty) {
+          setSelectedCustomerPartyId(primaryParty.partyId);
+          setCustomerPartyName(primaryParty.partyName);
 
           // Propagate customer name to all existing line items
-          setLineItems((prev) => prev.map((li) => ({ ...li, customerName })));
+          setLineItems((prev) =>
+            prev.map((li) => ({ ...li, customerName: primaryParty.partyName })),
+          );
 
           // Filter charges by this party's allowed charges
-          const allowedIds = await fetchPartyCharges(linkedParty.partyId);
+          const allowedIds = await fetchPartyCharges(primaryParty.partyId);
           if (allowedIds.size > 0) {
             setFilteredCharges(
               chargesMasters.filter((c) => allowedIds.has(c.chargeId)),
@@ -1027,7 +1056,9 @@ export default function ExternalBankCashFundRequestForm({
           // No linked party resolved — clear party
           setSelectedCustomerPartyId(null);
           setCustomerPartyName("");
-          setLineItems((prev) => prev.map((li) => ({ ...li, customerName })));
+          setLineItems((prev) =>
+            prev.map((li) => ({ ...li, customerName: "" })),
+          );
           const nonOp = chargesMasters.filter(
             (c) => c.chargesNature?.toLowerCase() === "non-operational",
           );
@@ -1208,6 +1239,12 @@ export default function ExternalBankCashFundRequestForm({
       setSelectedJobId(jobId);
       const job = jobs.find((j) => j.jobId === jobId);
       setJobNumber(job?.jobNumber || defaultState.jobNumber || `Job #${jobId}`);
+      setJobMode(
+        job?.operationMode ||
+          defaultState.operationMode ||
+          defaultState.jobMode ||
+          "",
+      );
     }
 
     const partyId =
@@ -1705,7 +1742,9 @@ export default function ExternalBankCashFundRequestForm({
                                 {job.jobNumber}
                               </span>
                               <span className='text-xs text-gray-500'>
-                                {job.operationType} — {job.status}
+                                {job.operationType}
+                                {job.operationMode && ` · ${job.operationMode}`}{" "}
+                                — {job.status}
                               </span>
                             </div>
                           </SelectItem>
@@ -1714,12 +1753,33 @@ export default function ExternalBankCashFundRequestForm({
                     </div>
                   </SelectContent>
                 </Select>
+                {jobMode && (
+                  <div className='mt-1.5 flex items-center gap-1.5'>
+                    <span className='text-xs text-gray-500'>Mode:</span>
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        jobMode.toUpperCase() === "AIR"
+                          ? "bg-sky-100 text-sky-700"
+                          : jobMode.toUpperCase() === "SEA"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {jobMode.toUpperCase() === "AIR"
+                        ? "✈ "
+                        : jobMode.toUpperCase() === "SEA"
+                          ? "🚢 "
+                          : "🚛 "}
+                      {jobMode}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Customer Party — auto-filled or manual */}
               <div>
                 <Label className='text-sm font-medium text-gray-700 mb-2 block'>
-                  Customer / Party
+                  Party Name (Consignee)
                   <span className='ml-2 text-xs text-gray-400 font-normal'>
                     (auto-filled from job or select manually)
                   </span>
