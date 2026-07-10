@@ -68,6 +68,7 @@ type Bank = {
   bankId: number;
   bankCode: string;
   bankName: string;
+  bankGlcoaid: number | null;
 };
 
 type StatusOption = { key: string; label: string };
@@ -142,35 +143,50 @@ export default function ExternalBankCashFundRequestApprovalForm({
     const fetchBanks = async () => {
       setIsLoadingBanks(true);
       try {
-        const res = await fetch(`${getBaseUrl()}Bank/GetList`, {
+        const res = await fetch(`${getBaseUrl()}Banks/GetList`, {
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            select: "BankId, BankCode, BankName",
+            select: "BankId, BankCode, BankName, BankGlcoaid",
             where: "",
+            search: "",
             sortOn: "BankName ASC",
             page: "1",
-            pageSize: "5000",
+            pageSize: "200",
           }),
         });
-        if (res.ok) {
-          const d = await res.json();
-          const list: Bank[] = (Array.isArray(d) ? d : []).map((b: any) => ({
-            bankId: b.bankId ?? b.BankId ?? 0,
-            bankCode: b.bankCode ?? b.BankCode ?? "",
-            bankName: b.bankName ?? b.BankName ?? "",
-          }));
-          setBanks(list);
-          setFilteredBanks(list);
+
+        if (res.status === 401) {
+          toast({ variant: "destructive", title: "Session Expired", description: "Please log in again." });
+          return;
         }
+
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`Banks fetch failed: ${res.status}`, errText);
+          toast({ variant: "destructive", title: "Error", description: `Failed to load banks (${res.status})` });
+          return;
+        }
+
+        const d = await res.json();
+        const rawList = Array.isArray(d) ? d : (d?.data ?? d?.items ?? []);
+        const list: Bank[] = rawList.map((b: any) => ({
+          bankId: b.bankId ?? b.BankId ?? 0,
+          bankCode: b.bankCode ?? b.BankCode ?? "",
+          bankName: b.bankName ?? b.BankName ?? "",
+          bankGlcoaid: b.bankGlcoaid ?? b.BankGlcoaid ?? null,
+        }));
+        setBanks(list);
+        setFilteredBanks(list);
       } catch (e) {
         console.error("Banks fetch:", e);
+        toast({ variant: "destructive", title: "Network Error", description: "Could not reach the server." });
       } finally {
         setIsLoadingBanks(false);
       }
     };
     fetchBanks();
-  }, []);
+  }, [toast]);
 
   // ── Bank search filter ────────────────────────────────────────────────────
   useEffect(() => {
@@ -185,6 +201,22 @@ export default function ExternalBankCashFundRequestApprovalForm({
         : banks,
     );
   }, [bankSearch, banks]);
+
+  // ── Backfill bankName from banks list when both are ready ─────────────────
+  useEffect(() => {
+    if (!banks.length || !lineItems.length) return;
+    setLineItems((prev) =>
+      prev.map((item) => {
+        if (!item.bankId) return item;
+        const bank = banks.find((b) => b.bankId === item.bankId);
+        if (!bank) return item;
+        const patch: Partial<typeof item> = {};
+        if (!item.bankName) patch.bankName = bank.bankName;
+        return Object.keys(patch).length ? { ...item, ...patch } : item;
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [banks]);
 
   // ── Initialise line items from request data ───────────────────────────────
   useEffect(() => {
@@ -252,6 +284,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
       const updated = [...prev];
       updated[index].bankId = bank?.bankId ?? null;
       updated[index].bankName = bank?.bankName ?? "";
+      if (bank?.bankGlcoaid) updated[index].headCoaId = bank.bankGlcoaid;
       return updated;
     });
   };
