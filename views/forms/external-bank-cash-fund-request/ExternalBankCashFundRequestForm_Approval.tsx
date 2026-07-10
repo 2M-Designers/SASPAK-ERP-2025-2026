@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -21,10 +28,11 @@ import {
   FiDollarSign,
   FiBriefcase,
   FiUser,
-  FiHash,
+  FiSearch,
+  FiLoader,
 } from "react-icons/fi";
 import { Badge } from "@/components/ui/badge";
-import { Info, AlertTriangle } from "lucide-react";
+import { Info } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,10 +48,9 @@ type LineItemApproval = {
   headOfAccount: string;
   beneficiaryCoaId: number | null;
   beneficiary: string;
-  accountNo: string;
   requestToAccountId: number | null;
   requestedAmount: number;
-  approvedAmount: number;
+  receivedAmount: number;
   requestedTo: number | null;
   onAccountOfId: number | null;
   chargesId: number | null;
@@ -53,6 +60,14 @@ type LineItemApproval = {
   createdOn: string;
   version: number;
   externalbankFundRequestMasterId: number;
+  bankId: number | null;
+  bankName: string;
+};
+
+type Bank = {
+  bankId: number;
+  bankCode: string;
+  bankName: string;
 };
 
 type StatusOption = { key: string; label: string };
@@ -72,6 +87,12 @@ export default function ExternalBankCashFundRequestApprovalForm({
   const [pendingStatus, setPendingStatus] = useState("Pending");
   const [approvedStatus, setApprovedStatus] = useState("Approved");
   const [rejectedStatus, setRejectedStatus] = useState("Rejected");
+
+  // Banks
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [filteredBanks, setFilteredBanks] = useState<Bank[]>([]);
+  const [bankSearch, setBankSearch] = useState("");
+  const [isLoadingBanks, setIsLoadingBanks] = useState(false);
 
   const { toast } = useToast();
 
@@ -116,6 +137,55 @@ export default function ExternalBankCashFundRequestApprovalForm({
     fetchStatuses();
   }, []);
 
+  // ── Fetch banks ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchBanks = async () => {
+      setIsLoadingBanks(true);
+      try {
+        const res = await fetch(`${getBaseUrl()}Bank/GetList`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            select: "BankId, BankCode, BankName",
+            where: "",
+            sortOn: "BankName ASC",
+            page: "1",
+            pageSize: "5000",
+          }),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          const list: Bank[] = (Array.isArray(d) ? d : []).map((b: any) => ({
+            bankId: b.bankId ?? b.BankId ?? 0,
+            bankCode: b.bankCode ?? b.BankCode ?? "",
+            bankName: b.bankName ?? b.BankName ?? "",
+          }));
+          setBanks(list);
+          setFilteredBanks(list);
+        }
+      } catch (e) {
+        console.error("Banks fetch:", e);
+      } finally {
+        setIsLoadingBanks(false);
+      }
+    };
+    fetchBanks();
+  }, []);
+
+  // ── Bank search filter ────────────────────────────────────────────────────
+  useEffect(() => {
+    const q = bankSearch.toLowerCase();
+    setFilteredBanks(
+      q
+        ? banks.filter(
+            (b) =>
+              b.bankName.toLowerCase().includes(q) ||
+              b.bankCode.toLowerCase().includes(q),
+          )
+        : banks,
+    );
+  }, [bankSearch, banks]);
+
   // ── Initialise line items from request data ───────────────────────────────
   useEffect(() => {
     const details =
@@ -141,14 +211,13 @@ export default function ExternalBankCashFundRequestApprovalForm({
       headOfAccount: d.headOfAccount || d.HeadOfAccount || "",
       beneficiaryCoaId: d.beneficiaryCoaId ?? d.BeneficiaryCoaId ?? null,
       beneficiary: d.beneficiary || d.Beneficiary || "",
-      accountNo: d.accountNo || d.AccountNo || "",
       requestToAccountId: d.requestToAccountId ?? d.RequestToAccountId ?? null,
       requestedAmount: d.requestedAmount || d.RequestedAmount || 0,
-      approvedAmount:
+      receivedAmount:
         d.approvedAmount ||
         d.ApprovedAmount ||
-        d.requestedAmount ||
-        d.RequestedAmount ||
+        d.receivedAmount ||
+        d.ReceivedAmount ||
         0,
       requestedTo: d.requestedTo ?? d.RequestedTo ?? null,
       onAccountOfId: d.onAccountOfId ?? d.OnAccountOfId ?? null,
@@ -161,19 +230,28 @@ export default function ExternalBankCashFundRequestApprovalForm({
       createdOn: d.createdOn || d.CreatedOn || new Date().toISOString(),
       version: d.version ?? d.Version ?? 0,
       externalbankFundRequestMasterId: masterId,
+      bankId: d.bankId ?? d.BankId ?? null,
+      bankName: d.bankName || d.BankName || "",
     }));
 
     setLineItems(items);
   }, [requestData, pendingStatus]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  const updateApprovedAmount = (index: number, amount: number) => {
+  const updateReceivedAmount = (index: number, amount: number) => {
     setLineItems((prev) => {
       const updated = [...prev];
-      updated[index].approvedAmount = Math.min(
-        Math.max(0, amount),
-        updated[index].requestedAmount,
-      );
+      updated[index].receivedAmount = Math.max(0, amount);
+      return updated;
+    });
+  };
+
+  const updateBank = (index: number, bankIdStr: string) => {
+    const bank = banks.find((b) => b.bankId.toString() === bankIdStr);
+    setLineItems((prev) => {
+      const updated = [...prev];
+      updated[index].bankId = bank?.bankId ?? null;
+      updated[index].bankName = bank?.bankName ?? "";
       return updated;
     });
   };
@@ -182,7 +260,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
     setLineItems((prev) => {
       const updated = [...prev];
       updated[index].subRequestStatus = status;
-      if (status === rejectedStatus) updated[index].approvedAmount = 0;
+      if (status === rejectedStatus) updated[index].receivedAmount = 0;
       return updated;
     });
   };
@@ -197,31 +275,30 @@ export default function ExternalBankCashFundRequestApprovalForm({
       prev.map((i) => ({
         ...i,
         subRequestStatus: rejectedStatus,
-        approvedAmount: 0,
+        receivedAmount: 0,
       })),
     );
 
-  const autoFillApprovedAmounts = () => {
+  const matchDemandAmounts = () => {
     setLineItems((prev) =>
       prev.map((i) => ({
         ...i,
-        approvedAmount:
+        receivedAmount:
           i.subRequestStatus !== rejectedStatus ? i.requestedAmount : 0,
       })),
     );
     toast({
       title: "Auto-filled",
-      description:
-        "Approved amounts set to requested amounts (except rejected lines)",
+      description: "Received amounts set to demanded amounts (except rejected lines)",
     });
   };
 
   // ── Totals ────────────────────────────────────────────────────────────────
   const totals = {
-    totalRequested: lineItems.reduce((s, i) => s + (i.requestedAmount || 0), 0),
-    totalApproved: lineItems.reduce(
+    totalDemand: lineItems.reduce((s, i) => s + (i.requestedAmount || 0), 0),
+    totalReceived: lineItems.reduce(
       (s, i) =>
-        s + (i.subRequestStatus === approvedStatus ? i.approvedAmount : 0),
+        s + (i.subRequestStatus === approvedStatus ? i.receivedAmount : 0),
       0,
     ),
   };
@@ -235,9 +312,10 @@ export default function ExternalBankCashFundRequestApprovalForm({
     return pendingStatus;
   })();
 
-  // ── Resolve display info from master ──────────────────────────────────────
+  // ── Display info from master ──────────────────────────────────────────────
   const masterJobNumber =
     requestData?.jobNumber ||
+    requestData?.JobNumber ||
     (requestData?.jobId ? `Job #${requestData.jobId}` : null);
   const masterCustomerParty =
     requestData?.customerPartyName ||
@@ -247,19 +325,6 @@ export default function ExternalBankCashFundRequestApprovalForm({
 
   // ── Save ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {
-    const invalidAmount = lineItems.some(
-      (i) => i.approvedAmount < 0 || i.approvedAmount > i.requestedAmount,
-    );
-    if (invalidAmount) {
-      toast({
-        variant: "destructive",
-        title: "Invalid Amounts",
-        description:
-          "Approved amounts must be between 0 and the requested amount",
-      });
-      return;
-    }
-
     if (!userId) {
       toast({
         variant: "destructive",
@@ -269,10 +334,23 @@ export default function ExternalBankCashFundRequestApprovalForm({
       return;
     }
 
+    const isApproving = derivedMasterStatus === approvedStatus;
+    if (isApproving) {
+      const missingBank = lineItems.some(
+        (i) => i.subRequestStatus === approvedStatus && !i.bankId,
+      );
+      if (missingBank) {
+        toast({
+          variant: "destructive",
+          title: "Bank Required",
+          description: "Please select a Bank for every received line item.",
+        });
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
-      const isApproving = derivedMasterStatus === approvedStatus;
-
       const masterId: number =
         requestData?.externalBankCashFundRequestId ||
         requestData?.ExternalBankCashFundRequestId ||
@@ -289,14 +367,13 @@ export default function ExternalBankCashFundRequestApprovalForm({
         return;
       }
 
-      // ── Flat payload — no dto wrapper, details nested inside master ────────
       const payload = {
         ExternalBankCashFundRequestId: masterId,
         JobId: requestData.jobId ?? requestData.JobId ?? null,
         CustomerPartyId:
           requestData.customerPartyId ?? requestData.CustomerPartyId ?? null,
-        TotalRequestedAmount: totals.totalRequested,
-        TotalApprovedAmount: totals.totalApproved,
+        TotalRequestedAmount: totals.totalDemand,
+        TotalApprovedAmount: totals.totalReceived,
         ApprovalStatus: derivedMasterStatus,
         ApprovedBy: isApproving ? userId.toString() : null,
         ApprovedOn: isApproving ? new Date().toISOString() : null,
@@ -312,7 +389,6 @@ export default function ExternalBankCashFundRequestApprovalForm({
         CreateLog: null,
         UpdateLog: null,
 
-        // ── Details nested directly — no separate sibling key ──────────────
         ExternalBankCashFundsRequestDetails: lineItems.map((item) => ({
           ExternalBankCashFundsRequestDetailsId:
             item.externalBankCashFundsRequestDetailsId || 0,
@@ -321,20 +397,21 @@ export default function ExternalBankCashFundRequestApprovalForm({
           BeneficiaryCoaId: item.beneficiaryCoaId,
           HeadOfAccount: item.headOfAccount,
           Beneficiary: item.beneficiary,
-          AccountNo: item.accountNo || "",
+          AccountNo: "",
           RequestToAccountId: item.requestToAccountId ?? null,
           RequestedAmount: item.requestedAmount,
           ApprovedAmount:
-            item.subRequestStatus === approvedStatus ? item.approvedAmount : 0,
+            item.subRequestStatus === approvedStatus ? item.receivedAmount : 0,
           RequestedTo: item.requestedTo,
           CreatedOn: item.createdOn,
           ExternalbankFundRequestMasterId: masterId,
           ChargesId: item.chargesId ?? item.headCoaId,
           CustomerName: item.customerName || "",
-          OnAccountOfId: item.onAccountOfId ?? null, // ✅ nullable FK → null
+          OnAccountOfId: item.onAccountOfId ?? null,
           SubRequestStatus: item.subRequestStatus,
           Remarks: item.remarks || "",
           Version: item.version ?? 0,
+          BankId: item.bankId ?? null,
           BeneficiaryCoa: null,
           Charges: null,
           HeadCoa: null,
@@ -346,7 +423,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
       };
 
       console.log(
-        "📦 EXTERNAL CASH APPROVAL PAYLOAD:",
+        "📦 DEMAND ORDER RECEIVE PAYLOAD:",
         JSON.stringify(payload, null, 2),
       );
 
@@ -387,7 +464,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
       const result = await response.json();
       toast({
         title: "Success",
-        description: `External cash fund request saved — Status: ${derivedMasterStatus}`,
+        description: `Demand Order received — Status: ${derivedMasterStatus}`,
       });
       onApprovalComplete(result);
     } catch (error) {
@@ -415,6 +492,12 @@ export default function ExternalBankCashFundRequestApprovalForm({
     return "bg-gray-100 text-gray-800 border-gray-300";
   };
 
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(n);
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className='space-y-4 max-w-full'>
@@ -425,7 +508,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
             <div className='flex items-center gap-3'>
               <CardTitle className='text-lg flex items-center gap-2'>
                 <FiCheckCircle className='h-5 w-5 text-purple-600' />
-                Approve External Bank Cash Fund Request
+                Receive Demand Order
               </CardTitle>
               <Badge variant='outline' className='font-mono'>
                 #{requestData?.externalBankCashFundRequestId}
@@ -434,7 +517,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
             <Badge
               className={`font-semibold ${getStatusBadge(derivedMasterStatus)}`}
             >
-              Master: {derivedMasterStatus}
+              {derivedMasterStatus}
             </Badge>
           </div>
           <CardDescription className='pt-2'>
@@ -469,18 +552,12 @@ export default function ExternalBankCashFundRequestApprovalForm({
           <span className='text-sm text-gray-600'>
             <strong>{lineItems.length}</strong> line items •
             <span className='text-green-600 ml-2'>
-              {
-                lineItems.filter((i) => i.subRequestStatus === approvedStatus)
-                  .length
-              }{" "}
-              approved
+              {lineItems.filter((i) => i.subRequestStatus === approvedStatus).length}{" "}
+              received
             </span>{" "}
             •
             <span className='text-red-600 ml-1'>
-              {
-                lineItems.filter((i) => i.subRequestStatus === rejectedStatus)
-                  .length
-              }{" "}
+              {lineItems.filter((i) => i.subRequestStatus === rejectedStatus).length}{" "}
               rejected
             </span>
           </span>
@@ -493,7 +570,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
             onClick={approveAllLines}
             className='text-green-700 border-green-300 hover:bg-green-50'
           >
-            <FiCheckCircle className='h-3.5 w-3.5 mr-1.5' /> Approve All
+            <FiCheckCircle className='h-3.5 w-3.5 mr-1.5' /> Receive All
           </Button>
           <Button
             type='button'
@@ -508,9 +585,9 @@ export default function ExternalBankCashFundRequestApprovalForm({
             type='button'
             variant='outline'
             size='sm'
-            onClick={autoFillApprovedAmounts}
+            onClick={matchDemandAmounts}
           >
-            <FiDollarSign className='h-3.5 w-3.5 mr-1.5' /> Auto-fill Amounts
+            <FiDollarSign className='h-3.5 w-3.5 mr-1.5' /> Match Demand
           </Button>
         </div>
       </div>
@@ -520,7 +597,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
         {lineItems.map((item, index) => {
           const isApproved = item.subRequestStatus === approvedStatus;
           const isRejected = item.subRequestStatus === rejectedStatus;
-          const diff = item.approvedAmount - item.requestedAmount;
+          const diff = item.receivedAmount - item.requestedAmount;
 
           return (
             <Card
@@ -551,9 +628,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
                       <div className='flex items-start gap-1.5'>
                         <FiFileText className='h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0' />
                         <div>
-                          <p className='text-xs text-gray-500'>
-                            Head of Account
-                          </p>
+                          <p className='text-xs text-gray-500'>Head of Account</p>
                           <p
                             className='text-sm font-medium text-gray-900 leading-tight'
                             title={item.headOfAccount}
@@ -577,51 +652,88 @@ export default function ExternalBankCashFundRequestApprovalForm({
                     </div>
                   </div>
 
-                  {/* Account No & Customer Name */}
+                  {/* Bank — per line */}
                   <div className='col-span-2'>
-                    <div className='space-y-1.5'>
-                      <div className='flex items-start gap-1.5'>
-                        <FiHash className='h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0' />
-                        <div>
-                          <p className='text-xs text-gray-500'>Account No</p>
-                          <p className='text-sm font-mono text-gray-700'>
-                            {item.accountNo || "—"}
-                          </p>
-                        </div>
-                      </div>
-                      {item.customerName && (
-                        <div className='flex items-start gap-1.5'>
-                          <FiUser className='h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0' />
-                          <div>
-                            <p className='text-xs text-gray-500'>Customer</p>
-                            <p
-                              className='text-sm text-gray-700 truncate max-w-[120px]'
-                              title={item.customerName}
-                            >
-                              {item.customerName}
-                            </p>
+                    <Label className='text-xs text-gray-600 mb-1 block'>
+                      Bank{isApproved && <span className='text-red-500 ml-0.5'>*</span>}
+                    </Label>
+                    <Select
+                      value={item.bankId?.toString() || ""}
+                      onValueChange={(v) => updateBank(index, v)}
+                      disabled={isRejected}
+                    >
+                      <SelectTrigger
+                        className={`h-9 text-sm ${
+                          isRejected
+                            ? "bg-gray-100"
+                            : "bg-blue-50 border-blue-300"
+                        } ${isApproved && !item.bankId ? "border-red-300 bg-red-50" : ""}`}
+                      >
+                        <SelectValue placeholder='Select bank...'>
+                          {item.bankName ? (
+                            <span className='flex items-center gap-1.5 truncate'>
+                              <FiDollarSign className='h-3.5 w-3.5 flex-shrink-0 text-blue-600' />
+                              <span className='truncate'>{item.bankName}</span>
+                            </span>
+                          ) : (
+                            <span className='text-gray-400'>Select bank...</span>
+                          )}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className='max-h-[300px] w-[300px]' position='popper' sideOffset={5}>
+                        <div className='sticky top-0 bg-white p-2 border-b z-50'>
+                          <div className='relative'>
+                            <FiSearch className='absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4' />
+                            <Input
+                              placeholder='Search banks...'
+                              value={bankSearch}
+                              onChange={(e) => setBankSearch(e.target.value)}
+                              className='pl-8 h-8 text-sm'
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                            />
                           </div>
                         </div>
-                      )}
-                    </div>
+                        <div className='max-h-[250px] overflow-y-auto'>
+                          {isLoadingBanks ? (
+                            <div className='p-4 text-center text-gray-500'>
+                              <FiLoader className='animate-spin inline mr-2 h-3 w-3' />
+                              Loading...
+                            </div>
+                          ) : filteredBanks.length === 0 ? (
+                            <div className='p-4 text-center text-gray-500'>
+                              No banks found
+                            </div>
+                          ) : (
+                            filteredBanks.map((bank) => (
+                              <SelectItem
+                                key={bank.bankId}
+                                value={bank.bankId.toString()}
+                              >
+                                <div className='flex flex-col'>
+                                  <span className='font-medium'>{bank.bankCode}</span>
+                                  <span className='text-xs text-gray-500'>{bank.bankName}</span>
+                                </div>
+                              </SelectItem>
+                            ))
+                          )}
+                        </div>
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  {/* Requested Amount */}
+                  {/* Demand Amount — read-only */}
                   <div className='col-span-1'>
-                    <p className='text-xs text-gray-500 mb-0.5'>Requested</p>
+                    <p className='text-xs text-gray-500 mb-0.5'>Demand</p>
                     <p className='text-sm font-semibold text-gray-900'>
-                      {new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: "PKR",
-                        minimumFractionDigits: 0,
-                      }).format(item.requestedAmount)}
+                      {fmt(item.requestedAmount)}
                     </p>
                   </div>
 
-                  {/* Approved Amount */}
+                  {/* Received Amount — editable, no cap */}
                   <div className='col-span-2'>
                     <Label className='text-xs text-gray-600 mb-1 block'>
-                      Approved Amount
+                      Received Amount
                     </Label>
                     <div className='relative'>
                       <span className='absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-medium select-none'>
@@ -630,11 +742,10 @@ export default function ExternalBankCashFundRequestApprovalForm({
                       <Input
                         type='number'
                         min='0'
-                        max={item.requestedAmount}
-                        step='0.01'
-                        value={item.approvedAmount || ""}
+                        step='1'
+                        value={item.receivedAmount || ""}
                         onChange={(e) =>
-                          updateApprovedAmount(
+                          updateReceivedAmount(
                             index,
                             parseFloat(e.target.value) || 0,
                           )
@@ -643,26 +754,28 @@ export default function ExternalBankCashFundRequestApprovalForm({
                         className={`pl-12 text-right font-semibold ${
                           isRejected
                             ? "bg-gray-100"
-                            : diff < 0
+                            : diff > 0
                               ? "bg-orange-50 border-orange-300"
-                              : "bg-green-50 border-green-300"
+                              : diff < 0
+                                ? "bg-yellow-50 border-yellow-300"
+                                : "bg-green-50 border-green-300"
                         }`}
                       />
                     </div>
                     {diff !== 0 && !isRejected && (
-                      <p className='text-xs mt-1 text-orange-600'>
-                        {new Intl.NumberFormat("en-US", {
-                          style: "currency",
-                          currency: "PKR",
-                        }).format(diff)}
+                      <p
+                        className={`text-xs mt-1 ${diff > 0 ? "text-orange-600" : "text-yellow-700"}`}
+                      >
+                        {diff > 0 ? "+" : ""}
+                        {fmt(diff)}
                       </p>
                     )}
                   </div>
 
-                  {/* Line Remarks (editable) */}
+                  {/* Description / Remarks */}
                   <div className='col-span-2'>
                     <Label className='text-xs text-gray-600 mb-1 block'>
-                      Remarks
+                      Description
                     </Label>
                     <Input
                       type='text'
@@ -679,7 +792,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
                     />
                   </div>
 
-                  {/* Approve / Reject Buttons */}
+                  {/* Receive / Reject Buttons */}
                   <div className='col-span-1'>
                     <div className='flex items-center gap-1 justify-end'>
                       <Button
@@ -697,11 +810,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
                             ? "bg-green-600 hover:bg-green-700"
                             : "text-green-700 border-green-300 hover:bg-green-50"
                         }`}
-                        title={
-                          isApproved
-                            ? `Reset to ${pendingStatus}`
-                            : `Set to ${approvedStatus}`
-                        }
+                        title={isApproved ? `Reset to ${pendingStatus}` : "Mark Received"}
                       >
                         <FiCheckCircle className='h-4 w-4' />
                       </Button>
@@ -720,11 +829,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
                             ? "bg-red-600 hover:bg-red-700"
                             : "text-red-700 border-red-300 hover:bg-red-50"
                         }`}
-                        title={
-                          isRejected
-                            ? `Reset to ${pendingStatus}`
-                            : `Set to ${rejectedStatus}`
-                        }
+                        title={isRejected ? `Reset to ${pendingStatus}` : "Reject"}
                       >
                         <FiXCircle className='h-4 w-4' />
                       </Button>
@@ -733,7 +838,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
                       <span
                         className={`text-xs font-semibold px-1.5 py-0.5 rounded border ${getStatusBadge(item.subRequestStatus)}`}
                       >
-                        {isApproved ? "✓ Apvd" : isRejected ? "✗ Rjct" : "Pend"}
+                        {isApproved ? "✓ Rcvd" : isRejected ? "✗ Rjct" : "Pend"}
                       </span>
                     </div>
                   </div>
@@ -748,41 +853,29 @@ export default function ExternalBankCashFundRequestApprovalForm({
       <div className='bg-gradient-to-r from-purple-50 to-blue-50 border rounded-lg p-4'>
         <div className='grid grid-cols-3 gap-4 mb-4'>
           <div className='text-center'>
-            <p className='text-xs text-gray-600 mb-1'>Total Requested</p>
+            <p className='text-xs text-gray-600 mb-1'>Total Demand</p>
             <p className='text-2xl font-bold text-gray-900'>
-              {new Intl.NumberFormat("en-US", {
-                style: "currency",
-                currency: "PKR",
-                minimumFractionDigits: 0,
-              }).format(totals.totalRequested)}
+              {fmt(totals.totalDemand)}
             </p>
           </div>
           <div className='text-center'>
-            <p className='text-xs text-gray-600 mb-1'>Total Approved</p>
+            <p className='text-xs text-gray-600 mb-1'>Total Received</p>
             <p className='text-2xl font-bold text-green-700'>
-              {new Intl.NumberFormat("en-US", {
-                style: "currency",
-                currency: "PKR",
-                minimumFractionDigits: 0,
-              }).format(totals.totalApproved)}
+              {fmt(totals.totalReceived)}
             </p>
           </div>
           <div className='text-center'>
             <p className='text-xs text-gray-600 mb-1'>Difference</p>
             <p
               className={`text-2xl font-bold ${
-                totals.totalApproved > totals.totalRequested
-                  ? "text-red-700"
-                  : totals.totalApproved < totals.totalRequested
-                    ? "text-orange-700"
+                totals.totalReceived > totals.totalDemand
+                  ? "text-orange-700"
+                  : totals.totalReceived < totals.totalDemand
+                    ? "text-yellow-700"
                     : "text-green-700"
               }`}
             >
-              {new Intl.NumberFormat("en-US", {
-                style: "currency",
-                currency: "PKR",
-                minimumFractionDigits: 0,
-              }).format(totals.totalApproved - totals.totalRequested)}
+              {fmt(totals.totalReceived - totals.totalDemand)}
             </p>
           </div>
         </div>
@@ -800,23 +893,9 @@ export default function ExternalBankCashFundRequestApprovalForm({
             value={masterRemarks}
             onChange={(e) => setMasterRemarks(e.target.value)}
             className='w-full min-h-[60px] p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white'
-            placeholder='Add overall notes about this approval...'
+            placeholder='Add overall notes...'
           />
         </div>
-
-        {totals.totalApproved > totals.totalRequested && (
-          <div className='mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2'>
-            <AlertTriangle className='h-5 w-5 text-red-600 flex-shrink-0' />
-            <div>
-              <h4 className='font-semibold text-red-900 text-sm'>
-                Over-Approved Amount
-              </h4>
-              <p className='text-xs text-red-700'>
-                Total approved exceeds requested. Please review before saving.
-              </p>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ── Action Buttons ────────────────────────────────────────────────── */}
@@ -842,7 +921,7 @@ export default function ExternalBankCashFundRequestApprovalForm({
             </>
           ) : (
             <>
-              <FiCheckCircle className='h-4 w-4 mr-2' /> Save Approval
+              <FiCheckCircle className='h-4 w-4 mr-2' /> Save
             </>
           )}
         </Button>
