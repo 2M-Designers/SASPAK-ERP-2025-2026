@@ -1388,7 +1388,7 @@ export default function ExternalBankCashFundRequestForm({
             chargesId: item.chargesId ?? item.headCoaId,
             customerName: item.customerName || customerPartyName || "",
             requestedTo: item.requestedTo ?? selectedRequestor,
-            subRequestStatus: type === "edit" ? item.subRequestStatus : "",
+            subRequestStatus: item.subRequestStatus || pendingStatus,
             remarks: item.remarks || "",
             version: 0,
             createdOn: new Date().toISOString(),
