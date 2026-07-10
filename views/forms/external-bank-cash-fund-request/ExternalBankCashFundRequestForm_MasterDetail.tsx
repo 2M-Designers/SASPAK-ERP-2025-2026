@@ -68,7 +68,6 @@ type LineItem = {
   headOfAccount: string;
   beneficiaryCoaId: number | null;
   beneficiary: string;
-  accountNo: string;
   requestToAccountId: number | null;
   requestedAmount: number;
   requestedTo: number | null;
@@ -189,6 +188,68 @@ const extractLinkedParty = (
       benificiaryFromPO: detail.shipperParty.benificiaryNameOfPo,
     };
   return null;
+};
+
+// ─── Mode-based default charge names (in display order) ──────────────────────
+
+const SEA_DEFAULT_CHARGES = [
+  "Custom Duty",
+  "Provincial Infrastructure CESS Duty Charges",
+  "Wharfage",
+  "Delivery Order",
+];
+
+const AIR_DEFAULT_CHARGES = [
+  "Custom Duty",
+  "Provincial Infrastructure CESS Duty Charges",
+  "Civil Aviation",
+  "Storage",
+  "Delivery Order",
+];
+
+const buildModeLineItems = (
+  mode: string,
+  masters: ChargesMaster[],
+  customerName: string,
+  pendingStatus: string,
+  requestedTo: number | null,
+): LineItem[] => {
+  const modeUpper = mode.toUpperCase();
+  const names =
+    modeUpper === "SEA"
+      ? SEA_DEFAULT_CHARGES
+      : modeUpper === "AIR"
+        ? AIR_DEFAULT_CHARGES
+        : null;
+
+  if (!names) return [];
+
+  return names
+    .map((name) => {
+      const charge = masters.find(
+        (c) =>
+          c.chargeName.toLowerCase() === name.toLowerCase() ||
+          c.chargeName.toLowerCase().includes(name.toLowerCase()) ||
+          name.toLowerCase().includes(c.chargeName.toLowerCase()),
+      );
+      if (!charge) return null;
+      return {
+        id: generateUUID(),
+        headCoaId: charge.chargeId,
+        headOfAccount: charge.chargeName || charge.chargeCode,
+        chargesId: charge.chargeId,
+        beneficiaryCoaId: null,
+        beneficiary: "",
+        requestToAccountId: null,
+        requestedAmount: 0,
+        requestedTo,
+        subRequestStatus: pendingStatus,
+        remarks: "",
+        customerName,
+        onAccountOfId: null,
+      } as LineItem;
+    })
+    .filter(Boolean) as LineItem[];
 };
 
 // ─── Custom Hook: Debounce ────────────────────────────────────────────────────
@@ -364,18 +425,6 @@ const LineItemRow = ({
             </div>
           </SelectContent>
         </Select>
-      </TableCell>
-
-      {/* Account No */}
-      <TableCell>
-        <Input
-          type='text'
-          value={item.accountNo}
-          onChange={(e) => onUpdate(item.id, "accountNo", e.target.value)}
-          className='h-9 text-sm font-mono'
-          placeholder='Account number...'
-          aria-label={`Account no for line ${index + 1}`}
-        />
       </TableCell>
 
       {/* Amount */}
@@ -570,7 +619,6 @@ export default function ExternalBankCashFundRequestForm({
       headOfAccount: "",
       beneficiaryCoaId: null,
       beneficiary: "",
-      accountNo: "",
       requestToAccountId: null,
       requestedAmount: 0,
       requestedTo: null,
@@ -1016,10 +1064,25 @@ export default function ExternalBankCashFundRequestForm({
           setSelectedCustomerPartyId(primaryParty.partyId);
           setCustomerPartyName(primaryParty.partyName);
 
-          // Propagate customer name to all existing line items
-          setLineItems((prev) =>
-            prev.map((li) => ({ ...li, customerName: primaryParty.partyName })),
+          // Auto-populate line items based on job mode (Sea/Air)
+          const modeItems = buildModeLineItems(
+            mode,
+            chargesMasters,
+            primaryParty.partyName,
+            pendingStatus,
+            selectedRequestor,
           );
+          if (modeItems.length > 0) {
+            setLineItems(modeItems);
+          } else {
+            // Mode not Sea/Air — just update customer name on existing items
+            setLineItems((prev) =>
+              prev.map((li) => ({
+                ...li,
+                customerName: primaryParty.partyName,
+              })),
+            );
+          }
 
           // Filter charges by this party's allowed charges
           const allowedIds = await fetchPartyCharges(primaryParty.partyId);
@@ -1034,7 +1097,7 @@ export default function ExternalBankCashFundRequestForm({
             setFilteredCharges(nonOp.length > 0 ? nonOp : chargesMasters);
           }
         } else {
-          // No linked party resolved — clear party
+          // No linked party resolved — clear party and items
           setSelectedCustomerPartyId(null);
           setCustomerPartyName("");
           setLineItems((prev) =>
@@ -1047,7 +1110,7 @@ export default function ExternalBankCashFundRequestForm({
         }
       }
     },
-    [jobs, chargesMasters, fetchJobDetail, fetchPartyCharges],
+    [jobs, chargesMasters, pendingStatus, selectedRequestor, fetchJobDetail, fetchPartyCharges],
   );
 
   // ── Manual customer party change ──────────────────────────────────────────
@@ -1239,7 +1302,6 @@ export default function ExternalBankCashFundRequestForm({
         headOfAccount: d.headOfAccount || d.HeadOfAccount || "",
         beneficiaryCoaId: d.beneficiaryCoaId || d.BeneficiaryCoaId || null,
         beneficiary: d.beneficiary || d.Beneficiary || "",
-        accountNo: d.accountNo || d.AccountNo || "",
         requestToAccountId:
           d.requestToAccountId || d.RequestToAccountId || null,
         requestedAmount: d.requestedAmount || d.RequestedAmount || 0,
@@ -1318,7 +1380,7 @@ export default function ExternalBankCashFundRequestForm({
             beneficiaryCoaId: item.beneficiaryCoaId,
             headOfAccount: item.headOfAccount,
             beneficiary: item.beneficiary,
-            accountNo: item.accountNo || "",
+            accountNo: "",
             requestToAccountId: item.requestToAccountId ?? null,
             onAccountOfId: item.onAccountOfId ?? null,
             requestedAmount: item.requestedAmount,
@@ -1549,8 +1611,8 @@ export default function ExternalBankCashFundRequestForm({
           <div className='flex items-center justify-between'>
             <CardTitle className='text-lg'>
               {type === "edit"
-                ? "Edit External Bank Cash Fund Request"
-                : "New External Bank Cash Fund Request"}
+                ? "Edit Demand Order"
+                : "New Demand Order"}
             </CardTitle>
             <div className='flex items-center gap-2'>
               {isSelfApproval && (
@@ -1573,8 +1635,9 @@ export default function ExternalBankCashFundRequestForm({
             </div>
           </div>
           <CardDescription className='pt-2'>
-            Select a job to auto-fill the customer party. Head of Account is
-            filtered by the party's allowed charges. All fields marked{" "}
+            Select a Job Order to auto-fill the Consignee and pre-populate
+            charges based on mode (Sea → 4 charges, Air → 5 charges). You can
+            add more lines as needed. All fields marked{" "}
             <span className='text-red-500'>*</span> are required.
           </CardDescription>
         </CardHeader>
@@ -1598,11 +1661,12 @@ export default function ExternalBankCashFundRequestForm({
             <div className='flex items-start gap-2'>
               <Info className='h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0' />
               <p className='text-xs text-blue-700'>
-                • <strong>Job is optional</strong> — selecting it auto-fills the
-                Customer Party and filters charges • Customer Party can also be
-                selected manually • "Requested To" shows only
-                approval-authorised users • All ✓ → Master {approvedStatus} ·
-                All ✗ → {rejectedStatus} · Mixed → {pendingStatus} •{" "}
+                • <strong>Select a Job</strong> to auto-fill the Consignee and
+                pre-populate line items by mode (
+                <strong>Sea</strong>: Custom Duty, PICD, Wharfage, Delivery
+                Order · <strong>Air</strong>: Custom Duty, PICD, Civil
+                Aviation, Storage, Delivery Order) • Add more lines as needed •
+                "Requested To" shows only approval-authorised users •{" "}
                 <kbd className='px-1 bg-gray-100 border rounded'>
                   Ctrl+Enter
                 </kbd>{" "}
@@ -1879,9 +1943,6 @@ export default function ExternalBankCashFundRequestForm({
                       </TableHead>
                       <TableHead className='min-w-[200px]'>
                         Beneficiary <span className='text-red-500'>*</span>
-                      </TableHead>
-                      <TableHead className='min-w-[150px]'>
-                        Account No
                       </TableHead>
                       <TableHead className='min-w-[140px]'>
                         Amount (PKR) <span className='text-red-500'>*</span>
