@@ -64,9 +64,10 @@ type ExternalBankCashFundRequestFormProps = {
 type LineItem = {
   id: string;
   externalBankCashFundsRequestDetailsId?: number;
-  headCoaId: number | null;
+  headCoaId: number | null;        // chargeId — used for dropdown value
+  preservedHeadCoaId: number | null; // server-side GL account id (edits only)
   headOfAccount: string;
-  beneficiaryCoaId: number | null;
+  beneficiaryCoaId: number | null; // party.glAccountId
   beneficiary: string;
   requestToAccountId: number | null;
   requestedAmount: number;
@@ -110,6 +111,7 @@ type ChargesMaster = {
   chargeCode: string;
   chargeName: string;
   chargesNature: string;
+  costGlaccountId: number | null;
 };
 
 type Party = {
@@ -117,6 +119,7 @@ type Party = {
   partyCode: string;
   partyName: string;
   benificiaryFromPO?: string;
+  glAccountId: number | null;
 };
 
 type User = {
@@ -236,6 +239,7 @@ const buildModeLineItems = (
       return {
         id: generateUUID(),
         headCoaId: charge.chargeId,
+        preservedHeadCoaId: null,
         headOfAccount: charge.chargeName || charge.chargeCode,
         chargesId: charge.chargeId,
         beneficiaryCoaId: null,
@@ -377,11 +381,18 @@ const LineItemRow = ({
           onValueChange={(v) => onBeneficiaryChange(item.id, v)}
         >
           <SelectTrigger
-            className='h-9 text-sm'
+            className={`h-9 text-sm ${item.beneficiary && !item.beneficiaryCoaId ? "border-amber-400 bg-amber-50" : ""}`}
             aria-label={`Beneficiary line ${index + 1}`}
           >
             <SelectValue placeholder='Select Beneficiary'>
-              {item.beneficiary || "Select Beneficiary"}
+              <span className='flex items-center gap-1'>
+                <span>{item.beneficiary || "Select Beneficiary"}</span>
+                {item.beneficiary && !item.beneficiaryCoaId && (
+                  <span className='text-amber-600 text-[10px] font-semibold shrink-0'>
+                    ⚠ No GL A/C
+                  </span>
+                )}
+              </span>
             </SelectValue>
           </SelectTrigger>
           <SelectContent
@@ -616,6 +627,7 @@ export default function ExternalBankCashFundRequestForm({
     (): LineItem => ({
       id: generateUUID(),
       headCoaId: null,
+      preservedHeadCoaId: null,
       headOfAccount: "",
       beneficiaryCoaId: null,
       beneficiary: "",
@@ -792,7 +804,7 @@ export default function ExternalBankCashFundRequestForm({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            select: "ChargeId, ChargeCode, ChargeName, ChargesNature",
+            select: "ChargeId, ChargeCode, ChargeName, ChargesNature, CostGLAccountId",
             where: "IsActive == true",
             sortOn: "ChargeCode ASC",
             page: "1",
@@ -807,6 +819,12 @@ export default function ExternalBankCashFundRequestForm({
               chargeCode: c.chargeCode ?? c.ChargeCode ?? "",
               chargeName: c.chargeName ?? c.ChargeName ?? "",
               chargesNature: c.chargesNature ?? c.ChargesNature ?? "",
+              costGlaccountId:
+                c.costGlaccountId ??
+                c.costGLAccountId ??
+                c.CostGLAccountId ??
+                c.costGlAccountId ??
+                null,
             }))
             .filter((c: ChargesMaster) => c.chargeId > 0);
           setChargesMasters(normalised);
@@ -833,7 +851,7 @@ export default function ExternalBankCashFundRequestForm({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            select: "PartyId, PartyCode, PartyName, BenificiaryNameOfPO",
+            select: "PartyId, PartyCode, PartyName, BenificiaryNameOfPO, GLAccountId",
             where: "",
             sortOn: "PartyName ASC",
             page: "1",
@@ -841,7 +859,24 @@ export default function ExternalBankCashFundRequestForm({
           }),
         });
         if (res.ok) {
-          const d = await res.json();
+          const raw = await res.json();
+          // Normalize GLAccountId — API may return glaccountId (all-lowercase)
+          const d: Party[] = (Array.isArray(raw) ? raw : []).map((p: any) => ({
+            partyId: p.partyId ?? p.PartyId ?? 0,
+            partyCode: p.partyCode ?? p.PartyCode ?? "",
+            partyName: p.partyName ?? p.PartyName ?? "",
+            benificiaryFromPO:
+              p.benificiaryFromPO ??
+              p.benificiaryNameOfPO ??
+              p.BenificiaryNameOfPO ??
+              undefined,
+            glAccountId:
+              p.glaccountId ??
+              p.glAccountId ??
+              p.gLAccountId ??
+              p.GLAccountId ??
+              null,
+          }));
           setParties(d);
           setFilteredBeneficiaries(d);
         }
@@ -1159,7 +1194,7 @@ export default function ExternalBankCashFundRequestForm({
     (id: string, partyId: string) => {
       const party = parties.find((p) => p.partyId.toString() === partyId);
       if (party) {
-        updateLineItem(id, "beneficiaryCoaId", party.partyId);
+        updateLineItem(id, "beneficiaryCoaId", party.glAccountId ?? null);
         updateLineItem(
           id,
           "beneficiary",
@@ -1298,7 +1333,8 @@ export default function ExternalBankCashFundRequestForm({
         externalBankCashFundsRequestDetailsId:
           d.externalBankCashFundsRequestDetailsId ||
           d.ExternalBankCashFundsRequestDetailsId,
-        headCoaId: d.headCoaId || d.HeadCoaId || null,
+        headCoaId: d.chargesId || d.ChargesId || d.headCoaId || d.HeadCoaId || null,
+        preservedHeadCoaId: d.headCoaId || d.HeadCoaId || null,
         headOfAccount: d.headOfAccount || d.HeadOfAccount || "",
         beneficiaryCoaId: d.beneficiaryCoaId || d.BeneficiaryCoaId || null,
         beneficiary: d.beneficiary || d.Beneficiary || "",
@@ -1376,7 +1412,13 @@ export default function ExternalBankCashFundRequestForm({
         const buildDetail = (item: LineItem): any => {
           const d: any = {
             jobId: selectedJobId ?? null,
-            headCoaId: item.headCoaId,
+            headCoaId: (() => {
+              // For edits, use the server-returned GL account id.
+              // For adds, resolve the charge's costGlaccountId at submit time.
+              if (type === "edit") return item.preservedHeadCoaId ?? null;
+              const ch = chargesMasters.find((c) => c.chargeId === item.headCoaId);
+              return ch?.costGlaccountId ?? null;
+            })(),
             beneficiaryCoaId: item.beneficiaryCoaId,
             headOfAccount: item.headOfAccount,
             beneficiary: item.beneficiary,
