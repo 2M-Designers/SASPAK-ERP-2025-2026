@@ -182,6 +182,7 @@ const extractLinkedParty = (
       partyCode: "CONSIGNEE",
       partyName: detail.consigneeParty.partyName,
       benificiaryFromPO: detail.consigneeParty.benificiaryNameOfPo,
+      glAccountId: null,
     };
   if (op.includes("export") && detail.shipperParty)
     return {
@@ -189,6 +190,7 @@ const extractLinkedParty = (
       partyCode: "SHIPPER",
       partyName: detail.shipperParty.partyName,
       benificiaryFromPO: detail.shipperParty.benificiaryNameOfPo,
+      glAccountId: null,
     };
   return null;
 };
